@@ -16,6 +16,7 @@ const io     = new Server(server, { cors: { origin: '*' } });
 app.set('io', io);
 app.use(cors());
 app.use(express.json({ limit: '5mb' }));
+app.use(express.static(path.join(__dirname, 'public')));
 
 // ── Crear las tablas automáticamente al arrancar (seguro repetirlo,
 //     usa CREATE TABLE IF NOT EXISTS — no borra nada si ya existen) ──
