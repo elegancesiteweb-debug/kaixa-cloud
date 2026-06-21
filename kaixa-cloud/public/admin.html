@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kaixa Cloud — Panel de Administración</title>
+<style>
+  :root{--bg:#0a0e14;--s1:#11151d;--s2:#171c26;--border:#232936;--text:#e8eaed;--text2:#9aa3b2;--text3:#5a6478;--accent:#00f5a0;--accent2:#d946ef;--danger:#ef4444}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;padding:24px}
+  .wrap{max-width:920px;margin:0 auto}
+  h1{font-size:22px;font-weight:900;margin-bottom:4px;display:flex;align-items:center;gap:10px}
+  .sub{color:var(--text2);font-size:13px;margin-bottom:28px}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  @media(max-width:760px){.grid{grid-template-columns:1fr}}
+  .card{background:var(--s1);border:1px solid var(--border);border-radius:14px;padding:20px;margin-bottom:18px}
+  .card h2{font-size:14px;font-weight:800;margin-bottom:14px;color:var(--accent)}
+  label{display:block;font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px;margin-top:12px}
+  label:first-child{margin-top:0}
+  input,select{width:100%;background:var(--s2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-size:13px;color:var(--text);outline:none}
+  input:focus,select:focus{border-color:var(--accent)}
+  button{width:100%;margin-top:16px;padding:11px;border-radius:9px;border:none;background:var(--accent);color:#06150f;font-weight:800;font-size:13px;cursor:pointer}
+  button:hover{opacity:.9}
+  button.secondary{background:var(--s2);color:var(--text);border:1px solid var(--border)}
+  .list{display:flex;flex-direction:column;gap:8px;margin-top:4px}
+  .item{background:var(--s2);border:1px solid var(--border);border-radius:9px;padding:10px 12px;font-size:12px;cursor:pointer;transition:border-color .15s}
+  .item:hover{border-color:var(--accent)}
+  .item.sel{border-color:var(--accent);background:rgba(0,245,160,.06)}
+  .item-nm{font-weight:700;font-size:13px}
+  .item-sub{color:var(--text3);font-size:11px;margin-top:2px}
+  .token-box{background:rgba(0,245,160,.08);border:1px solid rgba(0,245,160,.3);border-radius:9px;padding:14px;margin-top:14px}
+  .token-box .lbl{font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px}
+  .token-val{font-family:monospace;font-size:12px;color:var(--accent);word-break:break-all;background:var(--s2);padding:8px 10px;border-radius:6px}
+  .copy-btn{margin-top:8px;background:var(--s2);color:var(--accent);border:1px solid rgba(0,245,160,.3);font-size:11px;padding:7px}
+  .empty{color:var(--text3);font-size:12px;text-align:center;padding:14px}
+  .badge{display:inline-block;font-size:10px;font-weight:800;padding:2px 7px;border-radius:5px;margin-left:6px}
+  .badge.madre{background:rgba(0,245,160,.15);color:var(--accent)}
+  .badge.extra{background:rgba(217,70,239,.15);color:var(--accent2)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🏪 Kaixa Cloud</h1>
+  <div class="sub">Panel de administración — da de alta negocios, sucursales y cajas</div>
+
+  <div class="grid">
+    <!-- Columna izquierda: Negocios -->
+    <div>
+      <div class="card">
+        <h2>1. Negocios</h2>
+        <label>Nombre del negocio</label>
+        <input id="negNombre" placeholder="Joyería López">
+        <label>Giro principal</label>
+        <select id="negGiro">
+          <option value="tienda">🛒 Tienda</option>
+          <option value="ropa">👗 Ropa</option>
+          <option value="joyeria">💍 Joyería</option>
+          <option value="celulares">📱 Celulares</option>
+          <option value="farmacia">🏥 Farmacia</option>
+          <option value="papeleria">📚 Papelería</option>
+          <option value="ferreteria">🏗️ Ferretería</option>
+          <option value="restaurante">🍕 Restaurante</option>
+          <option value="salon">💈 Salón</option>
+        </select>
+        <button onclick="crearNegocio()">+ Crear negocio</button>
+      </div>
+
+      <div class="card">
+        <h2>Negocios existentes</h2>
+        <div id="listaNegocios" class="list"><div class="empty">Cargando...</div></div>
+      </div>
+    </div>
+
+    <!-- Columna derecha: Sucursales y Cajas -->
+    <div>
+      <div class="card" id="cardSucursal" style="display:none">
+        <h2>2. Sucursales de <span id="negocioSelNombre"></span></h2>
+        <label>Nombre de la sucursal</label>
+        <input id="sucNombre" placeholder="Sucursal Centro">
+        <label>Dirección (opcional)</label>
+        <input id="sucDireccion" placeholder="Av. Juárez 123">
+        <button onclick="crearSucursal()">+ Crear sucursal</button>
+        <div id="listaSucursales" class="list" style="margin-top:14px"></div>
+      </div>
+
+      <div class="card" id="cardCaja" style="display:none">
+        <h2>3. Cajas de <span id="sucursalSelNombre"></span></h2>
+        <label>Nombre de la caja</label>
+        <input id="cajaNombre" placeholder="Caja Principal">
+        <label>Tipo</label>
+        <select id="cajaTipo">
+          <option value="madre">🖥️ Madre (la app .exe, funciona offline)</option>
+          <option value="extra">🌐 Extra (siempre conectada a internet)</option>
+        </select>
+        <button onclick="crearCaja()">+ Crear caja</button>
+        <div id="tokenResultado"></div>
+        <div id="listaCajas" class="list" style="margin-top:14px"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = window.location.origin;
+let negocioSel = null;
+let sucursalSel = null;
+
+async function cargarNegocios(){
+  const r = await fetch(API + '/api/admin/negocios');
+  const data = await r.json();
+  const cont = document.getElementById('listaNegocios');
+  if(!data.length){ cont.innerHTML = '<div class="empty">Sin negocios todavía</div>'; return; }
+  cont.innerHTML = data.map(n => `
+    <div class="item ${negocioSel && negocioSel.id===n.id ? 'sel':''}" onclick='seleccionarNegocio(${JSON.stringify(n).replace(/'/g,"&apos;")})'>
+      <div class="item-nm">${n.nombre}</div>
+      <div class="item-sub">${n.giro_principal} · creado ${new Date(n.creado_en).toLocaleDateString()}</div>
+    </div>
+  `).join('');
+}
+
+async function crearNegocio(){
+  const nombre = document.getElementById('negNombre').value.trim();
+  const giro_principal = document.getElementById('negGiro').value;
+  if(!nombre) return alert('Escribe el nombre del negocio');
+  const r = await fetch(API + '/api/admin/negocios', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ nombre, giro_principal })
+  });
+  const d = await r.json();
+  if(!r.ok) return alert('Error: ' + d.error);
+  document.getElementById('negNombre').value = '';
+  await cargarNegocios();
+  seleccionarNegocio(d.negocio);
+}
+
+function seleccionarNegocio(n){
+  negocioSel = n;
+  sucursalSel = null;
+  document.getElementById('negocioSelNombre').textContent = n.nombre;
+  document.getElementById('cardSucursal').style.display = 'block';
+  document.getElementById('cardCaja').style.display = 'none';
+  cargarNegocios();
+  cargarSucursales();
+}
+
+async function cargarSucursales(){
+  if(!negocioSel) return;
+  const r = await fetch(API + '/api/admin/sucursales/' + negocioSel.id);
+  const data = await r.json();
+  const cont = document.getElementById('listaSucursales');
+  if(!data.length){ cont.innerHTML = '<div class="empty">Sin sucursales todavía</div>'; return; }
+  cont.innerHTML = data.map(s => `
+    <div class="item ${sucursalSel && sucursalSel.id===s.id ? 'sel':''}" onclick='seleccionarSucursal(${JSON.stringify(s).replace(/'/g,"&apos;")})'>
+      <div class="item-nm">${s.nombre}</div>
+      <div class="item-sub">${s.direccion || 'Sin dirección'}</div>
+    </div>
+  `).join('');
+}
+
+async function crearSucursal(){
+  if(!negocioSel) return;
+  const nombre = document.getElementById('sucNombre').value.trim();
+  const direccion = document.getElementById('sucDireccion').value.trim();
+  if(!nombre) return alert('Escribe el nombre de la sucursal');
+  const r = await fetch(API + '/api/admin/sucursales', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ negocio_id: negocioSel.id, nombre, direccion })
+  });
+  const d = await r.json();
+  if(!r.ok) return alert('Error: ' + d.error);
+  document.getElementById('sucNombre').value = '';
+  document.getElementById('sucDireccion').value = '';
+  await cargarSucursales();
+  seleccionarSucursal(d.sucursal);
+}
+
+function seleccionarSucursal(s){
+  sucursalSel = s;
+  document.getElementById('sucursalSelNombre').textContent = s.nombre;
+  document.getElementById('cardCaja').style.display = 'block';
+  document.getElementById('tokenResultado').innerHTML = '';
+  cargarSucursales();
+  cargarCajas();
+}
+
+async function cargarCajas(){
+  if(!negocioSel) return;
+  const r = await fetch(API + '/api/admin/cajas/' + negocioSel.id);
+  const data = await r.json();
+  const deEstaSucursal = data.filter(c => c.sucursal_id === sucursalSel.id);
+  const cont = document.getElementById('listaCajas');
+  if(!deEstaSucursal.length){ cont.innerHTML = '<div class="empty">Sin cajas todavía</div>'; return; }
+  cont.innerHTML = deEstaSucursal.map(c => `
+    <div class="item">
+      <div class="item-nm">${c.nombre} <span class="badge ${c.tipo}">${c.tipo === 'madre' ? 'MADRE' : 'EXTRA'}</span></div>
+      <div class="item-sub">Token: ${c.token.slice(0,20)}...</div>
+    </div>
+  `).join('');
+}
+
+async function crearCaja(){
+  if(!negocioSel || !sucursalSel) return;
+  const nombre = document.getElementById('cajaNombre').value.trim();
+  const tipo = document.getElementById('cajaTipo').value;
+  if(!nombre) return alert('Escribe el nombre de la caja');
+  const r = await fetch(API + '/api/admin/cajas', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ negocio_id: negocioSel.id, sucursal_id: sucursalSel.id, nombre, tipo })
+  });
+  const d = await r.json();
+  if(!r.ok) return alert('Error: ' + d.error);
+  document.getElementById('cajaNombre').value = '';
+
+  document.getElementById('tokenResultado').innerHTML = `
+    <div class="token-box">
+      <div class="lbl">✅ Caja creada — copia este token y configúralo en la caja:</div>
+      <div class="token-val" id="tokenTxt">${d.token}</div>
+      <button class="copy-btn" onclick="copiarToken()">📋 Copiar token</button>
+      <div class="lbl" style="margin-top:10px">URL del servidor (también la necesitas):</div>
+      <div class="token-val">${API}</div>
+    </div>
+  `;
+  cargarCajas();
+}
+
+function copiarToken(){
+  const txt = document.getElementById('tokenTxt').textContent;
+  navigator.clipboard.writeText(txt).then(()=> alert('Token copiado ✅'));
+}
+
+cargarNegocios();
+</script>
+</body>
+</html>
