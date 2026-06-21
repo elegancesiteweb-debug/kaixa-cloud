@@ -3,6 +3,8 @@ require('dotenv').config();
 const express = require('express');
 const http    = require('http');
 const cors    = require('cors');
+const fs      = require('fs');
+const path    = require('path');
 const { Server } = require('socket.io');
 const pool    = require('./db/pool');
 const { authCaja } = require('./middleware/auth');
@@ -15,6 +17,28 @@ app.set('io', io);
 app.use(cors());
 app.use(express.json({ limit: '5mb' }));
 
+// ── Crear las tablas automáticamente al arrancar (seguro repetirlo,
+//     usa CREATE TABLE IF NOT EXISTS — no borra nada si ya existen) ──
+async function aplicarEsquema() {
+  // La extensión va aparte: si por permisos no se puede crear, no debe
+  // tumbar el resto del esquema (las demás tablas no la necesitan).
+  try {
+    await pool.query('CREATE EXTENSION IF NOT EXISTS "pgcrypto"');
+  } catch (e) {
+    console.error('⚠️  No se pudo crear la extensión pgcrypto (puede que ya exista o falten permisos):', e.message);
+  }
+  try {
+    const sqlCompleto = fs.readFileSync(path.join(__dirname, 'db', 'schema.sql'), 'utf8');
+    // Quitar la línea de CREATE EXTENSION del archivo, ya se intentó arriba por separado
+    const sql = sqlCompleto.replace(/CREATE EXTENSION[^;]*;/i, '');
+    await pool.query(sql);
+    console.log('✅ Esquema de base de datos verificado/aplicado correctamente');
+  } catch (e) {
+    console.error('⚠️  No se pudo aplicar el esquema automáticamente:', e.message);
+    console.error('   El servidor sigue arrancando, pero revisa la conexión a la base de datos.');
+  }
+}
+
 // ── Salud del servicio (Railway lo usa para verificar que sigue vivo) ──
 app.get('/', (req, res) => {
   res.json({ ok: true, servicio: 'Kaixa Cloud', hora: new Date().toISOString() });
@@ -23,7 +47,16 @@ app.get('/', (req, res) => {
 app.get('/health', async (req, res) => {
   try {
     await pool.query('SELECT 1');
-    res.json({ ok: true, db: 'conectada' });
+    const tablas = await pool.query(`
+      SELECT table_name FROM information_schema.tables
+      WHERE table_schema='public' ORDER BY table_name
+    `);
+    res.json({
+      ok: true,
+      db: 'conectada',
+      tablas: tablas.rows.map(r => r.table_name),
+      total_tablas: tablas.rows.length
+    });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
   }
@@ -62,6 +95,9 @@ io.on('connection', (socket) => {
 });
 
 const PORT = process.env.PORT || 4500;
-server.listen(PORT, () => {
-  console.log('🚀 Kaixa Cloud corriendo en puerto', PORT);
+
+aplicarEsquema().then(() => {
+  server.listen(PORT, () => {
+    console.log('🚀 Kaixa Cloud corriendo en puerto', PORT);
+  });
 });
