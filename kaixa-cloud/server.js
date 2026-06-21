@@ -66,6 +66,11 @@ app.get('/health', async (req, res) => {
 // ── Rutas de administración (las usa el vendedor, sin token de caja) ──
 app.use('/api/admin', require('./routes/negocios'));
 
+// La caja madre solo necesita pegar token+URL — esto le resuelve el resto
+app.get('/api/caja-info', authCaja, (req, res) => {
+  res.json(req.caja);
+});
+
 // ── Rutas que SÍ requieren autenticación de caja ────────────────
 app.use('/api/sync', authCaja, require('./routes/sync'));
 app.use('/api', authCaja, require('./routes/api'));
