@@ -96,4 +96,36 @@ router.put('/cajas/:id/desactivar', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── GET /api/admin/ventas/:negocio_id — actividad reciente ──────
+// Para confirmar visualmente que la sincronización está funcionando.
+router.get('/ventas/:negocio_id', async (req, res) => {
+  try {
+    const r = await pool.query(
+      `SELECT v.*, s.nombre AS sucursal_nombre, c.nombre AS caja_nombre, c.tipo AS caja_tipo
+       FROM ventas v
+       JOIN sucursales s ON s.id = v.sucursal_id
+       LEFT JOIN cajas c ON c.id = v.caja_id
+       WHERE v.negocio_id=$1
+       ORDER BY v.creado_en DESC LIMIT 50`,
+      [req.params.negocio_id]
+    );
+    res.json(r.rows);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── GET /api/admin/productos/:negocio_id — inventario con stock ──
+router.get('/productos/:negocio_id', async (req, res) => {
+  try {
+    const r = await pool.query(
+      `SELECT p.*, COALESCE(st.stock,0) AS stock
+       FROM productos p
+       LEFT JOIN stock_actual st ON st.producto_id = p.id
+       WHERE p.negocio_id=$1 AND p.activo=true
+       ORDER BY p.actualizado_en DESC LIMIT 50`,
+      [req.params.negocio_id]
+    );
+    res.json(r.rows);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 module.exports = router;
