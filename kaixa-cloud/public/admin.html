@@ -98,6 +98,25 @@
       </div>
     </div>
   </div>
+
+  <!-- Actividad reciente — confirma visualmente que la sincronización funciona -->
+  <div class="card" id="cardActividad" style="display:none">
+    <h2>📊 Actividad reciente de <span id="negocioActNombre"></span></h2>
+    <div style="display:flex;gap:8px;margin-bottom:14px">
+      <button class="secondary" style="width:auto;margin:0;padding:8px 16px;font-size:12px" onclick="cargarActividad()">🔄 Refrescar</button>
+      <span id="autoRefreshLbl" style="font-size:11px;color:var(--text3);align-self:center">Se actualiza solo cada 5s</span>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px">
+      <div>
+        <div style="font-size:12px;font-weight:800;color:var(--text2);margin-bottom:8px">🧾 Últimas ventas</div>
+        <div id="listaVentas" class="list"><div class="empty">Sin ventas todavía</div></div>
+      </div>
+      <div>
+        <div style="font-size:12px;font-weight:800;color:var(--text2);margin-bottom:8px">📦 Productos (con stock)</div>
+        <div id="listaProductosAct" class="list"><div class="empty">Sin productos todavía</div></div>
+      </div>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -133,14 +152,57 @@ async function crearNegocio(){
   seleccionarNegocio(d.negocio);
 }
 
+let refrescoInterval = null;
+
 function seleccionarNegocio(n){
   negocioSel = n;
   sucursalSel = null;
   document.getElementById('negocioSelNombre').textContent = n.nombre;
   document.getElementById('cardSucursal').style.display = 'block';
   document.getElementById('cardCaja').style.display = 'none';
+  document.getElementById('cardActividad').style.display = 'block';
+  document.getElementById('negocioActNombre').textContent = n.nombre;
   cargarNegocios();
   cargarSucursales();
+  cargarActividad();
+
+  if(refrescoInterval) clearInterval(refrescoInterval);
+  refrescoInterval = setInterval(cargarActividad, 5000);
+}
+
+async function cargarActividad(){
+  if(!negocioSel) return;
+  try{
+    const [ventasR, prodR] = await Promise.all([
+      fetch(API + '/api/admin/ventas/' + negocioSel.id).then(r=>r.json()),
+      fetch(API + '/api/admin/productos/' + negocioSel.id).then(r=>r.json())
+    ]);
+
+    const ventasCont = document.getElementById('listaVentas');
+    if(!ventasR.length){
+      ventasCont.innerHTML = '<div class="empty">Sin ventas todavía</div>';
+    } else {
+      ventasCont.innerHTML = ventasR.map(v => `
+        <div class="item">
+          <div class="item-nm">${v.folio} — $${Number(v.total).toFixed(2)}</div>
+          <div class="item-sub">${v.sucursal_nombre} · ${v.caja_nombre||'—'} <span class="badge ${v.caja_tipo==='madre'?'madre':'extra'}">${v.caja_tipo||''}</span></div>
+          <div class="item-sub">${new Date(v.creado_en).toLocaleString()}</div>
+        </div>
+      `).join('');
+    }
+
+    const prodCont = document.getElementById('listaProductosAct');
+    if(!prodR.length){
+      prodCont.innerHTML = '<div class="empty">Sin productos todavía</div>';
+    } else {
+      prodCont.innerHTML = prodR.map(p => `
+        <div class="item">
+          <div class="item-nm">${p.emoji||'📦'} ${p.nombre}</div>
+          <div class="item-sub">Stock: ${p.stock} · $${Number(p.precio).toFixed(2)}</div>
+        </div>
+      `).join('');
+    }
+  }catch(e){ console.error('Error cargando actividad:', e); }
 }
 
 async function cargarSucursales(){
