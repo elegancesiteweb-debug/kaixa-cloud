@@ -93,3 +93,55 @@ router.get('/sucursales', async (req, res) => {
 });
 
 module.exports = router;
+
+// ── GET /api/dashboard/sucursal/:id/ventas ────────────────────────────────
+router.get('/sucursal/:id/ventas', async (req, res) => {
+  try {
+    const hoy = new Date().toISOString().substring(0,10);
+    const r = await pool.query(`
+      SELECT v.*, u.nombre AS cajero_nombre
+      FROM ventas v
+      LEFT JOIN usuarios u ON u.id = v.usuario_id
+      WHERE v.sucursal_id=$1
+        AND DATE(v.creado_en AT TIME ZONE 'America/Mexico_City')=$2
+        AND v.estado != 'cancelada'
+      ORDER BY v.creado_en DESC LIMIT 50
+    `, [req.params.id, hoy]);
+    res.json(r.rows);
+  } catch(e){ res.status(500).json({ error: e.message }); }
+});
+
+// ── GET /api/dashboard/sucursal/:id/empleados ─────────────────────────────
+router.get('/sucursal/:id/empleados', async (req, res) => {
+  try {
+    const hoy = new Date().toISOString().substring(0,10);
+    const r = await pool.query(`
+      SELECT e.*,
+        a.entrada AS ultima_entrada,
+        a.salida  AS ultima_salida
+      FROM empleados e
+      LEFT JOIN (
+        SELECT DISTINCT ON (empleado_id) *
+        FROM asistencia
+        WHERE DATE(entrada AT TIME ZONE 'America/Mexico_City')=$2
+        ORDER BY empleado_id, entrada DESC
+      ) a ON a.empleado_id = e.id
+      WHERE e.sucursal_id=$1 AND e.activo=true
+      ORDER BY e.nombre
+    `, [req.params.id, hoy]);
+    res.json(r.rows);
+  } catch(e){ res.status(500).json({ error: e.message }); }
+});
+
+// ── GET /api/dashboard/sucursal/:id/inventario ────────────────────────────
+router.get('/sucursal/:id/inventario', async (req, res) => {
+  try {
+    const r = await pool.query(`
+      SELECT * FROM productos
+      WHERE sucursal_id=$1 AND activo=true
+      ORDER BY stock ASC, nombre ASC
+      LIMIT 100
+    `, [req.params.id]);
+    res.json(r.rows);
+  } catch(e){ res.status(500).json({ error: e.message }); }
+});
