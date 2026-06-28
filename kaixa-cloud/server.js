@@ -18,29 +18,24 @@ app.use(cors());
 app.use(express.json({ limit: '5mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
-// ── Crear las tablas automáticamente al arrancar (seguro repetirlo,
-//     usa CREATE TABLE IF NOT EXISTS — no borra nada si ya existen) ──
+// ── Crear las tablas automáticamente al arrancar ──────────────────────────
 async function aplicarEsquema() {
-  // La extensión va aparte: si por permisos no se puede crear, no debe
-  // tumbar el resto del esquema (las demás tablas no la necesitan).
   try {
     await pool.query('CREATE EXTENSION IF NOT EXISTS "pgcrypto"');
   } catch (e) {
-    console.error('⚠️  No se pudo crear la extensión pgcrypto (puede que ya exista o falten permisos):', e.message);
+    console.error('⚠️  pgcrypto:', e.message);
   }
   try {
     const sqlCompleto = fs.readFileSync(path.join(__dirname, 'db', 'schema.sql'), 'utf8');
-    // Quitar la línea de CREATE EXTENSION del archivo, ya se intentó arriba por separado
     const sql = sqlCompleto.replace(/CREATE EXTENSION[^;]*;/i, '');
     await pool.query(sql);
-    console.log('✅ Esquema de base de datos verificado/aplicado correctamente');
+    console.log('✅ Esquema verificado/aplicado');
   } catch (e) {
-    console.error('⚠️  No se pudo aplicar el esquema automáticamente:', e.message);
-    console.error('   El servidor sigue arrancando, pero revisa la conexión a la base de datos.');
+    console.error('⚠️  Esquema:', e.message);
   }
 }
 
-// ── Salud del servicio (Railway lo usa para verificar que sigue vivo) ──
+// ── Salud ─────────────────────────────────────────────────────────────────
 app.get('/', (req, res) => {
   res.json({ ok: true, servicio: 'Kaixa Cloud', hora: new Date().toISOString() });
 });
@@ -53,8 +48,7 @@ app.get('/health', async (req, res) => {
       WHERE table_schema='public' ORDER BY table_name
     `);
     res.json({
-      ok: true,
-      db: 'conectada',
+      ok: true, db: 'conectada',
       tablas: tablas.rows.map(r => r.table_name),
       total_tablas: tablas.rows.length
     });
@@ -63,19 +57,20 @@ app.get('/health', async (req, res) => {
   }
 });
 
-// ── Rutas de administración (las usa el vendedor, sin token de caja) ──
+// ── Rutas de administración (sin token de caja) ───────────────────────────
 app.use('/api/admin', require('./routes/negocios'));
 
-// La caja madre solo necesita pegar token+URL — esto le resuelve el resto
+// Info de la caja
 app.get('/api/caja-info', authCaja, (req, res) => {
   res.json(req.caja);
 });
 
-// ── Rutas que SÍ requieren autenticación de caja ────────────────
-app.use('/api/sync', authCaja, require('./routes/sync'));
-app.use('/api', authCaja, require('./routes/api'));
+// ── Rutas con autenticación de caja ──────────────────────────────────────
+app.use('/api/sync',      authCaja, require('./routes/sync'));
+app.use('/api/dashboard', authCaja, require('./routes/dashboard'));  // ← NUEVO
+app.use('/api',           authCaja, require('./routes/api'));
 
-// ── Socket.io — tiempo real entre cajas del mismo negocio ───────
+// ── Socket.io — tiempo real ───────────────────────────────────────────────
 io.use(async (socket, next) => {
   try {
     const token = socket.handshake.auth?.token;
@@ -94,7 +89,6 @@ io.on('connection', (socket) => {
   const sala = 'negocio:' + socket.caja.negocio_id;
   socket.join(sala);
   console.log('🟢 Caja conectada:', socket.caja.nombre, '→', sala);
-
   socket.on('disconnect', () => {
     console.log('🔴 Caja desconectada:', socket.caja.nombre);
   });
