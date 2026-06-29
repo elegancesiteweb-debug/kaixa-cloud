@@ -101,3 +101,14 @@ aplicarEsquema().then(() => {
     console.log('🚀 Kaixa Cloud corriendo en puerto', PORT);
   });
 });
+
+// ── Versión pública (sin auth) para que Kaixa Pro consulte actualizaciones ──
+app.get('/version', (req, res) => {
+  res.json({
+    version: '2.0.0',
+    nombre: 'Kaixa Pro',
+    fecha: '2025-06-28',
+    notas: 'Versión estable — multi-sucursal, mayoreo, monedero, lotes',
+    critica: false
+  });
+});
