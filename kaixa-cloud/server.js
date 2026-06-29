@@ -16,9 +16,12 @@ const io     = new Server(server, { cors: { origin: '*' } });
 app.set('io', io);
 app.use(cors());
 app.use(express.json({ limit: '5mb' }));
+
+// ── Archivos estáticos (PWA + admin) ─────────────────────────────────────
+// Sirve public/index.html (la app móvil) y public/admin.html
 app.use(express.static(path.join(__dirname, 'public')));
 
-// ── Crear las tablas automáticamente al arrancar ──────────────────────────
+// ── Esquema de BD ─────────────────────────────────────────────────────────
 async function aplicarEsquema() {
   try {
     await pool.query('CREATE EXTENSION IF NOT EXISTS "pgcrypto"');
@@ -36,10 +39,6 @@ async function aplicarEsquema() {
 }
 
 // ── Salud ─────────────────────────────────────────────────────────────────
-app.get('/', (req, res) => {
-  res.json({ ok: true, servicio: 'Kaixa Cloud', hora: new Date().toISOString() });
-});
-
 app.get('/health', async (req, res) => {
   try {
     await pool.query('SELECT 1');
@@ -57,20 +56,89 @@ app.get('/health', async (req, res) => {
   }
 });
 
-// ── Rutas de administración (sin token de caja) ───────────────────────────
+// ── Versión (sin auth, para actualizaciones automáticas) ──────────────────
+app.get('/version', (req, res) => {
+  res.json({
+    version: '2.0.0',
+    nombre: 'Kaixa Pro',
+    fecha: '2026-06-29',
+    notas: 'Version estable — multi-sucursal, mayoreo, monedero, lotes, PWA movil',
+    critica: false,
+    archivos: ['frontend/public/index.html']
+  });
+});
+
+// ── Archivos de actualización (descarga automática desde Kaixa Pro) ───────
+const updatesDir = path.join(__dirname, 'updates');
+if (!fs.existsSync(updatesDir)) fs.mkdirSync(updatesDir, { recursive: true });
+app.get('/files/*', (req, res) => {
+  const archivo = req.params[0];
+  if (archivo.includes('..')) return res.status(400).json({ error: 'Ruta inválida' });
+  const filePath = path.join(updatesDir, archivo);
+  if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'Archivo no encontrado' });
+  res.sendFile(filePath);
+});
+
+// ── Login para la PWA (sin authCaja, verifica token interno) ─────────────
+// La PWA usa el mismo token de caja como Bearer — no necesita login separado
+// Este endpoint es opcional si ya existe en routes/api.js
+app.post('/api/auth/login', authCaja, async (req, res) => {
+  try {
+    const { id, password } = req.body;
+    if (!id || !password) return res.status(400).json({ ok: false, error: 'Faltan datos' });
+
+    // Buscar empleado en la BD del negocio de esta caja
+    const negocio_id = req.caja.negocio_id;
+    const emp = await pool.query(
+      `SELECT * FROM empleados WHERE id=$1 AND negocio_id=$2 AND activo=true LIMIT 1`,
+      [id, negocio_id]
+    );
+    if (!emp.rows.length) return res.status(401).json({ ok: false, error: 'Empleado no encontrado' });
+
+    const e = emp.rows[0];
+    // Verificar contraseña (bcrypt o texto plano según implementación)
+    let ok = false;
+    try {
+      const bcrypt = require('bcrypt');
+      ok = await bcrypt.compare(password, e.password_hash || e.password || '');
+    } catch(err) {
+      // Fallback a texto plano
+      ok = password === (e.password || e.password_hash || '');
+    }
+    if (!ok) return res.status(401).json({ ok: false, error: 'Contraseña incorrecta' });
+
+    res.json({ ok: true, empleado: { id: e.id, nombre: e.nombre, rol: e.rol, usuario: e.usuario } });
+  } catch (e) {
+    console.error('Login error:', e.message);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// ── Administración (sin token de caja) ────────────────────────────────────
 app.use('/api/admin', require('./routes/negocios'));
 
-// Info de la caja
+// ── Info de la caja (para la PWA: nombre del negocio, giro, etc.) ─────────
 app.get('/api/caja-info', authCaja, (req, res) => {
   res.json(req.caja);
 });
 
-// ── Rutas con autenticación de caja ──────────────────────────────────────
+// ── Rutas con autenticación de caja ───────────────────────────────────────
 app.use('/api/sync',      authCaja, require('./routes/sync'));
-app.use('/api/dashboard', authCaja, require('./routes/dashboard'));  // ← NUEVO
+app.use('/api/dashboard', authCaja, require('./routes/dashboard'));
 app.use('/api',           authCaja, require('./routes/api'));
 
-// ── Socket.io — tiempo real ───────────────────────────────────────────────
+// ── SPA fallback: cualquier ruta no encontrada devuelve index.html ─────────
+// Esto permite que la PWA maneje sus propias rutas en el navegador
+app.get('*', (req, res) => {
+  const indexPath = path.join(__dirname, 'public', 'index.html');
+  if (fs.existsSync(indexPath)) {
+    res.sendFile(indexPath);
+  } else {
+    res.json({ ok: true, servicio: 'Kaixa Cloud', version: '2.0.0', hora: new Date().toISOString() });
+  }
+});
+
+// ── Socket.io ─────────────────────────────────────────────────────────────
 io.use(async (socket, next) => {
   try {
     const token = socket.handshake.auth?.token;
@@ -94,21 +162,12 @@ io.on('connection', (socket) => {
   });
 });
 
+// ── Arrancar ──────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 4500;
-
 aplicarEsquema().then(() => {
   server.listen(PORT, () => {
-    console.log('🚀 Kaixa Cloud corriendo en puerto', PORT);
-  });
-});
-
-// ── Versión pública (sin auth) para que Kaixa Pro consulte actualizaciones ──
-app.get('/version', (req, res) => {
-  res.json({
-    version: '2.0.0',
-    nombre: 'Kaixa Pro',
-    fecha: '2025-06-28',
-    notas: 'Versión estable — multi-sucursal, mayoreo, monedero, lotes',
-    critica: false
+    console.log('🚀 Kaixa Cloud v2.0 corriendo en puerto', PORT);
+    console.log('📱 PWA disponible en la raíz /');
+    console.log('🔧 Admin en /admin.html');
   });
 });
