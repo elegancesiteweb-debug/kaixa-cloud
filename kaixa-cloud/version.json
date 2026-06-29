@@ -1,0 +1,16 @@
+{
+  "version": "2.0.0",
+  "nombre": "Kaixa Pro",
+  "fecha": "2025-06-28",
+  "notas": "Versión estable — multi-sucursal, mayoreo, monedero, lotes",
+  "critica": false,
+  "archivos": [
+    "frontend/public/index.html",
+    "src/routes/ventas.js",
+    "src/routes/clientes.js",
+    "src/routes/productos.js",
+    "src/routes/caja.js",
+    "src/routes/pedidos.js",
+    "src/routes/lotes.js"
+  ]
+}
