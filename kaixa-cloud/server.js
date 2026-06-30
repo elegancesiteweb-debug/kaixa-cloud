@@ -100,10 +100,11 @@ async function aplicarEsquema() {
       CREATE TABLE IF NOT EXISTS negocios (
         id          SERIAL PRIMARY KEY,
         nombre      TEXT NOT NULL,
-        giro        TEXT DEFAULT 'tienda',
         creado_en   TIMESTAMPTZ DEFAULT NOW()
       )
     `);
+    // Si la tabla ya existía sin estas columnas, agregarlas
+    await pool.query("ALTER TABLE negocios ADD COLUMN IF NOT EXISTS giro TEXT DEFAULT 'tienda'");
   } catch(e) { console.error('⚠️ negocios:', e.message); }
 
   // Cajas (si no existe ya por schema.sql)
@@ -113,12 +114,15 @@ async function aplicarEsquema() {
         id          SERIAL PRIMARY KEY,
         negocio_id  INTEGER NOT NULL,
         nombre      TEXT DEFAULT 'Caja principal',
-        token       TEXT UNIQUE NOT NULL,
+        token       TEXT UNIQUE,
         tipo        TEXT DEFAULT 'madre',
         activo      BOOLEAN DEFAULT true,
         creado_en   TIMESTAMPTZ DEFAULT NOW()
       )
     `);
+    await pool.query("ALTER TABLE cajas ADD COLUMN IF NOT EXISTS nombre TEXT DEFAULT 'Caja principal'");
+    await pool.query("ALTER TABLE cajas ADD COLUMN IF NOT EXISTS tipo TEXT DEFAULT 'madre'");
+    await pool.query("ALTER TABLE cajas ADD COLUMN IF NOT EXISTS activo BOOLEAN DEFAULT true");
   } catch(e) { console.error('⚠️ cajas:', e.message); }
 
   // Sucursales (si no existe ya por schema.sql)
@@ -128,11 +132,11 @@ async function aplicarEsquema() {
         id          SERIAL PRIMARY KEY,
         negocio_id  INTEGER NOT NULL,
         nombre      TEXT NOT NULL,
-        giro        TEXT DEFAULT 'tienda',
-        activo      BOOLEAN DEFAULT true,
         creado_en   TIMESTAMPTZ DEFAULT NOW()
       )
     `);
+    await pool.query("ALTER TABLE sucursales ADD COLUMN IF NOT EXISTS giro TEXT DEFAULT 'tienda'");
+    await pool.query("ALTER TABLE sucursales ADD COLUMN IF NOT EXISTS activo BOOLEAN DEFAULT true");
   } catch(e) { console.error('⚠️ sucursales:', e.message); }
 }
 
