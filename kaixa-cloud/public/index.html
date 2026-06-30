@@ -538,7 +538,7 @@ var montoIngresado = '';
 
 // ── Headers de auth ────────────────────────────────────
 function headers() {
-  return { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + TOKEN };
+  return { 'Content-Type': 'application/json', 'x-caja-token': TOKEN };
 }
 
 // ── Fetch con auth ─────────────────────────────────────
@@ -681,7 +681,6 @@ async function activarConLicencia() {
 
   btn.disabled = true; btn.textContent = '⏳ Verificando...';
   try {
-    // El servidor es siempre el mismo origen donde vive esta app
     var origin = window.location.origin;
     var r = await fetch(origin + '/api/lic/canjear', {
       method: 'POST',
@@ -695,23 +694,23 @@ async function activarConLicencia() {
       btn.disabled = false; btn.textContent = 'Activar →';
       return;
     }
-    // Guardar todo
     API = origin;
-    TOKEN = d.token;
     giro = d.giro || 'tienda';
-    localStorage.setItem('kaixa_api', API);
-    localStorage.setItem('kaixa_token', TOKEN);
-    localStorage.setItem('kaixa_giro', giro);
-    localStorage.setItem('kaixa_clave', clave);
     _negocioInfo = d;
     _sucursalesDisponibles = d.sucursales || [];
+    localStorage.setItem('kaixa_api', API);
+    localStorage.setItem('kaixa_giro', giro);
+    localStorage.setItem('kaixa_clave', clave);
+
+    btn.disabled = false; btn.textContent = 'Activar →';
 
     if (_sucursalesDisponibles.length > 1) {
       mostrarSelectorSucursal();
+    } else if (_sucursalesDisponibles.length === 1) {
+      await elegirSucursal(0);
     } else {
-      btn.disabled = false; btn.textContent = 'Activar →';
-      await loadEmpleadosLogin();
-      go('login');
+      err.textContent = 'Esta licencia no tiene sucursales configuradas';
+      err.style.display = 'block';
     }
   } catch(e) {
     err.textContent = 'Error de conexión: ' + e.message;
@@ -727,7 +726,7 @@ function mostrarSelectorSucursal() {
     return '<div class="card" style="cursor:pointer;margin-bottom:8px" onclick="elegirSucursal(' + i + ')">' +
       '<div class="card-row">' +
         '<div class="card-ico">🏪</div>' +
-        '<div class="card-info"><div class="card-title">' + s.nombre + '</div><div class="card-sub">' + (s.giro||'tienda') + '</div></div>' +
+        '<div class="card-info"><div class="card-title">' + s.nombre + '</div></div>' +
         '<div style="color:var(--text3)">›</div>' +
       '</div></div>';
   }).join('');
@@ -737,11 +736,21 @@ function mostrarSelectorSucursal() {
 async function elegirSucursal(idx) {
   var s = _sucursalesDisponibles[idx];
   if (!s) return;
-  giro = s.giro || giro;
-  localStorage.setItem('kaixa_giro', giro);
-  localStorage.setItem('kaixa_sucursal_id', s.id);
-  await loadEmpleadosLogin();
-  go('login');
+  var clave = localStorage.getItem('kaixa_clave');
+  try {
+    var r = await fetch(API + '/api/lic/elegir-sucursal', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clave: clave, sucursal_id: s.id })
+    });
+    var d = await r.json();
+    if (!d.ok) { notif('❌ ' + (d.mensaje||'Error al elegir sucursal'), 'err'); return; }
+    TOKEN = d.token;
+    localStorage.setItem('kaixa_token', TOKEN);
+    localStorage.setItem('kaixa_sucursal_id', s.id);
+    await loadEmpleadosLogin();
+    go('login');
+  } catch(e) { notif('❌ Error de conexión', 'err'); }
 }
 
 async function loadEmpleadosLogin() {
