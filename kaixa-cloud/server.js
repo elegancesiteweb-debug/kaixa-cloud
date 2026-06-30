@@ -267,10 +267,9 @@ app.delete('/api/lic/licencias/:id', authAdmin, async (req, res) => {
 });
 
 // ═══════════════════════════════════════════════════════════════
-// VERIFICAR LICENCIA — este es el endpoint que llama Kaixa Pro
-// SIN AUTH — cualquier PC puede verificar
+// VERIFICAR LICENCIA — SIN AUTH — cualquier PC puede verificar
 // ═══════════════════════════════════════════════════════════════
-app.post('/api/verificar', async (req, res) => {
+async function verificarLicenciaHandler(req, res) {
   try {
     const clave = (req.body.clave || '').trim().toUpperCase();
     if (!clave) return res.status(400).json({ ok: false, mensaje: 'Clave requerida' });
@@ -310,7 +309,10 @@ app.post('/api/verificar', async (req, res) => {
       }
     });
   } catch(e) { res.status(500).json({ ok: false, mensaje: e.message }); }
-});
+}
+// Registrar GET y POST para que funcione desde navegador y desde Kaixa Pro
+app.get('/api/verificar',  verificarLicenciaHandler);
+app.post('/api/verificar', verificarLicenciaHandler);
 
 // ═══════════════════════════════════════════════════════════════
 // RUTAS DE LA CAJA (con auth de token)
