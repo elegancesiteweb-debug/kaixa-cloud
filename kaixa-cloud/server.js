@@ -50,10 +50,10 @@ async function aplicarEsquema() {
         vence_en          DATE DEFAULT (CURRENT_DATE + INTERVAL '1 year'),
         creado_en         TIMESTAMPTZ DEFAULT NOW(),
         ultima_verificacion TIMESTAMPTZ,
-        negocio_id        INTEGER
+        negocio_id        TEXT
       )
     `);
-    try { await pool.query('ALTER TABLE licencias ADD COLUMN IF NOT EXISTS negocio_id INTEGER'); } catch(e) {}
+    try { await pool.query('ALTER TABLE licencias ADD COLUMN IF NOT EXISTS negocio_id TEXT'); } catch(e) {}
     console.log('✅ Tabla licencias lista');
   } catch(e) { console.error('⚠️ licencias:', e.message); }
 
