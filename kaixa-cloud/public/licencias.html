@@ -338,6 +338,7 @@ tr:hover td{background:rgba(139,92,246,.05)}
           +'<td style="color:var(--text3);font-size:12px">'+(l.vence_en?String(l.vence_en).substring(0,10):'—')+'</td>'
           +'<td><div class="acts">'
             +'<button class="abtn" data-id="'+l.id+'" data-act="editar">✏️</button>'
+            +'<button class="abtn" data-id="'+l.id+'" data-act="vincular" style="color:var(--accent);border-color:var(--accent)">🔗 Vincular</button>'
             +estBtn
             +'<button class="abtn abtn-d" data-id="'+l.id+'" data-act="eliminar">🗑️</button>'
           +'</div></td>'
@@ -435,12 +436,47 @@ tr:hover td{background:rgba(139,92,246,.05)}
       try{ await api('PUT','/api/lic/licencias/'+id+'/estado',{estado:'activa'}); notif('Licencia activada','ok'); loadLics(); loadStats(); }
       catch(e){ notif('Error: '+e.message,'err'); }
     }
+    else if(act==='vincular'){ abrirVincular(id); }
     else if(act==='eliminar'){
       if(!confirm('¿Eliminar esta licencia? No se puede deshacer.')) return;
       try{ await api('DELETE','/api/lic/licencias/'+id); notif('Licencia eliminada','ok'); loadLics(); loadStats(); }
       catch(e){ notif('Error: '+e.message,'err'); }
     }
   });
+
+  // ── Modal de vincular a negocio existente ────────────────────────────────
+  async function abrirVincular(licId) {
+    var negocios = [];
+    try { negocios = await api('GET', '/api/lic/negocios'); }
+    catch(e){ notif('Error cargando negocios: '+e.message, 'err'); return; }
+
+    var html = '<div class="mo show" id="moVincular">' +
+      '<div class="mo-box">' +
+        '<h3>🔗 Vincular a negocio existente <button class="mo-close" onclick="document.getElementById(\'moVincular\').remove()">✕</button></h3>' +
+        '<p style="font-size:12px;color:var(--text3);margin-bottom:16px">Selecciona el negocio que ya tiene datos en la PC para que la app móvil vea exactamente lo mismo.</p>' +
+        '<div style="max-height:300px;overflow-y:auto">' +
+        (negocios.length ? negocios.map(function(n){
+          return '<div class="card" style="cursor:pointer;background:#231544;border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:8px" onclick="confirmarVinculo(\''+licId+'\',\''+n.id+'\',\''+(n.nombre||'').replace(/'/g,"")+'\')">' +
+            '<div style="font-weight:800;font-size:13px">'+n.nombre+'</div>' +
+            '<div style="font-size:11px;color:var(--text3);margin-top:4px">'+n.num_sucursales+' sucursal(es) · '+n.num_cajas+' caja(s) · '+n.num_productos+' producto(s)</div>' +
+            '<div style="font-size:10px;color:var(--text3);margin-top:4px;font-family:monospace">'+n.id+'</div>' +
+          '</div>';
+        }).join('') : '<div style="text-align:center;padding:24px;color:var(--text3)">Sin negocios registrados aún</div>') +
+        '</div>' +
+      '</div></div>';
+    document.body.insertAdjacentHTML('beforeend', html);
+  }
+
+  window.confirmarVinculo = async function(licId, negocioId, nombre) {
+    if(!confirm('¿Vincular esta licencia al negocio "'+nombre+'"?')) return;
+    try {
+      await api('PUT', '/api/lic/licencias/'+licId+'/vincular', { negocio_id: negocioId });
+      notif('✅ Vinculado a '+nombre, 'ok');
+      var m = document.getElementById('moVincular'); if(m) m.remove();
+      loadLics();
+    } catch(e){ notif('Error: '+e.message, 'err'); }
+  };
+  window.abrirVincular = abrirVincular;
 })();
 </script>
 </body>
