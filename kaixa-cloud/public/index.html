@@ -872,11 +872,15 @@ async function loadDash() {
   document.getElementById('dashFecha').textContent = 'Hoy · ' + hoy.toLocaleDateString('es-MX', { weekday:'long', day:'numeric', month:'long' });
   try {
     var hoyStr = hoy.toLocaleDateString('en-CA');
-    // Ventas de hoy
-    var r = await apiFetch('/api/ventas?fecha=' + hoyStr + '&limit=200');
+    // El servidor real no filtra por fecha — traemos recientes y filtramos en el cliente
+    var r = await apiFetch('/api/ventas');
     var ventas = r && r.ok ? await r.json() : [];
     if (!Array.isArray(ventas)) ventas = [];
-    ventas = ventas.filter(function(v) { return (v.estado || '') !== 'cancelada'; });
+    ventas = ventas.filter(function(v) {
+      var esCancelada = (v.estado || '') === 'cancelada';
+      var fechaV = (v.creado_en || '').substring(0, 10);
+      return !esCancelada && fechaV === hoyStr;
+    });
 
     var monto = ventas.reduce(function(s, v) { return s + Number(v.total || 0); }, 0);
     var efectivo = ventas.filter(function(v) { return v.forma_pago === 'efectivo'; }).reduce(function(s, v) { return s + Number(v.total || 0); }, 0);
@@ -960,7 +964,7 @@ function ventaRow(v) {
 async function loadPos() {
   if (allProds.length) { renderPosGrid(allProds); renderPosCats(allProds); return; }
   try {
-    var r = await apiFetch('/api/productos?giro=' + giro);
+    var r = await apiFetch('/api/productos');
     if (r && r.ok) {
       allProds = await r.json();
       if (!Array.isArray(allProds)) allProds = [];
@@ -1203,7 +1207,7 @@ function mostrarTicketMobile(d, venta) {
 // ══════════════════════════════════════════════════════
 async function loadInv() {
   try {
-    var r = await apiFetch('/api/productos?giro=' + giro);
+    var r = await apiFetch('/api/productos');
     if (r && r.ok) {
       var prods = await r.json();
       allProds = Array.isArray(prods) ? prods : [];
@@ -1314,11 +1318,15 @@ async function loadVentas() {
     document.getElementById('ventaFiltroFecha').value = new Date().toLocaleDateString('en-CA');
   }
   try {
-    var url = '/api/ventas?fecha=' + fecha + '&limit=100' + (fp ? '&forma_pago=' + fp : '');
-    var r = await apiFetch(url);
+    var r = await apiFetch('/api/ventas');
     var ventas = r && r.ok ? await r.json() : [];
     if (!Array.isArray(ventas)) ventas = [];
-    ventas = ventas.filter(function(v) { return !fp || v.forma_pago === fp; });
+    ventas = ventas.filter(function(v) {
+      var fechaV = (v.creado_en || '').substring(0, 10);
+      var pasaFecha = fechaV === fecha;
+      var pasaFP = !fp || v.forma_pago === fp;
+      return pasaFecha && pasaFP;
+    });
     var cont = document.getElementById('ventasList');
     if (!ventas.length) { cont.innerHTML = '<div class="empty"><div class="ico">🧾</div><p>Sin ventas ese día</p></div>'; return; }
     cont.innerHTML = ventas.map(function(v) {
