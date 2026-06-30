@@ -50,10 +50,14 @@ async function aplicarEsquema() {
         vence_en          DATE DEFAULT (CURRENT_DATE + INTERVAL '1 year'),
         creado_en         TIMESTAMPTZ DEFAULT NOW(),
         ultima_verificacion TIMESTAMPTZ,
-        negocio_id        TEXT
+        negocio_id        UUID,
+        sucursal_id       UUID
       )
     `);
-    try { await pool.query('ALTER TABLE licencias ADD COLUMN IF NOT EXISTS negocio_id TEXT'); } catch(e) {}
+    // Si negocio_id quedó mal tipado de intentos anteriores, corregir
+    try { await pool.query('ALTER TABLE licencias DROP COLUMN IF EXISTS negocio_id'); } catch(e) {}
+    try { await pool.query('ALTER TABLE licencias ADD COLUMN negocio_id UUID'); } catch(e) {}
+    try { await pool.query('ALTER TABLE licencias ADD COLUMN IF NOT EXISTS sucursal_id UUID'); } catch(e) {}
     console.log('✅ Tabla licencias lista');
   } catch(e) { console.error('⚠️ licencias:', e.message); }
 
@@ -95,53 +99,6 @@ async function aplicarEsquema() {
     console.log('✅ Tabla empleados lista');
   } catch(e) { console.error('⚠️ empleados:', e.message); }
 
-  // Negocios (si no existe ya por schema.sql)
-  try {
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS negocios (
-        id          SERIAL PRIMARY KEY,
-        nombre      TEXT NOT NULL,
-        creado_en   TIMESTAMPTZ DEFAULT NOW()
-      )
-    `);
-    // Si la tabla ya existía sin estas columnas, agregarlas
-    await pool.query("ALTER TABLE negocios ADD COLUMN IF NOT EXISTS giro TEXT DEFAULT 'tienda'");
-  } catch(e) { console.error('⚠️ negocios:', e.message); }
-
-  // Cajas (si no existe ya por schema.sql)
-  try {
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS cajas (
-        id          SERIAL PRIMARY KEY,
-        negocio_id  INTEGER NOT NULL,
-        nombre      TEXT DEFAULT 'Caja principal',
-        token       TEXT UNIQUE,
-        tipo        TEXT DEFAULT 'madre',
-        activo      BOOLEAN DEFAULT true,
-        creado_en   TIMESTAMPTZ DEFAULT NOW()
-      )
-    `);
-    await pool.query("ALTER TABLE cajas ADD COLUMN IF NOT EXISTS nombre TEXT DEFAULT 'Caja principal'");
-    await pool.query("ALTER TABLE cajas ADD COLUMN IF NOT EXISTS tipo TEXT DEFAULT 'madre'");
-    await pool.query("ALTER TABLE cajas ADD COLUMN IF NOT EXISTS activo BOOLEAN DEFAULT true");
-    // Si negocio_id quedó como INTEGER de un esquema viejo, convertir a TEXT (compatible con UUID)
-    try { await pool.query('ALTER TABLE cajas ALTER COLUMN negocio_id TYPE TEXT USING negocio_id::TEXT'); } catch(e2) {}
-  } catch(e) { console.error('⚠️ cajas:', e.message); }
-
-  // Sucursales (si no existe ya por schema.sql)
-  try {
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS sucursales (
-        id          SERIAL PRIMARY KEY,
-        negocio_id  INTEGER NOT NULL,
-        nombre      TEXT NOT NULL,
-        creado_en   TIMESTAMPTZ DEFAULT NOW()
-      )
-    `);
-    await pool.query("ALTER TABLE sucursales ADD COLUMN IF NOT EXISTS giro TEXT DEFAULT 'tienda'");
-    await pool.query("ALTER TABLE sucursales ADD COLUMN IF NOT EXISTS activo BOOLEAN DEFAULT true");
-    try { await pool.query('ALTER TABLE sucursales ALTER COLUMN negocio_id TYPE TEXT USING negocio_id::TEXT'); } catch(e2) {}
-  } catch(e) { console.error('⚠️ sucursales:', e.message); }
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -386,41 +343,26 @@ app.post('/api/lic/canjear', async (req, res) => {
 
     let negocioId = lic.negocio_id;
 
-    // Si esta licencia aún no tiene negocio asociado, crearlo
+    // Si esta licencia aún no tiene negocio asociado, crearlo (esquema real)
     if (!negocioId) {
       const neg = await pool.query(
-        'INSERT INTO negocios (nombre, giro) VALUES ($1,$2) RETURNING id',
+        'INSERT INTO negocios (nombre, giro_principal) VALUES ($1,$2) RETURNING id',
         [lic.negocio_nombre || lic.cliente_nombre || 'Mi negocio', lic.giro || 'tienda']
       );
       negocioId = neg.rows[0].id;
+
+      // Sucursal principal por defecto
+      await pool.query(
+        'INSERT INTO sucursales (negocio_id, nombre) VALUES ($1,$2)',
+        [negocioId, lic.negocio_nombre || 'Principal']
+      );
+
       await pool.query('UPDATE licencias SET negocio_id=$1 WHERE id=$2', [negocioId, lic.id]);
-
-      // Crear sucursal principal
-      await pool.query(
-        'INSERT INTO sucursales (negocio_id, nombre, giro) VALUES ($1,$2,$3)',
-        [negocioId, lic.negocio_nombre || 'Principal', lic.giro || 'tienda']
-      );
     }
 
-    // Buscar o crear caja "App móvil" para este negocio
-    let caja = await pool.query(
-      "SELECT * FROM cajas WHERE negocio_id=$1 AND nombre='App móvil' LIMIT 1",
-      [negocioId]
-    );
-    let token;
-    if (caja.rows.length) {
-      token = caja.rows[0].token;
-    } else {
-      token = 'app_' + crypto.randomBytes(20).toString('hex');
-      await pool.query(
-        'INSERT INTO cajas (negocio_id, nombre, token, tipo, activo) VALUES ($1,$2,$3,$4,true)',
-        [negocioId, 'App móvil', token, 'extra']
-      );
-    }
-
-    // Lista de sucursales del negocio (para selector si hay varias)
+    // Lista de sucursales del negocio
     const sucs = await pool.query(
-      'SELECT id, nombre, giro FROM sucursales WHERE negocio_id=$1 AND activo=true ORDER BY nombre',
+      'SELECT id, nombre FROM sucursales WHERE negocio_id=$1 AND activo=true ORDER BY nombre',
       [negocioId]
     );
 
@@ -428,7 +370,6 @@ app.post('/api/lic/canjear', async (req, res) => {
 
     res.json({
       ok: true,
-      token,
       negocio_id: negocioId,
       negocio_nombre: lic.negocio_nombre || lic.cliente_nombre,
       giro: lic.giro || 'tienda',
@@ -436,6 +377,50 @@ app.post('/api/lic/canjear', async (req, res) => {
     });
   } catch(e) {
     console.error('canjear error:', e.message);
+    res.status(500).json({ ok: false, mensaje: e.message });
+  }
+});
+
+// ── Paso 2: elegir sucursal y obtener token de caja ────────────────────────
+app.post('/api/lic/elegir-sucursal', async (req, res) => {
+  try {
+    const clave = (req.body.clave || '').trim().toUpperCase();
+    const sucursalId = req.body.sucursal_id;
+    if (!clave || !sucursalId) return res.status(400).json({ ok: false, mensaje: 'Faltan datos' });
+
+    const r = await pool.query('SELECT * FROM licencias WHERE clave=$1', [clave]);
+    if (!r.rows.length) return res.json({ ok: false, mensaje: 'Clave inválida' });
+    const lic = r.rows[0];
+    if (!lic.negocio_id) return res.json({ ok: false, mensaje: 'Activa la licencia primero' });
+
+    // Verificar que la sucursal pertenece al negocio de esta licencia
+    const suc = await pool.query(
+      'SELECT * FROM sucursales WHERE id=$1 AND negocio_id=$2 LIMIT 1',
+      [sucursalId, lic.negocio_id]
+    );
+    if (!suc.rows.length) return res.json({ ok: false, mensaje: 'Sucursal no encontrada' });
+
+    // Buscar o crear caja "App móvil" para esta sucursal
+    let caja = await pool.query(
+      "SELECT * FROM cajas WHERE sucursal_id=$1 AND nombre='App móvil' LIMIT 1",
+      [sucursalId]
+    );
+    let token;
+    if (caja.rows.length) {
+      token = caja.rows[0].token;
+    } else {
+      token = 'app_' + crypto.randomBytes(20).toString('hex');
+      await pool.query(
+        'INSERT INTO cajas (negocio_id, sucursal_id, nombre, tipo, token, activo) VALUES ($1,$2,$3,$4,$5,true)',
+        [lic.negocio_id, sucursalId, 'App móvil', 'extra', token]
+      );
+    }
+
+    await pool.query('UPDATE licencias SET sucursal_id=$1 WHERE id=$2', [sucursalId, lic.id]);
+
+    res.json({ ok: true, token, sucursal_nombre: suc.rows[0].nombre });
+  } catch(e) {
+    console.error('elegir-sucursal error:', e.message);
     res.status(500).json({ ok: false, mensaje: e.message });
   }
 });
