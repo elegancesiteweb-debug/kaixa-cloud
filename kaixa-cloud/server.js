@@ -49,9 +49,11 @@ async function aplicarEsquema() {
         notas             TEXT DEFAULT '',
         vence_en          DATE DEFAULT (CURRENT_DATE + INTERVAL '1 year'),
         creado_en         TIMESTAMPTZ DEFAULT NOW(),
-        ultima_verificacion TIMESTAMPTZ
+        ultima_verificacion TIMESTAMPTZ,
+        negocio_id        INTEGER
       )
     `);
+    try { await pool.query('ALTER TABLE licencias ADD COLUMN IF NOT EXISTS negocio_id INTEGER'); } catch(e) {}
     console.log('✅ Tabla licencias lista');
   } catch(e) { console.error('⚠️ licencias:', e.message); }
 
@@ -91,6 +93,47 @@ async function aplicarEsquema() {
     `);
     console.log('✅ Tabla empleados lista');
   } catch(e) { console.error('⚠️ empleados:', e.message); }
+
+  // Negocios (si no existe ya por schema.sql)
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS negocios (
+        id          SERIAL PRIMARY KEY,
+        nombre      TEXT NOT NULL,
+        giro        TEXT DEFAULT 'tienda',
+        creado_en   TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+  } catch(e) { console.error('⚠️ negocios:', e.message); }
+
+  // Cajas (si no existe ya por schema.sql)
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS cajas (
+        id          SERIAL PRIMARY KEY,
+        negocio_id  INTEGER NOT NULL,
+        nombre      TEXT DEFAULT 'Caja principal',
+        token       TEXT UNIQUE NOT NULL,
+        tipo        TEXT DEFAULT 'madre',
+        activo      BOOLEAN DEFAULT true,
+        creado_en   TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+  } catch(e) { console.error('⚠️ cajas:', e.message); }
+
+  // Sucursales (si no existe ya por schema.sql)
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS sucursales (
+        id          SERIAL PRIMARY KEY,
+        negocio_id  INTEGER NOT NULL,
+        nombre      TEXT NOT NULL,
+        giro        TEXT DEFAULT 'tienda',
+        activo      BOOLEAN DEFAULT true,
+        creado_en   TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+  } catch(e) { console.error('⚠️ sucursales:', e.message); }
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -313,6 +356,81 @@ async function verificarLicenciaHandler(req, res) {
 // Registrar GET y POST para que funcione desde navegador y desde Kaixa Pro
 app.get('/api/verificar',  verificarLicenciaHandler);
 app.post('/api/verificar', verificarLicenciaHandler);
+
+// ═══════════════════════════════════════════════════════════════
+// CANJEAR LICENCIA — la app móvil usa solo la clave (sin token manual)
+// Crea/reutiliza un negocio + caja propios para esta licencia y
+// devuelve un token de caja transparente para el usuario.
+// ═══════════════════════════════════════════════════════════════
+app.post('/api/lic/canjear', async (req, res) => {
+  try {
+    const clave = (req.body.clave || '').trim().toUpperCase();
+    if (!clave) return res.status(400).json({ ok: false, mensaje: 'Clave requerida' });
+
+    const r = await pool.query('SELECT * FROM licencias WHERE clave=$1', [clave]);
+    if (!r.rows.length) return res.json({ ok: false, mensaje: 'Clave inválida' });
+    const lic = r.rows[0];
+
+    if (lic.estado === 'suspendida') return res.json({ ok: false, mensaje: 'Licencia suspendida' });
+    if (lic.estado === 'cancelada')  return res.json({ ok: false, mensaje: 'Licencia cancelada' });
+    if (lic.vence_en && new Date(lic.vence_en).getTime() < Date.now())
+      return res.json({ ok: false, mensaje: 'Licencia vencida' });
+
+    let negocioId = lic.negocio_id;
+
+    // Si esta licencia aún no tiene negocio asociado, crearlo
+    if (!negocioId) {
+      const neg = await pool.query(
+        'INSERT INTO negocios (nombre, giro) VALUES ($1,$2) RETURNING id',
+        [lic.negocio_nombre || lic.cliente_nombre || 'Mi negocio', lic.giro || 'tienda']
+      );
+      negocioId = neg.rows[0].id;
+      await pool.query('UPDATE licencias SET negocio_id=$1 WHERE id=$2', [negocioId, lic.id]);
+
+      // Crear sucursal principal
+      await pool.query(
+        'INSERT INTO sucursales (negocio_id, nombre, giro) VALUES ($1,$2,$3)',
+        [negocioId, lic.negocio_nombre || 'Principal', lic.giro || 'tienda']
+      );
+    }
+
+    // Buscar o crear caja "App móvil" para este negocio
+    let caja = await pool.query(
+      "SELECT * FROM cajas WHERE negocio_id=$1 AND nombre='App móvil' LIMIT 1",
+      [negocioId]
+    );
+    let token;
+    if (caja.rows.length) {
+      token = caja.rows[0].token;
+    } else {
+      token = 'app_' + crypto.randomBytes(20).toString('hex');
+      await pool.query(
+        'INSERT INTO cajas (negocio_id, nombre, token, tipo, activo) VALUES ($1,$2,$3,$4,true)',
+        [negocioId, 'App móvil', token, 'extra']
+      );
+    }
+
+    // Lista de sucursales del negocio (para selector si hay varias)
+    const sucs = await pool.query(
+      'SELECT id, nombre, giro FROM sucursales WHERE negocio_id=$1 AND activo=true ORDER BY nombre',
+      [negocioId]
+    );
+
+    await pool.query('UPDATE licencias SET ultima_verificacion=NOW() WHERE clave=$1', [clave]);
+
+    res.json({
+      ok: true,
+      token,
+      negocio_id: negocioId,
+      negocio_nombre: lic.negocio_nombre || lic.cliente_nombre,
+      giro: lic.giro || 'tienda',
+      sucursales: sucs.rows
+    });
+  } catch(e) {
+    console.error('canjear error:', e.message);
+    res.status(500).json({ ok: false, mensaje: e.message });
+  }
+});
 
 // ═══════════════════════════════════════════════════════════════
 // RUTAS DE LA CAJA (con auth de token)
