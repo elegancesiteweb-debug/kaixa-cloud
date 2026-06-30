@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Kaixa Pro — Panel de Licencias</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#0f0a1a;color:#f0ebff;min-height:100vh}
+:root{--accent:#8b5cf6;--accent2:#d946ef;--grad:linear-gradient(135deg,#8b5cf6,#d946ef);--bg:#0f0a1a;--s1:#1a0f2e;--s2:#231544;--border:#2d1a58;--text:#f0ebff;--text2:#c4b5fd;--text3:#7c5cbf;--ok:#10b981;--warn:#f59e0b;--danger:#ef4444}
+
+/* Login */
+#loginWrap{display:flex;align-items:center;justify-content:center;min-height:100vh}
+.login-card{background:#1a0f2e;border:1px solid var(--border);border-radius:20px;padding:36px 32px;width:100%;max-width:380px;text-align:center}
+.brand{font-size:42px;font-weight:900;background:var(--grad);-webkit-background-clip:text;-webkit-text-fill-color:transparent;line-height:1;margin-bottom:6px}
+.brand-sub{font-size:13px;color:var(--text3);margin-bottom:28px}
+.inp{width:100%;padding:12px 16px;background:#231544;border:1.5px solid var(--border);border-radius:12px;color:var(--text);font-size:14px;outline:none;margin-bottom:12px;font-family:inherit}
+.inp:focus{border-color:var(--accent)}
+.btn-grad{width:100%;padding:13px;background:var(--grad);border:none;border-radius:12px;color:#fff;font-size:14px;font-weight:800;cursor:pointer;font-family:inherit}
+.btn-grad:active{opacity:.9}
+.lerr{color:var(--danger);font-size:12px;margin-top:8px;min-height:18px}
+
+/* App */
+#appWrap{display:none}
+.topbar{background:#1a0f2e;border-bottom:1px solid var(--border);padding:0 24px;height:56px;display:flex;align-items:center;gap:14px;position:sticky;top:0;z-index:100}
+.topbar-brand{font-size:18px;font-weight:900;background:var(--grad);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.topbar-sub{font-size:11px;color:var(--text3);flex:1}
+.btn-sm{padding:7px 14px;border-radius:9px;border:1px solid var(--border);background:transparent;color:var(--text2);font-size:12px;cursor:pointer;font-family:inherit}
+.btn-sm:hover{background:var(--s2)}
+
+.main{padding:24px;max-width:1200px;margin:0 auto}
+
+/* Stats */
+.stats-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:24px}
+.stat{background:#1a0f2e;border:1px solid var(--border);border-radius:16px;padding:18px 20px}
+.sv{font-size:28px;font-weight:900;background:var(--grad);-webkit-background-clip:text;-webkit-text-fill-color:transparent;font-family:'JetBrains Mono',monospace}
+.sl{font-size:12px;color:var(--text3);margin-top:4px;text-transform:uppercase;letter-spacing:.5px}
+.stat-bar{background:#1a0f2e;border:1px solid var(--border);border-radius:12px;padding:12px 16px;margin-bottom:24px;font-size:12px;color:var(--text3)}
+
+/* Toolbar */
+.toolbar{display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap}
+.search-inp{flex:1;min-width:200px;padding:10px 14px;background:#1a0f2e;border:1.5px solid var(--border);border-radius:11px;color:var(--text);font-size:13px;outline:none;font-family:inherit}
+.search-inp:focus{border-color:var(--accent)}
+.sel{padding:10px 14px;background:#1a0f2e;border:1.5px solid var(--border);border-radius:11px;color:var(--text);font-size:13px;outline:none;cursor:pointer}
+.sel:focus{border-color:var(--accent)}
+.btn-new{padding:10px 18px;background:var(--grad);border:none;border-radius:11px;color:#fff;font-size:13px;font-weight:800;cursor:pointer;white-space:nowrap;font-family:inherit}
+.btn-new:active{opacity:.9}
+
+/* Table */
+.table-wrap{background:#1a0f2e;border:1px solid var(--border);border-radius:16px;overflow:hidden}
+table{width:100%;border-collapse:collapse}
+thead{background:#231544}
+th{padding:12px 16px;text-align:left;font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.5px}
+td{padding:12px 16px;font-size:13px;border-top:1px solid var(--border)}
+tr:hover td{background:rgba(139,92,246,.05)}
+.clave{font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;color:var(--accent);background:#231544;padding:3px 8px;border-radius:6px;letter-spacing:.5px}
+.lic-neg{font-weight:700;font-size:13px}
+.lic-sub{font-size:11px;color:var(--text3);margin-top:2px}
+.badge{display:inline-block;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700}
+.b-ok{background:rgba(16,185,129,.15);color:#10b981}
+.b-err{background:rgba(239,68,68,.15);color:#ef4444}
+.b-warn{background:rgba(245,158,11,.15);color:#f59e0b}
+.acts{display:flex;gap:6px;flex-wrap:wrap}
+.abtn{padding:5px 10px;border-radius:7px;border:1px solid var(--border);background:transparent;color:var(--text2);font-size:11px;cursor:pointer;font-family:inherit;white-space:nowrap}
+.abtn:hover{background:var(--s2)}
+.abtn-w{color:var(--warn);border-color:rgba(245,158,11,.3)}
+.abtn-w:hover{background:rgba(245,158,11,.1)}
+.abtn-d{color:var(--danger);border-color:rgba(239,68,68,.3)}
+.abtn-d:hover{background:rgba(239,68,68,.1)}
+.abtn-ok{color:var(--ok);border-color:rgba(16,185,129,.3)}
+.empty-state{text-align:center;padding:48px;color:var(--text3)}
+.ei{font-size:40px;margin-bottom:12px}
+
+/* Modal */
+.mo{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:500;align-items:center;justify-content:center;padding:20px}
+.mo.show{display:flex}
+.mo-box{background:#1a0f2e;border:1px solid var(--border);border-radius:20px;padding:28px;width:100%;max-width:520px;max-height:90vh;overflow-y:auto}
+.mo-box h3{font-size:17px;font-weight:900;margin-bottom:20px;display:flex;align-items:center;justify-content:space-between}
+.mo-close{cursor:pointer;color:var(--text3);font-size:20px;background:none;border:none;color:var(--text3)}
+.field{margin-bottom:14px}
+.field label{display:block;font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px}
+.field input,.field select,.field textarea{width:100%;padding:11px 14px;background:#231544;border:1.5px solid var(--border);border-radius:11px;color:var(--text);font-size:13px;outline:none;font-family:inherit}
+.field input:focus,.field select:focus,.field textarea:focus{border-color:var(--accent)}
+.field-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.clave-result{background:#231544;border:1.5px solid var(--accent);border-radius:14px;padding:16px;text-align:center;margin-bottom:14px}
+.clave-result .lbl{font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px}
+.clave-result .val{font-size:22px;font-weight:900;font-family:'JetBrains Mono',monospace;color:var(--accent);letter-spacing:2px;cursor:pointer}
+.clave-result .copy-hint{font-size:10px;color:var(--text3);margin-top:6px}
+.btn-row{display:flex;gap:10px;margin-top:6px}
+.btn-row .btn-grad{flex:1}
+.btn-row .btn-cancel{flex:1;padding:13px;background:transparent;border:1.5px solid var(--border);border-radius:12px;color:var(--text2);font-size:14px;font-weight:700;cursor:pointer;font-family:inherit}
+
+/* Notif */
+.notif{position:fixed;top:16px;right:16px;background:#231544;border:1px solid var(--accent);color:var(--text);padding:12px 18px;border-radius:12px;font-size:13px;font-weight:600;z-index:9999;transform:translateX(200px);transition:transform .3s;box-shadow:0 4px 20px rgba(139,92,246,.3)}
+.notif.show{transform:translateX(0)}
+.notif.ok{border-color:var(--ok);background:rgba(16,185,129,.15)}
+.notif.err{border-color:var(--danger);background:rgba(239,68,68,.15)}
+
+@media(max-width:768px){
+  .stats-grid{grid-template-columns:1fr 1fr}
+  .field-row{grid-template-columns:1fr}
+  table thead{display:none}
+  td{display:block;padding:6px 12px}
+  td:first-child{padding-top:12px}
+  td:last-child{padding-bottom:12px}
+}
+</style>
+</head>
+<body>
+
+<div class="notif" id="notif"></div>
+
+<!-- LOGIN -->
+<div id="loginWrap">
+  <div class="login-card">
+    <div class="brand">K</div>
+    <div class="brand-sub">Panel de Licencias — Kaixa Pro</div>
+    <input class="inp" id="u" type="text" placeholder="Usuario" autocomplete="off">
+    <input class="inp" id="p" type="password" placeholder="Contraseña">
+    <button class="btn-grad" id="btnLogin">Entrar →</button>
+    <div class="lerr" id="lerr"></div>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="appWrap">
+  <div class="topbar">
+    <div class="topbar-brand">Kaixa Pro</div>
+    <div class="topbar-sub">Panel de Licencias</div>
+    <button class="btn-sm" id="btnLogout">Cerrar sesión</button>
+  </div>
+  <div class="main">
+    <!-- Stats -->
+    <div class="stats-grid" id="sGrid"></div>
+    <div class="stat-bar" id="statBar">Cargando estadísticas...</div>
+
+    <!-- Toolbar -->
+    <div class="toolbar">
+      <input class="search-inp" id="q" placeholder="🔍 Buscar por cliente, negocio o clave...">
+      <select class="sel" id="fGiro">
+        <option value="">Todos los giros</option>
+        <option value="tienda">🛒 Tienda</option>
+        <option value="ropa">👗 Ropa</option>
+        <option value="farmacia">🏥 Farmacia</option>
+        <option value="celulares">📱 Celulares</option>
+        <option value="restaurante">🍕 Restaurante</option>
+        <option value="salon">💈 Salón</option>
+        <option value="papeleria">📚 Papelería</option>
+        <option value="joyeria">💍 Joyería</option>
+        <option value="ferreteria">🏗️ Ferretería</option>
+      </select>
+      <select class="sel" id="fEst">
+        <option value="">Todos los estados</option>
+        <option value="activa">✅ Activas</option>
+        <option value="suspendida">⛔ Suspendidas</option>
+      </select>
+      <button class="btn-new" id="btnNueva">+ Nueva licencia</button>
+    </div>
+
+    <!-- Tabla -->
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Clave</th>
+            <th>Negocio / Cliente</th>
+            <th>Giro</th>
+            <th>Plan</th>
+            <th>Estado</th>
+            <th>Vence</th>
+            <th>Acciones</th>
+          </tr>
+        </thead>
+        <tbody id="tb"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL -->
+<div class="mo" id="mo">
+  <div class="mo-box">
+    <h3 id="moT">Nueva licencia <button class="mo-close" id="btnCerrar">✕</button></h3>
+    <input type="hidden" id="moId">
+
+    <div class="field-row">
+      <div class="field"><label>Nombre del cliente</label><input id="moCli" placeholder="Juan García"></div>
+      <div class="field"><label>Teléfono</label><input id="moTel" placeholder="+52 33 1234 5678"></div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>Email</label><input id="moEmail" type="email" placeholder="correo@ejemplo.com"></div>
+      <div class="field"><label>Nombre del negocio</label><input id="moNeg" placeholder="Tienda La Moderna"></div>
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label>Giro del negocio</label>
+        <select id="moGiro">
+          <option value="tienda">🛒 Tienda / Abarrotes</option>
+          <option value="ropa">👗 Ropa y Moda</option>
+          <option value="farmacia">🏥 Farmacia / Salud</option>
+          <option value="celulares">📱 Celulares y Tecnología</option>
+          <option value="restaurante">🍕 Restaurante / Taquería</option>
+          <option value="salon">💈 Salón / Spa / Barbería</option>
+          <option value="papeleria">📚 Papelería / Escolar</option>
+          <option value="joyeria">💍 Joyería</option>
+          <option value="ferreteria">🏗️ Ferretería</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Plan</label>
+        <select id="moPlan">
+          <option value="basico">Básico — 1 usuario</option>
+          <option value="pro" selected>Pro — 3 usuarios</option>
+          <option value="business">Business — 10 usuarios</option>
+          <option value="ilimitado">Ilimitado</option>
+        </select>
+      </div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>Duración (meses)</label><input id="moMeses" type="number" value="12" min="1" max="120"></div>
+      <div class="field">
+        <label>Estado</label>
+        <select id="moEst">
+          <option value="activa">✅ Activa</option>
+          <option value="suspendida">⛔ Suspendida</option>
+        </select>
+      </div>
+    </div>
+    <div class="field"><label>Notas internas</label><textarea id="moNot" rows="2" placeholder="Notas opcionales..."></textarea></div>
+
+    <!-- Clave generada -->
+    <div class="clave-result" id="claveResult" style="display:none">
+      <div class="lbl">✅ Licencia creada — Clave de activación</div>
+      <div class="val" id="claveVal" onclick="copiarClave()">—</div>
+      <div class="copy-hint">Toca para copiar · Envía esta clave al cliente</div>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn-cancel" id="btnCerrar2">Cancelar</button>
+      <button class="btn-grad" id="btnGuardar">Crear licencia</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  var TOKEN = '';
+  var LICS  = [];
+
+  var GIRO_ICO = { tienda:'🛒', ropa:'👗', farmacia:'🏥', celulares:'📱', restaurante:'🍕', salon:'💈', papeleria:'📚', joyeria:'💍', ferreteria:'🏗️' };
+  var GIRO_NM  = { tienda:'Tienda', ropa:'Ropa', farmacia:'Farmacia', celulares:'Celulares', restaurante:'Restaurante', salon:'Salón', papeleria:'Papelería', joyeria:'Joyería', ferreteria:'Ferretería' };
+
+  function g(id){ return document.getElementById(id); }
+
+  function notif(msg, tipo) {
+    var el = g('notif');
+    el.textContent = msg;
+    el.className = 'notif show' + (tipo==='ok'?' ok':tipo==='err'?' err':'');
+    clearTimeout(el._t);
+    el._t = setTimeout(function(){ el.className='notif'; }, 3500);
+  }
+
+  async function api(method, url, body) {
+    var opts = { method:method, headers:{'Content-Type':'application/json','x-token':TOKEN} };
+    if(body) opts.body = JSON.stringify(body);
+    var r = await fetch(url, opts);
+    var d = await r.json();
+    if(!r.ok) throw new Error(d.error || 'Error '+r.status);
+    return d;
+  }
+
+  async function entrar() {
+    var u = g('u').value.trim();
+    var p = g('p').value.trim();
+    g('lerr').textContent = '';
+    if(!u||!p){ g('lerr').textContent='Ingresa usuario y contraseña'; return; }
+    try {
+      var r = await fetch('/api/lic/login', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ usuario:u, password:p })
+      });
+      var d = await r.json();
+      if(!r.ok||!d.ok){ g('lerr').textContent = d.error||'Credenciales incorrectas'; return; }
+      TOKEN = d.token;
+      g('loginWrap').style.display = 'none';
+      g('appWrap').style.display   = 'block';
+      loadStats();
+      loadLics();
+    } catch(e){ g('lerr').textContent = 'Error: '+e.message; }
+  }
+
+  async function loadStats() {
+    try {
+      var s = await api('GET', '/api/lic/stats');
+      g('sGrid').innerHTML = [
+        {v:s.total,       l:'Total licencias', c:''},
+        {v:s.activas,     l:'✅ Activas',       c:'ok'},
+        {v:s.suspendidas, l:'⛔ Suspendidas',   c:'warn'},
+        {v:s.nuevas_hoy,  l:'📅 Nuevas hoy',    c:''},
+      ].map(function(k){
+        return '<div class="stat"><div class="sv">'+k.v+'</div><div class="sl">'+k.l+'</div></div>';
+      }).join('');
+      if(s.por_giro && s.por_giro.length)
+        g('statBar').textContent = s.por_giro.map(function(x){
+          return (GIRO_ICO[x.giro]||'🏪')+' '+(GIRO_NM[x.giro]||x.giro)+': '+x.n;
+        }).join('  ·  ');
+    } catch(e){}
+  }
+
+  async function loadLics() {
+    var q    = g('q').value;
+    var giro = g('fGiro').value;
+    var est  = g('fEst').value;
+    var url  = '/api/lic/licencias?';
+    if(q)    url += 'q='+encodeURIComponent(q)+'&';
+    if(giro) url += 'giro='+giro+'&';
+    if(est)  url += 'estado='+est+'&';
+    try {
+      LICS = await api('GET', url);
+      var tb = g('tb');
+      if(!LICS.length){
+        tb.innerHTML = '<tr><td colspan="7"><div class="empty-state"><div class="ei">📋</div>Sin licencias registradas</div></td></tr>';
+        return;
+      }
+      tb.innerHTML = LICS.map(function(l){
+        var badge = l.estado==='activa'
+          ? '<span class="badge b-ok">✅ Activa</span>'
+          : '<span class="badge b-err">⛔ '+l.estado+'</span>';
+        var estBtn = l.estado==='activa'
+          ? '<button class="abtn abtn-w" data-id="'+l.id+'" data-act="suspender">⛔ Suspender</button>'
+          : '<button class="abtn abtn-ok" data-id="'+l.id+'" data-act="activar">✅ Activar</button>';
+        return '<tr>'
+          +'<td><span class="clave">'+l.clave+'</span></td>'
+          +'<td><div class="lic-neg">'+(l.negocio_nombre||'—')+'</div><div class="lic-sub">'+l.cliente_nombre+(l.cliente_tel?' · '+l.cliente_tel:'')+'</div></td>'
+          +'<td>'+(GIRO_ICO[l.giro]||'🏪')+' '+(GIRO_NM[l.giro]||l.giro||'—')+'</td>'
+          +'<td style="color:var(--text3);font-size:12px">'+(l.plan||'pro')+'</td>'
+          +'<td>'+badge+'</td>'
+          +'<td style="color:var(--text3);font-size:12px">'+(l.vence_en?String(l.vence_en).substring(0,10):'—')+'</td>'
+          +'<td><div class="acts">'
+            +'<button class="abtn" data-id="'+l.id+'" data-act="editar">✏️</button>'
+            +estBtn
+            +'<button class="abtn abtn-d" data-id="'+l.id+'" data-act="eliminar">🗑️</button>'
+          +'</div></td>'
+          +'</tr>';
+      }).join('');
+    } catch(e){ notif('Error: '+e.message, 'err'); }
+  }
+
+  function abrirModal(lic) {
+    g('moT').childNodes[0].textContent = lic ? '✏️ Editar licencia ' : '📋 Nueva licencia ';
+    g('moId').value    = lic ? lic.id     : '';
+    g('moCli').value   = lic ? (lic.cliente_nombre||'')  : '';
+    g('moTel').value   = lic ? (lic.cliente_tel||'')     : '';
+    g('moEmail').value = lic ? (lic.cliente_email||'')   : '';
+    g('moNeg').value   = lic ? (lic.negocio_nombre||'')  : '';
+    g('moGiro').value  = lic ? (lic.giro||'tienda')      : 'tienda';
+    g('moPlan').value  = lic ? (lic.plan||'pro')         : 'pro';
+    g('moMeses').value = '12';
+    g('moEst').value   = lic ? (lic.estado||'activa')    : 'activa';
+    g('moNot').value   = lic ? (lic.notas||'')           : '';
+    g('claveResult').style.display = 'none';
+    g('btnGuardar').style.display  = 'inline-block';
+    g('btnGuardar').textContent    = lic ? 'Guardar cambios' : 'Crear licencia';
+    g('mo').classList.add('show');
+    setTimeout(function(){ g('moCli').focus(); }, 100);
+  }
+
+  function cerrarModal(){ g('mo').classList.remove('show'); }
+
+  async function guardar() {
+    var id   = g('moId').value;
+    var body = {
+      cliente_nombre: g('moCli').value.trim(),
+      cliente_tel:    g('moTel').value.trim(),
+      cliente_email:  g('moEmail').value.trim(),
+      negocio_nombre: g('moNeg').value.trim(),
+      giro:           g('moGiro').value,
+      plan:           g('moPlan').value,
+      vence_meses:    parseInt(g('moMeses').value)||12,
+      estado:         g('moEst').value,
+      notas:          g('moNot').value.trim()
+    };
+    if(!body.cliente_nombre){ notif('⚠️ El nombre del cliente es requerido', 'err'); return; }
+    try {
+      if(id) {
+        await api('PUT', '/api/lic/licencias/'+id, body);
+        notif('✅ Licencia actualizada', 'ok');
+        cerrarModal();
+      } else {
+        var r = await api('POST', '/api/lic/licencias', body);
+        g('claveVal').textContent = r.clave;
+        g('claveResult').style.display = 'block';
+        g('btnGuardar').style.display  = 'none';
+        notif('✅ Licencia creada: '+r.clave, 'ok');
+      }
+      loadLics(); loadStats();
+    } catch(e){ notif('❌ '+e.message, 'err'); }
+  }
+
+  function copiarClave() {
+    var clave = g('claveVal').textContent;
+    navigator.clipboard.writeText(clave).then(function(){
+      notif('📋 Clave copiada: '+clave, 'ok');
+    }).catch(function(){
+      notif('Clave: '+clave);
+    });
+  }
+
+  // ── Eventos ──────────────────────────────────────────────────
+  g('btnLogin').addEventListener('click', entrar);
+  g('u').addEventListener('keydown', function(e){ if(e.key==='Enter') g('p').focus(); });
+  g('p').addEventListener('keydown', function(e){ if(e.key==='Enter') entrar(); });
+  g('btnLogout').addEventListener('click', function(){ TOKEN=''; location.reload(); });
+  g('btnNueva').addEventListener('click', function(){ abrirModal(null); });
+  g('btnGuardar').addEventListener('click', guardar);
+  g('btnCerrar').addEventListener('click', cerrarModal);
+  g('btnCerrar2').addEventListener('click', cerrarModal);
+  g('mo').addEventListener('click', function(e){ if(e.target===g('mo')) cerrarModal(); });
+  g('q').addEventListener('input', loadLics);
+  g('fGiro').addEventListener('change', loadLics);
+  g('fEst').addEventListener('change', loadLics);
+
+  g('tb').addEventListener('click', async function(e) {
+    var btn = e.target.closest('button[data-act]');
+    if(!btn) return;
+    var id  = parseInt(btn.dataset.id);
+    var act = btn.dataset.act;
+    var lic = LICS.find(function(l){ return l.id===id; });
+    if(act==='editar'){ if(lic) abrirModal(lic); }
+    else if(act==='suspender'){
+      try{ await api('PUT','/api/lic/licencias/'+id+'/estado',{estado:'suspendida'}); notif('Licencia suspendida','ok'); loadLics(); loadStats(); }
+      catch(e){ notif('Error: '+e.message,'err'); }
+    }
+    else if(act==='activar'){
+      try{ await api('PUT','/api/lic/licencias/'+id+'/estado',{estado:'activa'}); notif('Licencia activada','ok'); loadLics(); loadStats(); }
+      catch(e){ notif('Error: '+e.message,'err'); }
+    }
+    else if(act==='eliminar'){
+      if(!confirm('¿Eliminar esta licencia? No se puede deshacer.')) return;
+      try{ await api('DELETE','/api/lic/licencias/'+id); notif('Licencia eliminada','ok'); loadLics(); loadStats(); }
+      catch(e){ notif('Error: '+e.message,'err'); }
+    }
+  });
+})();
+</script>
+</body>
+</html>
