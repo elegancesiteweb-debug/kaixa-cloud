@@ -288,23 +288,33 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:var(--ff);backgroun
   </div>
 </div>
 
-<!-- ═══════════════ SETUP ═══════════════ -->
+<!-- ═══════════════ SETUP (activación por licencia) ═══════════════ -->
 <div class="screen" id="sc-setup">
   <div class="auth-card">
     <div class="auth-logo">
       <div class="k">K</div>
       <div class="brand">Kaixa Pro</div>
-      <div class="sub">Configuración inicial</div>
+      <div class="sub">Activar con tu licencia</div>
     </div>
     <div class="field">
-      <label>URL del servidor (Railway)</label>
-      <input id="setupUrl" type="url" placeholder="https://tu-app.up.railway.app">
+      <label>Clave de licencia</label>
+      <input id="setupClave" type="text" placeholder="KXP-XXXXXX-XXXXXX" style="text-transform:uppercase;letter-spacing:1px" onkeydown="if(event.key==='Enter')activarConLicencia()">
     </div>
-    <div class="field">
-      <label>Token de la caja</label>
-      <input id="setupToken" type="text" placeholder="Token de autenticación">
+    <div id="setupErr" style="color:#ef4444;font-size:12px;margin-bottom:10px;display:none"></div>
+    <button class="btn-primary" id="setupBtn" onclick="activarConLicencia()">Activar →</button>
+    <div style="text-align:center;font-size:11px;color:var(--text3);margin-top:14px">Usa la misma clave que activaste en tu PC</div>
+  </div>
+</div>
+
+<!-- ═══════════════ SELECCIÓN DE SUCURSAL ═══════════════ -->
+<div class="screen" id="sc-sucursal">
+  <div class="auth-card">
+    <div class="auth-logo">
+      <div class="k">K</div>
+      <div class="brand" id="sucNegNombre">Mi Negocio</div>
+      <div class="sub">Elige tu sucursal</div>
     </div>
-    <button class="btn-primary" onclick="guardarSetup()">Conectar →</button>
+    <div id="sucList"></div>
   </div>
 </div>
 
@@ -326,7 +336,7 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:var(--ff);backgroun
     </div>
     <button class="btn-primary" onclick="doLogin()">Entrar al sistema →</button>
     <button class="btn-sec" id="btnCrearEmpLogin" onclick="abrirCrearEmpLogin()" style="display:none">➕ Crear mi primer usuario admin</button>
-    <button class="btn-sec" onclick="go('setup')">⚙️ Cambiar servidor</button>
+    <button class="btn-sec" onclick="go('setup')">⚙️ Cambiar licencia</button>
   </div>
 </div>
 
@@ -576,7 +586,9 @@ window.addEventListener('load', function() {
 });
 
 async function boot() {
-  if (!API || !TOKEN) { go('setup'); return; }
+  // Si no hay licencia activada todavía, pedirla
+  var claveGuardada = localStorage.getItem('kaixa_clave');
+  if (!API || !TOKEN || !claveGuardada) { go('setup'); return; }
   // Verificar conexión
   try {
     var r = await fetch(API + '/health', { signal: AbortSignal.timeout(5000) });
@@ -657,14 +669,79 @@ function topBtn1Action() {
 // ══════════════════════════════════════════════════════
 // SETUP & LOGIN
 // ══════════════════════════════════════════════════════
-function guardarSetup() {
-  var url = document.getElementById('setupUrl').value.trim().replace(/\/$/, '');
-  var token = document.getElementById('setupToken').value.trim();
-  if (!url || !token) { notif('Ingresa URL y token', 'err'); return; }
-  API = url; TOKEN = token;
-  localStorage.setItem('kaixa_api', url);
-  localStorage.setItem('kaixa_token', token);
-  boot();
+var _sucursalesDisponibles = [];
+var _negocioInfo = null;
+
+async function activarConLicencia() {
+  var clave = document.getElementById('setupClave').value.trim().toUpperCase();
+  var err = document.getElementById('setupErr');
+  var btn = document.getElementById('setupBtn');
+  err.style.display = 'none';
+  if (!clave || clave.length < 8) { err.textContent = 'Ingresa tu clave completa'; err.style.display = 'block'; return; }
+
+  btn.disabled = true; btn.textContent = '⏳ Verificando...';
+  try {
+    // El servidor es siempre el mismo origen donde vive esta app
+    var origin = window.location.origin;
+    var r = await fetch(origin + '/api/lic/canjear', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clave: clave })
+    });
+    var d = await r.json();
+    if (!d.ok) {
+      err.textContent = d.mensaje || 'Clave inválida';
+      err.style.display = 'block';
+      btn.disabled = false; btn.textContent = 'Activar →';
+      return;
+    }
+    // Guardar todo
+    API = origin;
+    TOKEN = d.token;
+    giro = d.giro || 'tienda';
+    localStorage.setItem('kaixa_api', API);
+    localStorage.setItem('kaixa_token', TOKEN);
+    localStorage.setItem('kaixa_giro', giro);
+    localStorage.setItem('kaixa_clave', clave);
+    _negocioInfo = d;
+    _sucursalesDisponibles = d.sucursales || [];
+
+    if (_sucursalesDisponibles.length > 1) {
+      mostrarSelectorSucursal();
+    } else {
+      btn.disabled = false; btn.textContent = 'Activar →';
+      await loadEmpleadosLogin();
+      go('login');
+    }
+  } catch(e) {
+    err.textContent = 'Error de conexión: ' + e.message;
+    err.style.display = 'block';
+    btn.disabled = false; btn.textContent = 'Activar →';
+  }
+}
+
+function mostrarSelectorSucursal() {
+  document.getElementById('sucNegNombre').textContent = _negocioInfo.negocio_nombre || 'Mi Negocio';
+  var cont = document.getElementById('sucList');
+  cont.innerHTML = _sucursalesDisponibles.map(function(s, i) {
+    return '<div class="card" style="cursor:pointer;margin-bottom:8px" onclick="elegirSucursal(' + i + ')">' +
+      '<div class="card-row">' +
+        '<div class="card-ico">🏪</div>' +
+        '<div class="card-info"><div class="card-title">' + s.nombre + '</div><div class="card-sub">' + (s.giro||'tienda') + '</div></div>' +
+        '<div style="color:var(--text3)">›</div>' +
+      '</div></div>';
+  }).join('');
+  go('sucursal');
+}
+
+async function elegirSucursal(idx) {
+  var s = _sucursalesDisponibles[idx];
+  if (!s) return;
+  giro = s.giro || giro;
+  localStorage.setItem('kaixa_giro', giro);
+  localStorage.setItem('kaixa_sucursal_id', s.id);
+  await loadEmpleadosLogin();
+  go('login');
 }
 
 async function loadEmpleadosLogin() {
