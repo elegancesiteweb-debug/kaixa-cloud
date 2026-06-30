@@ -322,6 +322,32 @@ async function verificarLicenciaHandler(req, res) {
 app.get('/api/verificar',  verificarLicenciaHandler);
 app.post('/api/verificar', verificarLicenciaHandler);
 
+// ── Listar negocios existentes (para vincular licencias manualmente) ──────
+app.get('/api/lic/negocios', authAdmin, async (req, res) => {
+  try {
+    const r = await pool.query(`
+      SELECT n.id, n.nombre, n.giro_principal,
+        (SELECT COUNT(*) FROM sucursales s WHERE s.negocio_id=n.id) AS num_sucursales,
+        (SELECT COUNT(*) FROM cajas c WHERE c.negocio_id=n.id) AS num_cajas,
+        (SELECT COUNT(*) FROM productos p WHERE p.negocio_id=n.id) AS num_productos
+      FROM negocios n ORDER BY n.creado_en DESC
+    `);
+    res.json(r.rows);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Vincular una licencia a un negocio EXISTENTE (el de la PC, por ej.) ───
+app.put('/api/lic/licencias/:id/vincular', authAdmin, async (req, res) => {
+  try {
+    const { negocio_id } = req.body;
+    if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
+    const neg = await pool.query('SELECT id, nombre FROM negocios WHERE id=$1', [negocio_id]);
+    if (!neg.rows.length) return res.status(404).json({ error: 'Negocio no encontrado' });
+    await pool.query('UPDATE licencias SET negocio_id=$1, sucursal_id=NULL WHERE id=$2', [negocio_id, req.params.id]);
+    res.json({ ok: true, negocio_nombre: neg.rows[0].nombre });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 // ═══════════════════════════════════════════════════════════════
 // CANJEAR LICENCIA — la app móvil usa solo la clave (sin token manual)
 // Crea/reutiliza un negocio + caja propios para esta licencia y
