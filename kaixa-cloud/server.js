@@ -91,6 +91,7 @@ async function aplicarEsquema() {
         creado_en       TIMESTAMPTZ DEFAULT NOW()
       )
     `);
+    try { await pool.query('ALTER TABLE empleados ALTER COLUMN negocio_id TYPE TEXT USING negocio_id::TEXT'); } catch(e2) {}
     console.log('✅ Tabla empleados lista');
   } catch(e) { console.error('⚠️ empleados:', e.message); }
 
@@ -123,6 +124,8 @@ async function aplicarEsquema() {
     await pool.query("ALTER TABLE cajas ADD COLUMN IF NOT EXISTS nombre TEXT DEFAULT 'Caja principal'");
     await pool.query("ALTER TABLE cajas ADD COLUMN IF NOT EXISTS tipo TEXT DEFAULT 'madre'");
     await pool.query("ALTER TABLE cajas ADD COLUMN IF NOT EXISTS activo BOOLEAN DEFAULT true");
+    // Si negocio_id quedó como INTEGER de un esquema viejo, convertir a TEXT (compatible con UUID)
+    try { await pool.query('ALTER TABLE cajas ALTER COLUMN negocio_id TYPE TEXT USING negocio_id::TEXT'); } catch(e2) {}
   } catch(e) { console.error('⚠️ cajas:', e.message); }
 
   // Sucursales (si no existe ya por schema.sql)
@@ -137,6 +140,7 @@ async function aplicarEsquema() {
     `);
     await pool.query("ALTER TABLE sucursales ADD COLUMN IF NOT EXISTS giro TEXT DEFAULT 'tienda'");
     await pool.query("ALTER TABLE sucursales ADD COLUMN IF NOT EXISTS activo BOOLEAN DEFAULT true");
+    try { await pool.query('ALTER TABLE sucursales ALTER COLUMN negocio_id TYPE TEXT USING negocio_id::TEXT'); } catch(e2) {}
   } catch(e) { console.error('⚠️ sucursales:', e.message); }
 }
 
