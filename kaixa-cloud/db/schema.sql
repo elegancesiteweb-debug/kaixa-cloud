@@ -3,9 +3,9 @@
 -- Modelo: negocio → sucursal → caja
 -- ════════════════════════════════════════════════════════════
 
-CREATE EXTENSION IF NOT EXISTS "pgcrypto"; -- para gen_random_uuid()
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
--- ── NEGOCIOS (cada cliente que te compra Kaixa Pro) ────────────
+-- ── NEGOCIOS ────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS negocios (
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   nombre          TEXT NOT NULL,
@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS negocios (
   creado_en       TIMESTAMPTZ DEFAULT now()
 );
 
--- ── SUCURSALES (ubicaciones físicas de un negocio) ─────────────
+-- ── SUCURSALES ──────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS sucursales (
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   negocio_id      UUID NOT NULL REFERENCES negocios(id) ON DELETE CASCADE,
@@ -25,20 +25,20 @@ CREATE TABLE IF NOT EXISTS sucursales (
   creado_en       TIMESTAMPTZ DEFAULT now()
 );
 
--- ── CAJAS (terminales individuales: madre o extra) ─────────────
+-- ── CAJAS ───────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS cajas (
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   negocio_id      UUID NOT NULL REFERENCES negocios(id) ON DELETE CASCADE,
   sucursal_id     UUID NOT NULL REFERENCES sucursales(id) ON DELETE CASCADE,
   nombre          TEXT NOT NULL,
-  tipo            TEXT NOT NULL DEFAULT 'extra', -- 'madre' | 'extra'
-  token           TEXT UNIQUE NOT NULL,           -- credencial de autenticación de esta caja
+  tipo            TEXT NOT NULL DEFAULT 'extra',
+  token           TEXT UNIQUE NOT NULL,
   ultimo_sync     TIMESTAMPTZ DEFAULT NULL,
   activo          BOOLEAN DEFAULT true,
   creado_en       TIMESTAMPTZ DEFAULT now()
 );
 
--- ── CATEGORÍAS (compartidas por negocio) ────────────────────────
+-- ── CATEGORÍAS ──────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS categorias (
   id              UUID PRIMARY KEY,
   negocio_id      UUID NOT NULL REFERENCES negocios(id) ON DELETE CASCADE,
@@ -49,12 +49,12 @@ CREATE TABLE IF NOT EXISTS categorias (
   creado_en       TIMESTAMPTZ DEFAULT now()
 );
 
--- ── PRODUCTOS (inventario compartido del negocio) ───────────────
--- El "id" lo genera la caja donde se crea el producto (UUID),
--- así dos cajas offline nunca pueden crear el mismo id por accidente.
+-- ── PRODUCTOS (inventario por SUCURSAL) ─────────────────────
+-- sucursal_id hace que cada sucursal tenga su propio inventario
 CREATE TABLE IF NOT EXISTS productos (
   id              UUID PRIMARY KEY,
   negocio_id      UUID NOT NULL REFERENCES negocios(id) ON DELETE CASCADE,
+  sucursal_id     UUID REFERENCES sucursales(id) ON DELETE CASCADE,
   nombre          TEXT NOT NULL,
   emoji           TEXT DEFAULT '📦',
   imagen_url      TEXT DEFAULT '',
@@ -71,32 +71,31 @@ CREATE TABLE IF NOT EXISTS productos (
   creado_en       TIMESTAMPTZ DEFAULT now(),
   actualizado_en  TIMESTAMPTZ DEFAULT now()
 );
-CREATE INDEX IF NOT EXISTS idx_productos_negocio ON productos(negocio_id);
+CREATE INDEX IF NOT EXISTS idx_productos_negocio   ON productos(negocio_id);
+CREATE INDEX IF NOT EXISTS idx_productos_sucursal  ON productos(sucursal_id);
 
--- ── MOVIMIENTOS DE STOCK (ledger — el stock se calcula sumando) ─
--- Esto es lo que evita choques entre cajas: cada venta o ajuste
--- inserta un movimiento, nunca se sobrescribe un número fijo.
--- El "id" lo genera la caja de origen (UUID) — así nunca se duplica
--- aunque la misma caja reenvíe el mismo movimiento dos veces.
+-- ── MOVIMIENTOS DE STOCK (por sucursal) ────────────────────
 CREATE TABLE IF NOT EXISTS stock_movimientos (
-  id              UUID PRIMARY KEY,        -- generado en la caja de origen
+  id              UUID PRIMARY KEY,
   negocio_id      UUID NOT NULL REFERENCES negocios(id) ON DELETE CASCADE,
+  sucursal_id     UUID REFERENCES sucursales(id),
   producto_id     UUID NOT NULL REFERENCES productos(id) ON DELETE CASCADE,
   caja_id         UUID REFERENCES cajas(id),
-  cantidad        INTEGER NOT NULL,        -- positivo = entrada, negativo = salida
-  motivo          TEXT DEFAULT 'venta',    -- venta | ajuste | recepcion | devolucion
+  cantidad        INTEGER NOT NULL,
+  motivo          TEXT DEFAULT 'venta',
   venta_id        UUID DEFAULT NULL,
   creado_en       TIMESTAMPTZ DEFAULT now()
 );
-CREATE INDEX IF NOT EXISTS idx_movs_producto ON stock_movimientos(producto_id);
+CREATE INDEX IF NOT EXISTS idx_movs_producto   ON stock_movimientos(producto_id);
+CREATE INDEX IF NOT EXISTS idx_movs_sucursal   ON stock_movimientos(sucursal_id);
 
--- Vista de stock actual (suma de movimientos por producto)
+-- Vista de stock actual por producto Y sucursal
 CREATE OR REPLACE VIEW stock_actual AS
-  SELECT producto_id, COALESCE(SUM(cantidad),0) AS stock
+  SELECT producto_id, sucursal_id, COALESCE(SUM(cantidad),0) AS stock
   FROM stock_movimientos
-  GROUP BY producto_id;
+  GROUP BY producto_id, sucursal_id;
 
--- ── CLIENTES (monedero compartido del negocio) ──────────────────
+-- ── CLIENTES (compartidos por negocio) ──────────────────────
 CREATE TABLE IF NOT EXISTS clientes (
   id              UUID PRIMARY KEY,
   negocio_id      UUID NOT NULL REFERENCES negocios(id) ON DELETE CASCADE,
@@ -113,10 +112,7 @@ CREATE TABLE IF NOT EXISTS clientes (
 );
 CREATE INDEX IF NOT EXISTS idx_clientes_negocio ON clientes(negocio_id);
 
--- ── VENTAS ────────────────────────────────────────────────────
--- El "id" lo genera la caja que cobra (UUID) — esto es lo que permite
--- que la caja madre venda offline y mande sus folios sin chocar
--- con lo que vendieron otras cajas mientras tanto.
+-- ── VENTAS (por sucursal) ────────────────────────────────────
 CREATE TABLE IF NOT EXISTS ventas (
   id                  UUID PRIMARY KEY,
   negocio_id          UUID NOT NULL REFERENCES negocios(id) ON DELETE CASCADE,
@@ -137,10 +133,10 @@ CREATE TABLE IF NOT EXISTS ventas (
   referencia_externa  TEXT DEFAULT NULL,
   creado_en           TIMESTAMPTZ DEFAULT now()
 );
-CREATE INDEX IF NOT EXISTS idx_ventas_negocio ON ventas(negocio_id);
-CREATE INDEX IF NOT EXISTS idx_ventas_sucursal ON ventas(sucursal_id);
+CREATE INDEX IF NOT EXISTS idx_ventas_negocio   ON ventas(negocio_id);
+CREATE INDEX IF NOT EXISTS idx_ventas_sucursal  ON ventas(sucursal_id);
 
--- ── DETALLE DE VENTA ──────────────────────────────────────────
+-- ── DETALLE DE VENTA ─────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS venta_detalle (
   id                  UUID PRIMARY KEY,
   venta_id            UUID NOT NULL REFERENCES ventas(id) ON DELETE CASCADE,
@@ -151,7 +147,7 @@ CREATE TABLE IF NOT EXISTS venta_detalle (
   subtotal            NUMERIC(12,2) DEFAULT 0
 );
 
--- ── REGISTRO DE SINCRONIZACIÓN (auditoría / depuración) ─────────
+-- ── SYNC LOG ─────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS sync_log (
   id              BIGSERIAL PRIMARY KEY,
   caja_id         UUID REFERENCES cajas(id),
