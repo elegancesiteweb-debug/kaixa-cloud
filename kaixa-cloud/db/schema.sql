@@ -156,3 +156,89 @@ CREATE TABLE IF NOT EXISTS sync_log (
   origen_uuid     TEXT,
   procesado_en    TIMESTAMPTZ DEFAULT now()
 );
+
+-- ── EMPLEADOS ────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS empleados (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  negocio_id      UUID NOT NULL REFERENCES negocios(id) ON DELETE CASCADE,
+  sucursal_id     UUID REFERENCES sucursales(id),
+  nombre          TEXT NOT NULL,
+  rol             TEXT DEFAULT 'cajero',
+  usuario         TEXT,
+  password        TEXT,
+  activo          BOOLEAN DEFAULT true,
+  ultima_entrada  TIMESTAMPTZ,
+  ultima_salida   TIMESTAMPTZ,
+  creado_en       TIMESTAMPTZ DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_empleados_negocio   ON empleados(negocio_id);
+CREATE INDEX IF NOT EXISTS idx_empleados_sucursal  ON empleados(sucursal_id);
+
+-- ── LOTES Y CADUCIDADES ──────────────────────────────────────
+CREATE TABLE IF NOT EXISTS lotes (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  negocio_id      UUID NOT NULL REFERENCES negocios(id) ON DELETE CASCADE,
+  sucursal_id     UUID REFERENCES sucursales(id),
+  producto_id     UUID REFERENCES productos(id),
+  nombre_producto TEXT DEFAULT '',
+  numero_lote     TEXT NOT NULL,
+  cantidad        INTEGER DEFAULT 0,
+  fecha_caducidad DATE,
+  activo          BOOLEAN DEFAULT true,
+  creado_en       TIMESTAMPTZ DEFAULT now(),
+  actualizado_en  TIMESTAMPTZ DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_lotes_sucursal ON lotes(sucursal_id);
+
+-- ── PROVEEDORES ──────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS proveedores (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  negocio_id      UUID NOT NULL REFERENCES negocios(id) ON DELETE CASCADE,
+  nombre          TEXT NOT NULL,
+  telefono        TEXT DEFAULT '',
+  email           TEXT DEFAULT '',
+  activo          BOOLEAN DEFAULT true,
+  creado_en       TIMESTAMPTZ DEFAULT now()
+);
+
+-- ── PEDIDOS A PROVEEDORES ────────────────────────────────────
+CREATE TABLE IF NOT EXISTS pedidos (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  negocio_id      UUID NOT NULL REFERENCES negocios(id) ON DELETE CASCADE,
+  sucursal_id     UUID REFERENCES sucursales(id),
+  proveedor_id    UUID REFERENCES proveedores(id),
+  proveedor_nombre TEXT DEFAULT '',
+  estado          TEXT DEFAULT 'pendiente',
+  total           NUMERIC(12,2) DEFAULT 0,
+  notas           TEXT DEFAULT '',
+  creado_en       TIMESTAMPTZ DEFAULT now(),
+  actualizado_en  TIMESTAMPTZ DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS pedido_items (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  pedido_id       UUID NOT NULL REFERENCES pedidos(id) ON DELETE CASCADE,
+  producto_id     UUID REFERENCES productos(id),
+  nombre_producto TEXT DEFAULT '',
+  cantidad        INTEGER DEFAULT 1,
+  costo_unitario  NUMERIC(12,2) DEFAULT 0,
+  subtotal        NUMERIC(12,2) DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_pedidos_sucursal ON pedidos(sucursal_id);
+
+-- ── CORTES DE CAJA ───────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS cortes_caja (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  negocio_id      UUID NOT NULL REFERENCES negocios(id) ON DELETE CASCADE,
+  sucursal_id     UUID REFERENCES sucursales(id),
+  caja_id         UUID REFERENCES cajas(id),
+  tipo            TEXT DEFAULT 'parcial',
+  total_ventas    INTEGER DEFAULT 0,
+  total_monto     NUMERIC(12,2) DEFAULT 0,
+  efectivo        NUMERIC(12,2) DEFAULT 0,
+  tarjeta         NUMERIC(12,2) DEFAULT 0,
+  transferencia   NUMERIC(12,2) DEFAULT 0,
+  cajero_nombre   TEXT DEFAULT '',
+  notas           TEXT DEFAULT '',
+  creado_en       TIMESTAMPTZ DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_cortes_sucursal ON cortes_caja(sucursal_id);
