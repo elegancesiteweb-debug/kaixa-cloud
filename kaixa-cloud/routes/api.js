@@ -11,15 +11,17 @@ function uuid() { return crypto.randomUUID(); }
 // ── GET /api/productos — inventario con stock calculado ─────────
 router.get('/productos', async (req, res) => {
   try {
-    const { negocio_id } = req.caja;
+    const { negocio_id, sucursal_id } = req.caja;
     const { giro, q } = req.query;
     let sql = `
       SELECT p.*, COALESCE(s.stock,0) AS stock, c.nombre AS categoria_nombre, c.emoji AS categoria_emoji
       FROM productos p
-      LEFT JOIN stock_actual s ON s.producto_id = p.id
+      LEFT JOIN stock_actual s ON s.producto_id = p.id AND s.sucursal_id = $2
       LEFT JOIN categorias c ON c.id = p.categoria_id
-      WHERE p.negocio_id = $1 AND p.activo = true`;
-    const params = [negocio_id];
+      WHERE p.negocio_id = $1
+        AND (p.sucursal_id = $2 OR p.sucursal_id IS NULL)
+        AND p.activo = true`;
+    const params = [negocio_id, sucursal_id];
     if (giro) { params.push(giro); sql += ` AND p.giro = $${params.length}`; }
     if (q)    { params.push('%'+q+'%'); sql += ` AND (p.nombre ILIKE $${params.length} OR p.codigo_barras ILIKE $${params.length})`; }
     sql += ' ORDER BY p.nombre';
@@ -31,23 +33,23 @@ router.get('/productos', async (req, res) => {
 // ── POST /api/productos — crear producto ─────────────────────────
 router.post('/productos', async (req, res) => {
   try {
-    const { negocio_id } = req.caja;
+    const { negocio_id, sucursal_id } = req.caja;
     const p = req.body;
     const id = uuid();
     await pool.query(
-      `INSERT INTO productos (id, negocio_id, nombre, emoji, imagen_url, codigo_barras, precio, costo,
+      `INSERT INTO productos (id, negocio_id, sucursal_id, nombre, emoji, imagen_url, codigo_barras, precio, costo,
         stock_minimo, categoria_id, giro, por_peso, unidad_peso, tiene_prescripcion)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
-      [id, negocio_id, p.nombre, p.emoji||'📦', p.imagen_url||'', p.codigo_barras||'',
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
+      [id, negocio_id, sucursal_id, p.nombre, p.emoji||'📦', p.imagen_url||'', p.codigo_barras||'',
        p.precio||0, p.costo||0, p.stock_minimo||5, p.categoria_id||null, p.giro||'tienda',
        !!p.por_peso, p.unidad_peso||'kg', !!p.tiene_prescripcion]
     );
     // Si viene con stock inicial, registrar el movimiento
     if (p.stock_inicial > 0) {
       await pool.query(
-        `INSERT INTO stock_movimientos (id, negocio_id, producto_id, caja_id, cantidad, motivo)
-         VALUES ($1,$2,$3,$4,$5,'recepcion')`,
-        [uuid(), negocio_id, id, req.caja.id, p.stock_inicial]
+        `INSERT INTO stock_movimientos (id, negocio_id, sucursal_id, producto_id, caja_id, cantidad, motivo)
+         VALUES ($1,$2,$3,$4,$5,$6,'recepcion')`,
+        [uuid(), negocio_id, sucursal_id, id, req.caja.id, p.stock_inicial]
       );
     }
     broadcast(req, 'productos:nuevo', { id });
