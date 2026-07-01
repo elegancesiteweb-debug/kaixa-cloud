@@ -447,6 +447,11 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:var(--ff);backgroun
       <div id="corteContent"></div>
     </div>
 
+    <!-- ── PROVEEDORES ── -->
+    <div class="subscreen" id="sub-proveedores">
+      <div id="proveedoresList"></div>
+    </div>
+
     <!-- ── MÁS ── -->
     <div class="subscreen" id="sub-mas">
       <div class="page-pad">
@@ -616,9 +621,10 @@ var screenCfg = {
   clientes: { title: 'Clientes', btn: '⊕', load: loadCli },
   emps:     { title: 'Empleados', btn: '⊕', load: loadEmps },
   lotes:    { title: 'Lotes', btn: '⊕', load: loadLotes },
-  pedidos:  { title: 'Pedidos', btn: null, load: loadPedidos },
+  pedidos:  { title: 'Pedidos', btn: '⊕', load: loadPedidos },
   corte:    { title: 'Corte de caja', btn: null, load: loadCorte },
   mas:      { title: 'Más', btn: null, load: loadMas },
+  proveedores: { title: 'Proveedores', btn: '⊕', load: loadProveedores },
 };
 
 var currentScreen = 'dash';
@@ -662,6 +668,7 @@ function topBtn1Action() {
     clientes: abrirNuevoCli,
     emps: abrirNuevoEmp,
     lotes: abrirNuevoLote,
+    pedidos: abrirNuevoPedido,
   };
   if (actions[currentScreen]) actions[currentScreen]();
 }
@@ -1462,37 +1469,62 @@ async function guardarCli(id) {
 // ══════════════════════════════════════════════════════
 // EMPLEADOS
 // ══════════════════════════════════════════════════════
+var _emps = [];
 async function loadEmps() {
   try {
-    var r = await apiFetch('/api/empleados?giro=' + giro);
-    if (r && r.ok) {
-      var emps = await r.json();
-      if (!Array.isArray(emps)) emps = [];
-      var cont = document.getElementById('empsList');
-      if (!emps.length) { cont.innerHTML = '<div class="empty"><div class="ico">👥</div><p>Sin empleados</p></div>'; return; }
-      var activos = emps.filter(function(e){return e.ultima_entrada&&!e.ultima_salida;});
-      var fuera   = emps.filter(function(e){return !e.ultima_entrada||e.ultima_salida;});
-      var mkCard = function(e, activo) {
-        var ini = e.nombre.split(' ').map(function(p){return p[0]||'';}).join('').substring(0,2).toUpperCase();
-        return '<div class="card" style="cursor:pointer" onclick="abrirEditEmp(' + e.id + ')">' +
-          '<div class="card-row">' +
-            '<div class="card-ico" style="background:' + (activo?'linear-gradient(135deg,#22c55e,#0ea5e9)':'var(--s2)') + ';color:' + (activo?'#fff':'var(--text3)') + '">' + ini + '</div>' +
-            '<div class="card-info"><div class="card-title">' + e.nombre + '</div><div class="card-sub">' + e.rol + (activo?' · Entró: '+(e.ultima_entrada||'').substring(11,16):'') + '</div></div>' +
-            '<span class="tag ' + (activo?'ok':'') + '">' + (activo?'● Activo':'○ Fuera') + '</span>' +
-          '</div></div>';
-      };
-      cont.innerHTML = (activos.length?'<div class="section-header"><h2>🟢 En turno ('+activos.length+')</h2></div>'+activos.map(function(e){return mkCard(e,true);}).join(''):'')+
-        (fuera.length?'<div class="section-header" style="margin-top:8px"><h2>⚫ Fuera de turno ('+fuera.length+')</h2></div>'+fuera.map(function(e){return mkCard(e,false);}).join(''):'');
-    }
+    var r = await apiFetch('/api/empleados');
+    if (!r || !r.ok) return;
+    _emps = await r.json();
+    if (!Array.isArray(_emps)) _emps = [];
+    renderEmps();
   } catch(e) {}
+}
+
+function renderEmps() {
+  var cont = document.getElementById('empsList');
+  if (!_emps.length) {
+    cont.innerHTML = '<div class="empty"><div class="ico">👥</div><p>Sin empleados</p><p style="font-size:12px;margin-top:8px">Toca ⊕ para agregar</p></div>';
+    return;
+  }
+  var activos = _emps.filter(function(e){return e.ultima_entrada&&!e.ultima_salida;});
+  var fuera   = _emps.filter(function(e){return !e.ultima_entrada||e.ultima_salida;});
+  function mkCard(e, activo) {
+    var ini = e.nombre.split(' ').map(function(p){return p[0]||'';}).join('').substring(0,2).toUpperCase();
+    return '<div class="card" style="cursor:pointer;margin-bottom:8px" onclick="abrirEditEmp(\'' + e.id + '\')">' +
+      '<div class="card-row">' +
+        '<div class="card-ico" style="background:' + (activo?'linear-gradient(135deg,#22c55e,#0ea5e9)':'var(--s2)') + ';color:' + (activo?'#fff':'var(--text3)') + ';font-weight:900">' + ini + '</div>' +
+        '<div class="card-info"><div class="card-title">' + e.nombre + '</div>' +
+        '<div class="card-sub">' + (e.rol||'cajero') + (activo?' · Entró '+String(e.ultima_entrada||'').substring(11,16):'') + '</div></div>' +
+        '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">' +
+          '<span class="tag ' + (activo?'ok':'') + '">' + (activo?'● Activo':'○ Fuera') + '</span>' +
+          (activo
+            ? '<button onclick="event.stopPropagation();registrarSalida(\'' + e.id + '\')" style="font-size:10px;padding:3px 8px;border-radius:8px;border:1px solid var(--danger);background:transparent;color:var(--danger);cursor:pointer">Salida</button>'
+            : '<button onclick="event.stopPropagation();registrarEntrada(\'' + e.id + '\')" style="font-size:10px;padding:3px 8px;border-radius:8px;border:1px solid var(--ok);background:transparent;color:var(--ok);cursor:pointer">Entrada</button>'
+          ) +
+        '</div>' +
+      '</div></div>';
+  }
+  cont.innerHTML =
+    (activos.length ? '<div class="section-header"><h2>🟢 En turno (' + activos.length + ')</h2></div>' + activos.map(function(e){return mkCard(e,true);}).join('') : '') +
+    (fuera.length   ? '<div class="section-header" style="margin-top:8px"><h2>⚫ Fuera (' + fuera.length + ')</h2></div>' + fuera.map(function(e){return mkCard(e,false);}).join('') : '');
+}
+
+async function registrarEntrada(id) {
+  var r = await apiFetch('/api/empleados/' + id + '/entrada', { method: 'POST' });
+  if (r && r.ok) { notif('✅ Entrada registrada', 'ok'); loadEmps(); }
+  else notif('Error al registrar entrada', 'err');
+}
+
+async function registrarSalida(id) {
+  var r = await apiFetch('/api/empleados/' + id + '/salida', { method: 'POST' });
+  if (r && r.ok) { notif('✅ Salida registrada', 'ok'); loadEmps(); }
+  else notif('Error al registrar salida', 'err');
 }
 
 function abrirNuevoEmp() { abrirModalEmp(null); }
 function abrirEditEmp(id) {
-  // Cargar empleado y abrir modal
-  apiFetch('/api/empleados/' + id).then(function(r) {
-    if (r && r.ok) r.json().then(function(e) { abrirModalEmp(e); });
-  });
+  var e = _emps.find(function(x){ return String(x.id)===String(id); });
+  if (e) abrirModalEmp(e);
 }
 
 function abrirModalEmp(e) {
@@ -1537,44 +1569,70 @@ async function guardarEmp(id) {
 // ══════════════════════════════════════════════════════
 // LOTES
 // ══════════════════════════════════════════════════════
+var _lotes = [];
 async function loadLotes() {
+  var cont = document.getElementById('lotesList');
   try {
-    var r = await apiFetch('/api/lotes?giro=' + giro);
-    if (!r || !r.ok) { document.getElementById('lotesList').innerHTML = '<div class="empty"><div class="ico">🏷️</div><p>Sin lotes registrados</p></div>'; return; }
-    var lotes = await r.json();
-    if (!Array.isArray(lotes)) lotes = [];
-    var cont = document.getElementById('lotesList');
-    if (!lotes.length) { cont.innerHTML = '<div class="empty"><div class="ico">🏷️</div><p>Sin lotes</p></div>'; return; }
-    var hoy = new Date();
-    cont.innerHTML = lotes.map(function(l) {
-      var cad = l.fecha_caducidad ? new Date(l.fecha_caducidad) : null;
-      var dias = cad ? Math.ceil((cad - hoy) / 86400000) : null;
-      var estado = !cad ? 'ok' : dias < 0 ? 'err' : dias <= 30 ? 'warn' : 'ok';
-      var estadoTxt = !cad ? '✓ Sin caducidad' : dias < 0 ? '🔴 Vencido' : dias <= 30 ? '🟡 Vence en ' + dias + ' días' : '🟢 OK';
-      return '<div class="card" onclick="abrirEditLote(' + l.id + ')" style="cursor:pointer">' +
-        '<div class="card-row">' +
-          '<div class="card-ico">🏷️</div>' +
-          '<div class="card-info"><div class="card-title">' + (l.nombre_producto||l.producto||'—') + '</div>' +
-          '<div class="card-sub">Lote: ' + l.numero_lote + ' · ' + l.cantidad + ' uds</div></div>' +
-          '<span class="tag ' + estado + '">' + estadoTxt + '</span>' +
-        '</div></div>';
-    }).join('');
+    var r = await apiFetch('/api/lotes');
+    if (!r || !r.ok) { cont.innerHTML = '<div class="empty"><div class="ico">🏷️</div><p>Sin lotes</p></div>'; return; }
+    _lotes = await r.json();
+    if (!Array.isArray(_lotes)) _lotes = [];
+    renderLotes();
   } catch(e) { notif('Error cargando lotes','err'); }
 }
 
+function renderLotes() {
+  var cont = document.getElementById('lotesList');
+  if (!_lotes.length) { cont.innerHTML = '<div class="empty"><div class="ico">🏷️</div><p>Sin lotes registrados</p><p style="font-size:12px;margin-top:8px">Toca ⊕ para agregar</p></div>'; return; }
+  var hoy = new Date();
+  // KPIs rápidos
+  var vencidos = 0, porVencer = 0, ok = 0;
+  _lotes.forEach(function(l) {
+    if (!l.fecha_caducidad) { ok++; return; }
+    var dias = Math.ceil((new Date(l.fecha_caducidad) - hoy) / 86400000);
+    if (dias < 0) vencidos++;
+    else if (dias <= 30) porVencer++;
+    else ok++;
+  });
+  cont.innerHTML =
+    '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;padding:12px 16px">' +
+      '<div class="kpi-card" style="text-align:center"><div style="font-size:20px;font-weight:900;color:var(--ok)">' + ok + '</div><div class="kpi-lbl">OK</div></div>' +
+      '<div class="kpi-card" style="text-align:center"><div style="font-size:20px;font-weight:900;color:var(--warn)">' + porVencer + '</div><div class="kpi-lbl">Por vencer</div></div>' +
+      '<div class="kpi-card" style="text-align:center"><div style="font-size:20px;font-weight:900;color:var(--danger)">' + vencidos + '</div><div class="kpi-lbl">Vencidos</div></div>' +
+    '</div>' +
+    _lotes.map(function(l) {
+      var cad = l.fecha_caducidad ? new Date(l.fecha_caducidad) : null;
+      var dias = cad ? Math.ceil((cad - hoy) / 86400000) : null;
+      var cls = !cad ? 'ok' : dias < 0 ? 'err' : dias <= 30 ? 'warn' : 'ok';
+      var txt = !cad ? '✓ Sin cad.' : dias < 0 ? '🔴 Vencido' : dias <= 30 ? '🟡 ' + dias + ' días' : '🟢 OK';
+      return '<div class="card" onclick="abrirEditLote(\'' + l.id + '\')" style="cursor:pointer;margin:0 16px 8px">' +
+        '<div class="card-row">' +
+          '<div class="card-ico" style="background:' + (cls==='err'?'#fee2e2':cls==='warn'?'#fef3c7':'#d1fae5') + '">🏷️</div>' +
+          '<div class="card-info">' +
+            '<div class="card-title">' + (l.nombre_producto||'Sin producto') + '</div>' +
+            '<div class="card-sub">Lote: ' + l.numero_lote + ' · ' + l.cantidad + ' uds</div>' +
+            (cad ? '<div class="card-sub">Cad: ' + String(l.fecha_caducidad).substring(0,10) + '</div>' : '') +
+          '</div>' +
+          '<span class="tag ' + cls + '">' + txt + '</span>' +
+        '</div></div>';
+    }).join('');
+}
+
 function abrirNuevoLote() {
+  var optsProds = allProds.length
+    ? allProds.map(function(p){return '<option value="'+p.id+'" data-nombre="'+p.nombre+'">'+p.nombre+'</option>';}).join('')
+    : '<option value="">Sin productos cargados</option>';
   var html = '<div class="modal-overlay" id="modalLote">' +
     '<div class="modal-sheet">' +
       '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">' +
         '<h3 style="margin:0">➕ Nuevo lote</h3>' +
         '<span class="modal-close" onclick="document.getElementById(\'modalLote\').remove()">✕</span>' +
       '</div>' +
+      '<div class="form-field"><label>Producto</label><select id="lProd" onchange="var o=this.options[this.selectedIndex];document.getElementById(\'lNomProd\').value=o.text">' + optsProds + '</select></div>' +
+      '<input type="hidden" id="lNomProd" value="' + (allProds[0]?allProds[0].nombre:'') + '">' +
       '<div class="form-field"><label>Número de lote</label><input id="lNum" placeholder="LOT-001"></div>' +
-      '<div class="form-field"><label>Producto</label><select id="lProd">' +
-        allProds.map(function(p){return '<option value="'+p.id+'">'+p.nombre+'</option>';}).join('') +
-      '</select></div>' +
       '<div class="form-row">' +
-        '<div class="form-field"><label>Cantidad</label><input id="lQty" type="number" value="1"></div>' +
+        '<div class="form-field"><label>Cantidad</label><input id="lQty" type="number" value="0"></div>' +
         '<div class="form-field"><label>Fecha caducidad</label><input id="lCad" type="date"></div>' +
       '</div>' +
       '<button class="btn-full primary" onclick="guardarLote(null)">Crear lote</button>' +
@@ -1583,9 +1641,8 @@ function abrirNuevoLote() {
 }
 
 async function abrirEditLote(id) {
-  var r = await apiFetch('/api/lotes/' + id);
-  if (!r || !r.ok) return;
-  var l = await r.json();
+  var l = _lotes.find(function(x){ return String(x.id)===String(id); });
+  if (!l) { var r = await apiFetch('/api/lotes/' + id); if (!r||!r.ok) return; l = await r.json(); }
   var html = '<div class="modal-overlay" id="modalLote">' +
     '<div class="modal-sheet">' +
       '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">' +
@@ -1606,11 +1663,15 @@ async function abrirEditLote(id) {
 async function guardarLote(id) {
   var data = {
     numero_lote: document.getElementById('lNum').value,
-    cantidad: parseInt(document.getElementById('lQty').value)||1,
+    cantidad: parseInt(document.getElementById('lQty').value)||0,
     fecha_caducidad: document.getElementById('lCad').value||null,
-    giro: giro,
   };
-  if (!id) data.producto_id = document.getElementById('lProd')?.value;
+  if (!id) {
+    var prodEl = document.getElementById('lProd');
+    data.producto_id = prodEl ? prodEl.value : null;
+    var nomEl = document.getElementById('lNomProd');
+    data.nombre_producto = nomEl ? nomEl.value : (prodEl ? prodEl.options[prodEl.selectedIndex].text : '');
+  }
   var r = await apiFetch('/api/lotes' + (id?'/'+id:''), {
     method: id?'PUT':'POST', body: JSON.stringify(data)
   });
@@ -1634,27 +1695,173 @@ async function eliminarLote(id) {
 // ══════════════════════════════════════════════════════
 // PEDIDOS
 // ══════════════════════════════════════════════════════
+var _pedidos = [];
+var _proveedores = [];
+
 async function loadPedidos() {
+  var cont = document.getElementById('pedidosList');
   try {
-    var r = await apiFetch('/api/pedidos?giro=' + giro);
-    if (!r || !r.ok) { document.getElementById('pedidosList').innerHTML = '<div class="empty"><div class="ico">🚚</div><p>Sin pedidos</p></div>'; return; }
-    var pedidos = await r.json();
-    if (!Array.isArray(pedidos)) pedidos = pedidos.pedidos || [];
-    var cont = document.getElementById('pedidosList');
-    if (!pedidos.length) { cont.innerHTML = '<div class="empty"><div class="ico">🚚</div><p>Sin pedidos registrados</p></div>'; return; }
-    cont.innerHTML = pedidos.map(function(p) {
-      var estado = (p.estado||'pendiente').toLowerCase();
-      var estadoCls = { pendiente:'warn', recibido:'ok', cancelado:'err' };
-      return '<div class="card" style="cursor:pointer;margin-bottom:10px">' +
-        '<div class="card-row">' +
-          '<div class="card-ico">🚚</div>' +
-          '<div class="card-info"><div class="card-title">Pedido #' + p.id + '</div>' +
-          '<div class="card-sub">' + (p.proveedor_nombre||p.proveedor||'Sin proveedor') + ' · ' + (p.creado_en||'').substring(0,10) + '</div></div>' +
-          '<div style="text-align:right"><span class="tag ' + (estadoCls[estado]||'accent') + '">' + estado + '</span>' +
-          '<div class="card-val" style="margin-top:4px">' + fmt(p.total||0) + '</div></div>' +
-        '</div></div>';
-    }).join('');
+    var [rP, rProv] = await Promise.all([
+      apiFetch('/api/pedidos'),
+      apiFetch('/api/proveedores')
+    ]);
+    _pedidos = rP && rP.ok ? await rP.json() : [];
+    _proveedores = rProv && rProv.ok ? await rProv.json() : [];
+    if (!Array.isArray(_pedidos)) _pedidos = [];
+    if (!Array.isArray(_proveedores)) _proveedores = [];
+    renderPedidos();
   } catch(e) { notif('Error cargando pedidos','err'); }
+}
+
+function renderPedidos() {
+  var cont = document.getElementById('pedidosList');
+  var pendientes = _pedidos.filter(function(p){ return p.estado==='pendiente'; });
+  var recibidos  = _pedidos.filter(function(p){ return p.estado==='recibido'; });
+  if (!_pedidos.length) {
+    cont.innerHTML = '<div class="empty"><div class="ico">🚚</div><p>Sin pedidos</p><p style="font-size:12px;margin-top:8px">Toca ⊕ para crear un pedido</p></div>';
+    return;
+  }
+  function mkCard(p) {
+    var cls = {pendiente:'warn', recibido:'ok', cancelado:'err'}[p.estado]||'accent';
+    return '<div class="card" style="cursor:pointer;margin:0 16px 8px" onclick="verDetallePedido(\'' + p.id + '\')">' +
+      '<div class="card-row">' +
+        '<div class="card-ico" style="background:' + (p.estado==='pendiente'?'#fef3c7':p.estado==='recibido'?'#d1fae5':'var(--s2)') + '">🚚</div>' +
+        '<div class="card-info">' +
+          '<div class="card-title">' + (p.proveedor_nombre||'Sin proveedor') + '</div>' +
+          '<div class="card-sub">' + String(p.creado_en||'').substring(0,10) + ' · ' + (p.items?p.items.filter(Boolean).length:0) + ' productos</div>' +
+        '</div>' +
+        '<div style="text-align:right">' +
+          '<span class="tag ' + cls + '">' + (p.estado||'pendiente') + '</span>' +
+          '<div class="card-val" style="margin-top:4px">' + fmt(p.total||0) + '</div>' +
+        '</div>' +
+      '</div></div>';
+  }
+  cont.innerHTML =
+    (pendientes.length ? '<div class="section-header"><h2>⏳ Pendientes (' + pendientes.length + ')</h2></div>' + pendientes.map(mkCard).join('') : '') +
+    (recibidos.length  ? '<div class="section-header" style="margin-top:8px"><h2>✅ Recibidos (' + recibidos.length + ')</h2></div>' + recibidos.map(mkCard).join('') : '');
+}
+
+function verDetallePedido(id) {
+  var p = _pedidos.find(function(x){ return String(x.id)===String(id); });
+  if (!p) return;
+  var items = Array.isArray(p.items) ? p.items.filter(Boolean) : [];
+  var html = '<div class="modal-overlay" id="modalPedido">' +
+    '<div class="modal-sheet">' +
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">' +
+        '<h3 style="margin:0">🚚 Pedido</h3>' +
+        '<span class="modal-close" onclick="document.getElementById(\'modalPedido\').remove()">✕</span>' +
+      '</div>' +
+      '<div style="font-size:12px;color:var(--text3);margin-bottom:12px">' + (p.proveedor_nombre||'Sin proveedor') + ' · ' + String(p.creado_en||'').substring(0,10) + '</div>' +
+      (items.length ? items.map(function(it){
+        return '<div style="display:flex;justify-content:space-between;font-size:12px;padding:7px 0;border-bottom:1px solid var(--border)">' +
+          '<span>' + (it.nombre_producto||'Producto') + ' x' + it.cantidad + '</span>' +
+          '<span style="font-weight:700;font-family:var(--fm)">' + fmt(it.subtotal||0) + '</span>' +
+        '</div>';
+      }).join('') : '<p style="color:var(--text3);font-size:12px">Sin detalle</p>') +
+      '<div style="display:flex;justify-content:space-between;font-weight:900;font-size:15px;margin-top:10px;color:var(--accent)">' +
+        '<span>TOTAL</span><span>' + fmt(p.total||0) + '</span>' +
+      '</div>' +
+      (p.estado==='pendiente' ?
+        '<button class="btn-full primary" style="margin-top:14px" onclick="recibirPedido(\'' + p.id + '\')">📦 Marcar como recibido</button>' : '') +
+      '<button class="btn-full sec" style="margin-top:8px" onclick="document.getElementById(\'modalPedido\').remove()">Cerrar</button>' +
+    '</div></div>';
+  document.getElementById('modalContainer').innerHTML = html;
+}
+
+async function recibirPedido(id) {
+  if (!confirm('¿Confirmar recepción? El stock se actualizará automáticamente.')) return;
+  var r = await apiFetch('/api/pedidos/' + id + '/recibir', { method: 'PUT', body: JSON.stringify({}) });
+  if (r && r.ok) {
+    notif('✅ Pedido recibido — stock actualizado', 'ok');
+    document.getElementById('modalContainer').innerHTML = '';
+    allProds = []; // Forzar recarga de inventario
+    loadPedidos();
+  } else { notif('Error al recibir pedido', 'err'); }
+}
+
+function abrirNuevoPedido() {
+  var optsProvs = _proveedores.length
+    ? _proveedores.map(function(p){return '<option value="'+p.id+'" data-nombre="'+p.nombre+'">'+p.nombre+'</option>';}).join('')
+    : '';
+  var optsProds = allProds.map(function(p){return '<option value="'+p.id+'" data-costo="'+(p.costo||0)+'">'+p.nombre+' — Costo: '+fmt(p.costo||0)+'</option>';}).join('');
+  var html = '<div class="modal-overlay" id="modalNuevoPedido">' +
+    '<div class="modal-sheet">' +
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">' +
+        '<h3 style="margin:0">➕ Nuevo pedido</h3>' +
+        '<span class="modal-close" onclick="document.getElementById(\'modalNuevoPedido\').remove()">✕</span>' +
+      '</div>' +
+      '<div class="form-field"><label>Proveedor</label>' +
+        (optsProvs
+          ? '<select id="pedProvSel">' + optsProvs + '</select>'
+          : '<input id="pedProvNom" placeholder="Nombre del proveedor">') +
+      '</div>' +
+      '<div style="font-size:12px;font-weight:700;color:var(--text2);margin-bottom:8px">Productos del pedido</div>' +
+      '<div id="pedItemsWrap"></div>' +
+      '<div class="form-field" style="margin-top:8px">' +
+        '<select id="pedProdSel">' + optsProds + '</select>' +
+      '</div>' +
+      '<div class="form-row">' +
+        '<div class="form-field"><label>Cantidad</label><input id="pedQty" type="number" value="1" min="1"></div>' +
+        '<div class="form-field"><label>Costo unit.</label><input id="pedCosto" type="number" step="0.01" value="0"></div>' +
+      '</div>' +
+      '<button class="btn-full sec" onclick="agregarItemPedidoLocal()" style="margin-bottom:10px">+ Agregar producto</button>' +
+      '<div class="form-field"><label>Notas</label><input id="pedNotas" placeholder="Opcional..."></div>' +
+      '<button class="btn-full primary" onclick="guardarNuevoPedido()">Crear pedido</button>' +
+    '</div></div>';
+  document.getElementById('modalContainer').innerHTML = html;
+  window._pedItemsLocal = [];
+  // Auto-rellenar costo al cambiar producto
+  setTimeout(function() {
+    var sel = document.getElementById('pedProdSel');
+    if (sel) sel.addEventListener('change', function() {
+      var opt = sel.options[sel.selectedIndex];
+      var costo = opt ? (opt.dataset.costo||0) : 0;
+      var costoEl = document.getElementById('pedCosto');
+      if (costoEl) costoEl.value = costo;
+    });
+  }, 100);
+}
+
+window._pedItemsLocal = [];
+function agregarItemPedidoLocal() {
+  var prodSel = document.getElementById('pedProdSel');
+  var qty = parseInt(document.getElementById('pedQty').value)||1;
+  var costo = parseFloat(document.getElementById('pedCosto').value)||0;
+  if (!prodSel || !prodSel.value) { notif('Selecciona un producto', 'err'); return; }
+  var opt = prodSel.options[prodSel.selectedIndex];
+  window._pedItemsLocal.push({
+    producto_id: prodSel.value,
+    nombre_producto: opt.text.split(' — ')[0],
+    cantidad: qty,
+    costo_unitario: costo,
+    subtotal: qty * costo
+  });
+  var wrap = document.getElementById('pedItemsWrap');
+  wrap.innerHTML = window._pedItemsLocal.map(function(it, i) {
+    return '<div style="display:flex;justify-content:space-between;font-size:12px;padding:6px 0;border-bottom:1px solid var(--border)">' +
+      '<span>' + it.nombre_producto + ' x' + it.cantidad + '</span>' +
+      '<span style="font-weight:700">' + fmt(it.subtotal) + '</span>' +
+    '</div>';
+  }).join('');
+  notif('✓ ' + opt.text.split(' — ')[0] + ' agregado', 'ok');
+}
+
+async function guardarNuevoPedido() {
+  if (!window._pedItemsLocal.length) { notif('Agrega al menos un producto', 'err'); return; }
+  var provSel = document.getElementById('pedProvSel');
+  var provNom = document.getElementById('pedProvNom');
+  var prov_id = provSel ? provSel.value : null;
+  var prov_nombre = provSel ? (provSel.options[provSel.selectedIndex]||{}).text||'' : (provNom ? provNom.value : '');
+  var notas = (document.getElementById('pedNotas')||{}).value||'';
+  var r = await apiFetch('/api/pedidos', {
+    method: 'POST',
+    body: JSON.stringify({ proveedor_id: prov_id, proveedor_nombre: prov_nombre, items: window._pedItemsLocal, notas: notas })
+  });
+  if (r && r.ok) {
+    notif('✅ Pedido creado', 'ok');
+    document.getElementById('modalContainer').innerHTML = '';
+    loadPedidos();
+  } else { notif('Error al crear pedido', 'err'); }
 }
 
 // ══════════════════════════════════════════════════════
@@ -1720,6 +1927,7 @@ function loadMas() {
     { ico:'🏷️', title:'Lotes y caducidades', sub:'Control de vencimientos', screen:'lotes' },
     { ico:'🚚', title:'Pedidos a proveedores', sub:'Reabastecimiento', screen:'pedidos' },
     { ico:'💰', title:'Corte de caja', sub:'Resumen y cierre de turno', screen:'corte' },
+    { ico:'🏢', title:'Proveedores', sub:'Gestionar proveedores', screen:'proveedores' },
   ];
   document.getElementById('masMenu').innerHTML = items.map(function(it) {
     return '<div class="card" onclick="navTo(\'' + it.screen + '\')" style="cursor:pointer;margin-bottom:8px">' +
@@ -1758,6 +1966,75 @@ document.addEventListener('DOMContentLoaded', function() {
   var el = document.getElementById('ventaFiltroFecha');
   if (el) el.value = hoy;
 });
+
+// ══════════════════════════════════════════════════════════════
+// PROVEEDORES
+// ══════════════════════════════════════════════════════════════
+async function loadProveedores() {
+  try {
+    var r = await apiFetch('/api/proveedores');
+    if (!r || !r.ok) return;
+    _proveedores = await r.json();
+    if (!Array.isArray(_proveedores)) _proveedores = [];
+    var cont = document.getElementById('proveedoresList');
+    if (!_proveedores.length) {
+      cont.innerHTML = '<div class="empty"><div class="ico">🏢</div><p>Sin proveedores</p><p style="font-size:12px;margin-top:8px">Toca ⊕ para agregar</p></div>';
+      return;
+    }
+    cont.innerHTML = _proveedores.map(function(p) {
+      return '<div class="card" style="cursor:pointer;margin-bottom:8px" onclick="abrirEditProveedor(\'' + p.id + '\')">' +
+        '<div class="card-row">' +
+          '<div class="card-ico">🏢</div>' +
+          '<div class="card-info"><div class="card-title">' + p.nombre + '</div>' +
+          '<div class="card-sub">' + (p.telefono||'Sin teléfono') + (p.email?' · '+p.email:'') + '</div></div>' +
+          '<div style="color:var(--text3)">›</div>' +
+        '</div></div>';
+    }).join('');
+  } catch(e) { notif('Error cargando proveedores','err'); }
+}
+
+function abrirNuevoProveedor() { abrirModalProveedor(null); }
+function abrirEditProveedor(id) {
+  var p = _proveedores.find(function(x){ return String(x.id)===String(id); });
+  if (p) abrirModalProveedor(p);
+}
+function abrirModalProveedor(p) {
+  var esNuevo = !p;
+  var html = '<div class="modal-overlay" id="modalProv">' +
+    '<div class="modal-sheet">' +
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">' +
+        '<h3 style="margin:0">' + (esNuevo?'➕ Nuevo proveedor':'✏️ Editar proveedor') + '</h3>' +
+        '<span class="modal-close" onclick="document.getElementById(\'modalProv\').remove()">✕</span>' +
+      '</div>' +
+      '<div class="form-field"><label>Nombre</label><input id="prvNombre" value="' + (p?p.nombre:'') + '"></div>' +
+      '<div class="form-field"><label>Teléfono</label><input id="prvTel" type="tel" value="' + (p?p.telefono||'':'') + '"></div>' +
+      '<div class="form-field"><label>Email</label><input id="prvEmail" type="email" value="' + (p?p.email||'':'') + '"></div>' +
+      '<button class="btn-full primary" onclick="guardarProveedor()">Guardar</button>' +
+    '</div></div>';
+  document.getElementById('modalContainer').innerHTML = html;
+}
+async function guardarProveedor() {
+  var data = {
+    nombre: document.getElementById('prvNombre').value,
+    telefono: document.getElementById('prvTel').value,
+    email: document.getElementById('prvEmail').value
+  };
+  if (!data.nombre) { notif('El nombre es requerido', 'err'); return; }
+  var r = await apiFetch('/api/proveedores', { method: 'POST', body: JSON.stringify(data) });
+  if (r && r.ok) {
+    notif('✅ Proveedor guardado', 'ok');
+    document.getElementById('modalContainer').innerHTML = '';
+    loadProveedores();
+  } else { notif('Error al guardar', 'err'); }
+}
+
+// Agregar proveedores al topBtn1
+var _origTopBtn1 = topBtn1Action;
+topBtn1Action = function() {
+  if (currentScreen === 'proveedores') { abrirNuevoProveedor(); return; }
+  _origTopBtn1();
+};
+
 </script>
 
 </body>
