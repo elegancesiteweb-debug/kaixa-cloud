@@ -505,4 +505,23 @@ router.post('/proveedores', async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+
+// ── POST /api/vincular-licencia — vincular licencia al negocio correcto ──
+// Se llama automáticamente al configurar multi-sucursal en la PC
+router.post('/vincular-licencia', async (req, res) => {
+  try {
+    const { clave, negocio_id } = req.body;
+    if (!clave || !negocio_id) return res.status(400).json({ ok: false, error: 'Faltan datos' });
+    const r = await pool.query(
+      'UPDATE licencias SET negocio_id=$1 WHERE clave=$2 RETURNING clave, negocio_id',
+      [negocio_id, clave]
+    );
+    if (!r.rows.length) return res.status(404).json({ ok: false, error: 'Licencia no encontrada' });
+    console.log('✅ Licencia', clave, 'vinculada a negocio', negocio_id);
+    res.json({ ok: true });
+  } catch(e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 module.exports = router;
