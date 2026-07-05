@@ -114,15 +114,19 @@ router.get('/pull', async (req, res) => {
   const since = req.query.since || '1970-01-01T00:00:00Z';
 
   try {
+    const { sucursal_id } = req.caja;
     const [productos, clientes, ventas, movimientos] = await Promise.all([
+      // Productos: filtrar por sucursal — cada sucursal tiene su propio inventario
       pool.query(
-        `SELECT * FROM productos WHERE negocio_id=$1 AND actualizado_en > $2 ORDER BY actualizado_en`,
-        [negocio_id, since]
+        `SELECT * FROM productos WHERE negocio_id=$1 AND sucursal_id=$2 AND actualizado_en > $3 ORDER BY actualizado_en`,
+        [negocio_id, sucursal_id, since]
       ),
+      // Clientes: compartidos en todo el negocio (monedero unificado)
       pool.query(
         `SELECT * FROM clientes WHERE negocio_id=$1 AND actualizado_en > $2 ORDER BY actualizado_en`,
         [negocio_id, since]
       ),
+      // Ventas: filtrar por sucursal — solo ver ventas de esta sucursal
       pool.query(
         `SELECT v.*, json_agg(json_build_object(
             'producto_id', vd.producto_id, 'nombre_producto', vd.nombre_producto,
@@ -130,13 +134,14 @@ router.get('/pull', async (req, res) => {
           )) AS items
          FROM ventas v
          LEFT JOIN venta_detalle vd ON vd.venta_id = v.id
-         WHERE v.negocio_id=$1 AND v.creado_en > $2 AND v.caja_id IS DISTINCT FROM $3
+         WHERE v.negocio_id=$1 AND v.sucursal_id=$2 AND v.creado_en > $3 AND v.caja_id IS DISTINCT FROM $4
          GROUP BY v.id ORDER BY v.creado_en`,
-        [negocio_id, since, caja_id]
+        [negocio_id, sucursal_id, since, caja_id]
       ),
+      // Movimientos de stock: filtrar por sucursal
       pool.query(
-        `SELECT * FROM stock_movimientos WHERE negocio_id=$1 AND creado_en > $2 AND caja_id IS DISTINCT FROM $3 ORDER BY creado_en`,
-        [negocio_id, since, caja_id]
+        `SELECT * FROM stock_movimientos WHERE negocio_id=$1 AND sucursal_id=$2 AND creado_en > $3 AND caja_id IS DISTINCT FROM $4 ORDER BY creado_en`,
+        [negocio_id, sucursal_id, since, caja_id]
       )
     ]);
 
