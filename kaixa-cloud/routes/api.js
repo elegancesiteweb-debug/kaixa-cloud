@@ -556,8 +556,7 @@ router.post('/productos/:uuid/copiar-sucursal', async (req, res) => {
     if (existe.rows.length) return res.json({ ok: false, mensaje: 'El producto ya existe en esa sucursal' });
 
     // Copiar el producto a la sucursal destino con nuevo UUID
-    const { v4: uuidv4 } = require('uuid');
-    const nuevo_id = uuidv4();
+    const nuevo_id = require('crypto').randomUUID();
     await pool.query(
       `INSERT INTO productos (id, negocio_id, sucursal_id, nombre, emoji, imagen_url,
         codigo_barras, precio, costo, stock_minimo, categoria_id, giro, por_peso,
