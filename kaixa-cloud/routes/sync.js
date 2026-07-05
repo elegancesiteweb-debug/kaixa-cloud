@@ -171,4 +171,19 @@ router.get('/stock/:producto_id', async (req, res) => {
   }
 });
 
+
+// ── GET /api/sync/sucursales — lista sucursales del negocio ──────────────
+router.get('/sucursales', async (req, res) => {
+  try {
+    const { negocio_id } = req.caja;
+    const r = await pool.query(
+      'SELECT id, nombre FROM sucursales WHERE negocio_id=$1 AND activo=true ORDER BY nombre',
+      [negocio_id]
+    );
+    res.json({ ok: true, sucursales: r.rows });
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 module.exports = router;
