@@ -524,4 +524,56 @@ router.post('/vincular-licencia', async (req, res) => {
   }
 });
 
+
+// ── POST /api/productos/:uuid/copiar-sucursal ─────────────────────────────
+// Copia un producto de una sucursal a otra dentro del mismo negocio
+router.post('/productos/:uuid/copiar-sucursal', async (req, res) => {
+  try {
+    const { sucursal_id_destino } = req.body;
+    const { negocio_id } = req.caja;
+    if (!sucursal_id_destino) return res.status(400).json({ error: 'Falta sucursal_id_destino' });
+
+    // Verificar que la sucursal destino pertenece al mismo negocio
+    const suc = await pool.query(
+      'SELECT id FROM sucursales WHERE id=$1 AND negocio_id=$2',
+      [sucursal_id_destino, negocio_id]
+    );
+    if (!suc.rows.length) return res.status(404).json({ error: 'Sucursal no encontrada' });
+
+    // Obtener el producto original
+    const prod = await pool.query(
+      'SELECT * FROM productos WHERE id=$1 AND negocio_id=$2',
+      [req.params.uuid, negocio_id]
+    );
+    if (!prod.rows.length) return res.status(404).json({ error: 'Producto no encontrado' });
+    const p = prod.rows[0];
+
+    // Verificar que no existe ya en la sucursal destino
+    const existe = await pool.query(
+      'SELECT id FROM productos WHERE negocio_id=$1 AND sucursal_id=$2 AND nombre=$3',
+      [negocio_id, sucursal_id_destino, p.nombre]
+    );
+    if (existe.rows.length) return res.json({ ok: false, mensaje: 'El producto ya existe en esa sucursal' });
+
+    // Copiar el producto a la sucursal destino con nuevo UUID
+    const { v4: uuidv4 } = require('uuid');
+    const nuevo_id = uuidv4();
+    await pool.query(
+      `INSERT INTO productos (id, negocio_id, sucursal_id, nombre, emoji, imagen_url,
+        codigo_barras, precio, costo, stock_minimo, categoria_id, giro, por_peso,
+        unidad_peso, tiene_prescripcion, actualizado_en)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,now())`,
+      [nuevo_id, negocio_id, sucursal_id_destino, p.nombre, p.emoji||'📦',
+       p.imagen_url||'', p.codigo_barras||'', p.precio, p.costo, p.stock_minimo,
+       p.categoria_id, p.giro, p.por_peso, p.unidad_peso, p.tiene_prescripcion]
+    );
+
+    console.log('✅ Producto copiado:', p.nombre, '→ sucursal', sucursal_id_destino);
+    res.json({ ok: true, nuevo_id, mensaje: `Producto "${p.nombre}" copiado correctamente` });
+  } catch(e) {
+    console.error('Error copiando producto:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 module.exports = router;
