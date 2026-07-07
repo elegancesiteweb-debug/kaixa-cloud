@@ -141,7 +141,7 @@ router.post('/ventas', async (req, res) => {
     }
     const folio = (v.giro||'VTA').toUpperCase().slice(0,3) + '-' + Date.now().toString().slice(-8) + '-' + String(num).padStart(4,'0');
 
-    const subtotal = v.items.reduce((s,i) => s + i.precio*i.cantidad, 0);
+    const subtotal = v.items.reduce((s,i) => s + (parseFloat(i.precio_unitario||i.precio||0)) * (parseInt(i.cantidad||i.qty||1)), 0);
     const descuento = v.descuento || 0;
     const base = subtotal - descuento;
     const iva = v.iva_activo ? parseFloat((base*0.16).toFixed(2)) : 0;
@@ -161,14 +161,16 @@ router.post('/ventas', async (req, res) => {
       await client.query(
         `INSERT INTO venta_detalle (id, venta_id, producto_id, nombre_producto, cantidad, precio_unitario, subtotal)
          VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-        [uuid(), ventaId, item.id||null, item.nombre, item.cantidad, item.precio, item.cantidad*item.precio]
+        [uuid(), ventaId, item.producto_id||item.id||null, item.nombre||item.nombre_producto,
+         parseInt(item.cantidad||item.qty||1), parseFloat(item.precio_unitario||item.precio||0),
+         parseInt(item.cantidad||item.qty||1)*parseFloat(item.precio_unitario||item.precio||0)]
       );
       // Movimiento de stock (salida)
       if (item.id) {
         await client.query(
           `INSERT INTO stock_movimientos (id, negocio_id, producto_id, caja_id, cantidad, motivo, venta_id)
            VALUES ($1,$2,$3,$4,$5,'venta',$6)`,
-          [uuid(), negocio_id, item.id, caja_id, -item.cantidad, ventaId]
+          [uuid(), negocio_id, item.producto_id||item.id, caja_id, -(parseInt(item.cantidad||item.qty||1)), ventaId]
         );
       }
     }
