@@ -10,7 +10,6 @@
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="kaixa_icon.png">
 <style>
-
 :root{
   --bg:#ffffff;--s1:#f8f5ff;--s2:#f0ebff;--s3:#e8dfff;
   --border:#e2d9f3;--border2:#c4b5fd;
@@ -25,12 +24,8 @@
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 html,body{width:100%;height:100%;overflow:hidden;font-family:var(--ff);background:var(--bg);color:var(--text)}
 @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800;900&display=swap');
-
-/* ── Screens ── */
 .screen{display:none;position:fixed;inset:0;flex-direction:column;overflow:hidden}
 .screen.active{display:flex}
-
-/* ── Splash ── */
 #sc-splash{background:linear-gradient(160deg,#1a0a2e 0%,#16213e 50%,#0d0d1a 100%);align-items:center;justify-content:center}
 .splash-mascot{width:200px;height:200px;object-fit:contain;filter:drop-shadow(0 10px 30px rgba(139,92,246,.5));animation:splashFloat 3s ease-in-out infinite}
 @keyframes splashFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-12px)}}
@@ -40,8 +35,6 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:var(--ff);backgroun
 .splash-sub{color:rgba(139,92,246,.8);font-size:12px;letter-spacing:4px;text-transform:uppercase;margin-top:6px}
 .splash-bar-wrap{width:200px;margin-top:32px;height:3px;background:rgba(255,255,255,.1);border-radius:20px;overflow:hidden}
 .splash-bar{height:100%;background:var(--grad);border-radius:20px;width:0%;transition:width .5s ease;box-shadow:0 0 10px rgba(139,92,246,.8)}
-
-/* ── Setup/Login ── */
 #sc-setup,#sc-login{background:var(--s1);align-items:center;justify-content:center;padding:24px}
 .auth-card{background:#fff;border-radius:24px;padding:28px 24px;width:100%;max-width:400px;box-shadow:0 8px 32px rgba(139,92,246,.12)}
 .auth-logo{text-align:center;margin-bottom:24px}
@@ -55,8 +48,6 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:var(--ff);backgroun
 .btn-primary{width:100%;padding:14px;background:var(--grad);border:none;border-radius:14px;color:#fff;font-size:15px;font-weight:800;cursor:pointer;font-family:var(--ff);letter-spacing:.3px}
 .btn-primary:active{transform:scale(.98)}
 .btn-sec{width:100%;padding:12px;background:var(--s2);border:1.5px solid var(--border2);border-radius:14px;color:var(--accent);font-size:14px;font-weight:700;cursor:pointer;font-family:var(--ff);margin-top:10px}
-
-/* ── Main layout ── */
 #sc-main{background:var(--bg)}
 .topbar{height:56px;background:#fff;border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 16px;gap:12px;flex-shrink:0;box-shadow:0 1px 8px rgba(139,92,246,.06)}
 .topbar-logo{font-size:22px;font-weight:900;background:var(--grad);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
@@ -64,8 +55,6 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:var(--ff);backgroun
 .topbar-btn{width:36px;height:36px;border-radius:10px;border:none;background:var(--s2);display:flex;align-items:center;justify-content:center;font-size:16px;cursor:pointer;flex-shrink:0}
 .content{flex:1;overflow-y:auto;overflow-x:hidden;padding-bottom:calc(var(--nav-h) + 16px)}
 .content::-webkit-scrollbar{display:none}
-
-/* ── Bottom nav ── */
 .bottomnav{height:var(--nav-h);background:#fff;border-top:1px solid var(--border);display:flex;align-items:center;flex-shrink:0;box-shadow:0 -2px 12px rgba(139,92,246,.08)}
 .nav-item{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;padding:6px 4px;cursor:pointer;color:var(--text3);transition:color .15s}
 .nav-item.active{color:var(--accent)}
@@ -73,23 +62,17 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:var(--ff);backgroun
 .nav-item .nl{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.3px}
 .nav-dot{width:4px;height:4px;border-radius:50%;background:var(--accent);margin-top:2px;opacity:0;transition:opacity .15s}
 .nav-item.active .nav-dot{opacity:1}
-
-/* ── Sub-screens ── */
 .subscreen{display:none}
 .subscreen.active{display:block}
-
-/* ── Cards y componentes ── */
 .page-pad{padding:16px}
 .kpi-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px}
 .kpi-card{background:#fff;border-radius:16px;padding:14px;box-shadow:0 2px 12px rgba(139,92,246,.08)}
 .kpi-ico{font-size:22px;margin-bottom:6px}
 .kpi-val{font-size:22px;font-weight:900;color:var(--accent);font-family:var(--fm)}
 .kpi-lbl{font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-top:2px}
-
 .section-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;padding:0 16px}
 .section-header h2{font-size:15px;font-weight:800;color:var(--text)}
 .section-header .see-all{font-size:12px;color:var(--accent);font-weight:700}
-
 .card{background:#fff;border-radius:16px;padding:14px 16px;margin:0 16px 10px;box-shadow:0 2px 10px rgba(139,92,246,.07)}
 .card-row{display:flex;align-items:center;gap:12px}
 .card-ico{width:42px;height:42px;border-radius:12px;background:var(--s2);display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0}
@@ -99,8 +82,6 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:var(--ff);backgroun
 .card-right{text-align:right;flex-shrink:0}
 .card-val{font-size:14px;font-weight:900;color:var(--accent);font-family:var(--fm)}
 .card-tag{font-size:10px;padding:2px 8px;border-radius:20px;font-weight:700;background:var(--s2);color:var(--accent)}
-
-/* ── POS ── */
 .pos-layout{display:flex;flex-direction:column;height:100%}
 .pos-search{padding:12px 16px;background:#fff;border-bottom:1px solid var(--border)}
 .pos-searchbox{display:flex;align-items:center;gap:8px;background:var(--s1);border-radius:12px;padding:10px 14px}
@@ -117,8 +98,6 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:var(--ff);backgroun
 .prod-name{font-size:12px;font-weight:700;color:var(--text);margin-bottom:4px;line-height:1.3}
 .prod-price{font-size:13px;font-weight:900;color:var(--accent);font-family:var(--fm)}
 .prod-stock{font-size:10px;color:var(--text3);margin-top:2px}
-
-/* ── Cart drawer ── */
 .cart-fab{position:fixed;bottom:calc(var(--nav-h) + 16px);right:16px;background:var(--grad);border-radius:20px;padding:12px 18px;display:flex;align-items:center;gap:8px;color:#fff;font-size:13px;font-weight:800;box-shadow:0 4px 20px rgba(139,92,246,.4);cursor:pointer;z-index:100;transition:transform .1s}
 .cart-fab:active{transform:scale(.95)}
 .cart-badge{background:#fff;color:var(--accent);border-radius:20px;padding:1px 8px;font-size:12px;font-weight:900}
@@ -134,14 +113,11 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:var(--ff);backgroun
 .qty-ctrl{display:flex;align-items:center;gap:6px}
 .qty-btn{width:28px;height:28px;border-radius:8px;border:1.5px solid var(--border2);background:var(--s2);font-size:14px;font-weight:900;color:var(--accent);cursor:pointer;display:flex;align-items:center;justify-content:center}
 .qty-num{width:24px;text-align:center;font-size:13px;font-weight:800;font-family:var(--fm)}
-
 .cart-total{background:var(--s1);border-radius:16px;padding:14px;margin:14px 0;display:flex;align-items:center;justify-content:space-between}
 .cart-total .lbl{font-size:13px;color:var(--text2);font-weight:600}
 .cart-total .val{font-size:24px;font-weight:900;color:var(--accent);font-family:var(--fm)}
 .btn-cobrar{width:100%;padding:16px;background:var(--grad);border:none;border-radius:16px;color:#fff;font-size:16px;font-weight:900;cursor:pointer;font-family:var(--ff);letter-spacing:.3px}
 .btn-cobrar:active{transform:scale(.98)}
-
-/* ── Cobro modal ── */
 .cobro-sheet{position:fixed;inset:0;z-index:300;display:flex;flex-direction:column}
 .cobro-bg{flex:1;background:rgba(0,0,0,.5)}
 .cobro-panel{background:#fff;border-radius:24px 24px 0 0;padding:24px;max-height:85vh;overflow-y:auto}
@@ -159,8 +135,6 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:var(--ff);backgroun
 .cambio-box{background:linear-gradient(135deg,#d1fae5,#a7f3d0);border-radius:14px;padding:12px 16px;display:flex;justify-content:space-between;align-items:center;margin-top:10px}
 .cambio-box .lbl{font-size:12px;font-weight:700;color:#065f46}
 .cambio-box .val{font-size:20px;font-weight:900;color:#065f46;font-family:var(--fm)}
-
-/* ── Inventario ── */
 .search-bar{display:flex;align-items:center;gap:8px;background:var(--s1);border-radius:14px;padding:11px 14px;margin:12px 16px}
 .search-bar input{flex:1;border:none;background:transparent;font-size:14px;color:var(--text);outline:none;font-family:var(--ff)}
 .inv-item{display:flex;align-items:center;gap:12px;padding:12px 16px;background:#fff;border-bottom:1px solid var(--border);cursor:pointer;transition:background .1s}
@@ -173,8 +147,6 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:var(--ff);backgroun
 .ii-stock{font-size:12px;font-weight:700;margin-top:1px}
 .ii-price{font-size:13px;font-weight:900;color:var(--accent);font-family:var(--fm);text-align:right}
 .ii-cost{font-size:10px;color:var(--text3);text-align:right;margin-top:2px}
-
-/* ── Modales ── */
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:400;display:flex;align-items:flex-end;justify-content:center}
 .modal-sheet{background:#fff;border-radius:24px 24px 0 0;padding:24px;width:100%;max-height:90vh;overflow-y:auto}
 .modal-sheet h3{font-size:17px;font-weight:900;margin-bottom:16px}
@@ -189,37 +161,27 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:var(--ff);backgroun
 .btn-full.sec{background:var(--s2);color:var(--accent)}
 .btn-full.danger{background:#fef2f2;color:var(--danger)}
 .btn-full:active{transform:scale(.98)}
-
-/* ── Notificaciones ── */
 .notif{position:fixed;top:16px;left:16px;right:16px;background:#1a1035;color:#fff;border-radius:14px;padding:12px 16px;font-size:13px;font-weight:600;z-index:9999;transform:translateY(-80px);transition:transform .3s;box-shadow:0 4px 20px rgba(0,0,0,.3)}
 .notif.show{transform:translateY(0)}
 .notif.ok{background:linear-gradient(135deg,#065f46,#10b981)}
 .notif.err{background:linear-gradient(135deg,#7f1d1d,#ef4444)}
-
-/* ── Badges/Tags ── */
 .tag{display:inline-block;padding:2px 8px;border-radius:20px;font-size:10px;font-weight:700}
 .tag.ok{background:#d1fae5;color:#065f46}
 .tag.warn{background:#fef3c7;color:#92400e}
 .tag.err{background:#fee2e2;color:#7f1d1d}
 .tag.accent{background:var(--s2);color:var(--accent)}
-
-/* ── Clientes ── */
 .cli-card{padding:14px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;cursor:pointer}
 .cli-avatar{width:44px;height:44px;border-radius:50%;background:var(--grad);display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:900;color:#fff;flex-shrink:0}
 .cli-name{font-size:13px;font-weight:700}
 .cli-tel{font-size:11px;color:var(--text3);margin-top:2px}
 .cli-saldo{font-size:13px;font-weight:900;color:var(--accent);font-family:var(--fm)}
 .cli-puntos{font-size:10px;color:var(--text3)}
-
-/* ── Dashboard ── */
 .dash-hero{background:linear-gradient(135deg,#8b5cf6,#d946ef);padding:20px 16px 28px;color:#fff;position:relative;overflow:hidden}
 .dash-hero::after{content:'';position:absolute;width:200px;height:200px;border-radius:50%;background:rgba(255,255,255,.07);top:-60px;right:-60px}
 .dash-hero h1{font-size:22px;font-weight:900;margin-bottom:4px}
 .dash-hero .sub{font-size:12px;opacity:.8}
 .dash-hero .big-num{font-size:36px;font-weight:900;font-family:var(--fm);margin-top:14px}
 .dash-hero .big-lbl{font-size:11px;opacity:.7;text-transform:uppercase;letter-spacing:.5px}
-
-/* ── Lista ventas ── */
 .venta-row{padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px}
 .vr-num{font-size:11px;font-weight:700;color:var(--text3)}
 .vr-info{flex:1}
@@ -230,54 +192,26 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:var(--ff);backgroun
 .fp-tarjeta{background:#ede9fe;color:#4c1d95}
 .fp-transferencia{background:#dbeafe;color:#1e40af}
 .vr-total{font-size:15px;font-weight:900;color:var(--accent);font-family:var(--fm)}
-
-/* ── Estados vacíos ── */
 .empty{text-align:center;padding:48px 24px;color:var(--text3)}
 .empty .ico{font-size:48px;margin-bottom:12px}
 .empty p{font-size:14px;font-weight:600}
-
-/* ── FAB ── */
 .fab{position:fixed;bottom:calc(var(--nav-h) + 16px);right:16px;width:52px;height:52px;border-radius:50%;background:var(--grad);border:none;color:#fff;font-size:22px;cursor:pointer;box-shadow:0 4px 16px rgba(139,92,246,.4);z-index:100;display:flex;align-items:center;justify-content:center}
 .fab:active{transform:scale(.94)}
-
-/* ── Corte de caja ── */
 .corte-stat{background:#fff;border-radius:14px;padding:14px 16px;display:flex;justify-content:space-between;align-items:center;margin:0 16px 10px;box-shadow:0 2px 8px rgba(139,92,246,.07)}
 .cs-lbl{font-size:12px;color:var(--text2);font-weight:600}
 .cs-val{font-size:16px;font-weight:900;color:var(--accent);font-family:var(--fm)}
-
-/* ── Animaciones ── */
 @keyframes fadeUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
 .fade-up{animation:fadeUp .3s ease both}
-
-/* Dark mode */
 @media(prefers-color-scheme:dark){
   :root{--bg:#0f0a1a;--s1:#1a0f2e;--s2:#231544;--s3:#2d1a58;--border:#2d1a58;--border2:#4c1d95;--text:#f0ebff;--text2:#c4b5fd;--text3:#7c5cbf}
   .topbar,.auth-card,.card,.kpi-card,.pos-cat:not(.active),.prod-card,.cart-drawer,.modal-sheet,.corte-stat,.cobro-panel,.bottomnav{background:#1a0f2e}
   .cart-item,.inv-item,.cli-card,.venta-row{border-color:#2d1a58}
   .form-field input,.form-field select,.field input,.field select{background:#231544;border-color:#4c1d95;color:#f0ebff}
 }
-
 </style>
 </head>
 <body>
-<!DOCTYPE html>
-<html lang="es">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="theme-color" content="#8b5cf6">
-<title>Kaixa Pro</title>
-<link rel="manifest" href="manifest.json">
-<link rel="apple-touch-icon" href="kaixa_icon.png">
-</head>
-<body>
-
-<!-- NOTIFICACION -->
 <div class="notif" id="notif"></div>
-
-<!-- ═══════════════ SPLASH ═══════════════ -->
 <div class="screen active" id="sc-splash">
   <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:0" class="splash-enter">
     <img src="kaixa_mascot.png" class="splash-mascot" alt="Kaixa" onerror="this.style.fontSize='80px';this.outerHTML='<div style=font-size:80px>K</div>'">
@@ -287,8 +221,6 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:var(--ff);backgroun
     <div style="color:rgba(255,255,255,.4);font-size:11px;margin-top:10px" id="splashTxt">Iniciando...</div>
   </div>
 </div>
-
-<!-- ═══════════════ SETUP (activación por licencia) ═══════════════ -->
 <div class="screen" id="sc-setup">
   <div class="auth-card">
     <div class="auth-logo">
@@ -305,8 +237,6 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:var(--ff);backgroun
     <div style="text-align:center;font-size:11px;color:var(--text3);margin-top:14px">Usa la misma clave que activaste en tu PC</div>
   </div>
 </div>
-
-<!-- ═══════════════ SELECCIÓN DE SUCURSAL ═══════════════ -->
 <div class="screen" id="sc-sucursal">
   <div class="auth-card">
     <div class="auth-logo">
@@ -317,8 +247,6 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:var(--ff);backgroun
     <div id="sucList"></div>
   </div>
 </div>
-
-<!-- ═══════════════ LOGIN ═══════════════ -->
 <div class="screen" id="sc-login">
   <div class="auth-card">
     <div class="auth-logo">
@@ -339,22 +267,14 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:var(--ff);backgroun
     <button class="btn-sec" onclick="go('setup')">⚙️ Cambiar licencia</button>
   </div>
 </div>
-
-<!-- ═══════════════ MAIN ═══════════════ -->
 <div class="screen" id="sc-main">
-
-  <!-- Topbar -->
   <div class="topbar">
     <span class="topbar-logo">K</span>
     <span class="topbar-title" id="topTitle">Dashboard</span>
     <button class="topbar-btn" id="topBtn1" style="display:none" onclick="topBtn1Action()">⊕</button>
     <button class="topbar-btn" onclick="abrirPerfil()">👤</button>
   </div>
-
-  <!-- Contenido -->
   <div class="content" id="mainContent">
-
-    <!-- ── DASHBOARD ── -->
     <div class="subscreen active" id="sub-dash">
       <div class="dash-hero">
         <div class="sub" id="dashFecha">Hoy</div>
@@ -382,8 +302,6 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:var(--ff);backgroun
         <div id="dashTopProds"></div>
       </div>
     </div>
-
-    <!-- ── POS ── -->
     <div class="subscreen" id="sub-pos">
       <div class="pos-search">
         <div class="pos-searchbox">
@@ -394,8 +312,6 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:var(--ff);backgroun
       <div class="pos-cats" id="posCats"></div>
       <div class="prod-grid" id="posGrid"></div>
     </div>
-
-    <!-- ── INVENTARIO ── -->
     <div class="subscreen" id="sub-inv">
       <div class="search-bar">
         <span>🔍</span>
@@ -403,8 +319,6 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:var(--ff);backgroun
       </div>
       <div id="invList"></div>
     </div>
-
-    <!-- ── VENTAS ── -->
     <div class="subscreen" id="sub-ventas">
       <div style="padding:12px 16px;display:flex;gap:8px;overflow-x:auto">
         <input type="date" id="ventaFiltroFecha" onchange="loadVentas()" style="padding:8px 12px;border-radius:10px;border:1.5px solid var(--border);font-family:var(--ff);font-size:13px;background:var(--s1);color:var(--text)">
@@ -417,42 +331,15 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:var(--ff);backgroun
       </div>
       <div id="ventasList"></div>
     </div>
-
-    <!-- ── CLIENTES ── -->
     <div class="subscreen" id="sub-clientes">
-      <div class="search-bar">
-        <span>🔍</span>
-        <input id="cliBuscar" placeholder="Buscar cliente..." oninput="filtrarCli()">
-      </div>
+      <div class="search-bar"><span>🔍</span><input id="cliBuscar" placeholder="Buscar cliente..." oninput="filtrarCli()"></div>
       <div id="cliList"></div>
     </div>
-
-    <!-- ── EMPLEADOS ── -->
-    <div class="subscreen" id="sub-emps">
-      <div id="empsList"></div>
-    </div>
-
-    <!-- ── LOTES ── -->
-    <div class="subscreen" id="sub-lotes">
-      <div id="lotesList"></div>
-    </div>
-
-    <!-- ── PEDIDOS ── -->
-    <div class="subscreen" id="sub-pedidos">
-      <div id="pedidosList"></div>
-    </div>
-
-    <!-- ── CORTE ── -->
-    <div class="subscreen" id="sub-corte">
-      <div id="corteContent"></div>
-    </div>
-
-    <!-- ── PROVEEDORES ── -->
-    <div class="subscreen" id="sub-proveedores">
-      <div id="proveedoresList"></div>
-    </div>
-
-    <!-- ── MÁS ── -->
+    <div class="subscreen" id="sub-emps"><div id="empsList"></div></div>
+    <div class="subscreen" id="sub-lotes"><div id="lotesList"></div></div>
+    <div class="subscreen" id="sub-pedidos"><div id="pedidosList"></div></div>
+    <div class="subscreen" id="sub-corte"><div id="corteContent"></div></div>
+    <div class="subscreen" id="sub-proveedores"><div id="proveedoresList"></div></div>
     <div class="subscreen" id="sub-mas">
       <div class="page-pad">
         <div style="font-size:12px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px">Módulos</div>
@@ -473,62 +360,30 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:var(--ff);backgroun
         </div>
       </div>
     </div>
-
   </div>
-
-  <!-- Bottom nav -->
   <div class="bottomnav">
-    <div class="nav-item active" id="nav-dash" onclick="navTo('dash')">
-      <div class="ni">📊</div><div class="nl">Inicio</div><div class="nav-dot"></div>
-    </div>
-    <div class="nav-item" id="nav-pos" onclick="navTo('pos')">
-      <div class="ni">🛒</div><div class="nl">Cobrar</div><div class="nav-dot"></div>
-    </div>
-    <div class="nav-item" id="nav-inv" onclick="navTo('inv')">
-      <div class="ni">📦</div><div class="nl">Inventario</div><div class="nav-dot"></div>
-    </div>
-    <div class="nav-item" id="nav-clientes" onclick="navTo('clientes')">
-      <div class="ni">👥</div><div class="nl">Clientes</div><div class="nav-dot"></div>
-    </div>
-    <div class="nav-item" id="nav-mas" onclick="navTo('mas')">
-      <div class="ni">☰</div><div class="nl">Más</div><div class="nav-dot"></div>
-    </div>
+    <div class="nav-item active" id="nav-dash" onclick="navTo('dash')"><div class="ni">📊</div><div class="nl">Inicio</div><div class="nav-dot"></div></div>
+    <div class="nav-item" id="nav-pos" onclick="navTo('pos')"><div class="ni">🛒</div><div class="nl">Cobrar</div><div class="nav-dot"></div></div>
+    <div class="nav-item" id="nav-inv" onclick="navTo('inv')"><div class="ni">📦</div><div class="nl">Inventario</div><div class="nav-dot"></div></div>
+    <div class="nav-item" id="nav-clientes" onclick="navTo('clientes')"><div class="ni">👥</div><div class="nl">Clientes</div><div class="nav-dot"></div></div>
+    <div class="nav-item" id="nav-mas" onclick="navTo('mas')"><div class="ni">☰</div><div class="nl">Más</div><div class="nav-dot"></div></div>
   </div>
-
 </div>
-
-<!-- Cart FAB -->
 <div class="cart-fab" id="cartFab" style="display:none" onclick="abrirCarrito()">
   <span>🛒</span>
   <span id="cartCount">0 items</span>
   <span class="cart-badge" id="cartTotal">$0</span>
 </div>
-
-<!-- Drawer overlay -->
 <div class="drawer-overlay" id="drawerOverlay" onclick="cerrarCarrito()"></div>
-
-<!-- Cart Drawer -->
 <div class="cart-drawer" id="cartDrawer">
   <div class="cart-handle"></div>
   <h3 style="font-size:16px;font-weight:900;margin-bottom:14px">🛒 Carrito</h3>
   <div id="cartItems"></div>
-  <div class="cart-total">
-    <span class="lbl">Total</span>
-    <span class="val" id="cartTotalDrawer">$0.00</span>
-  </div>
+  <div class="cart-total"><span class="lbl">Total</span><span class="val" id="cartTotalDrawer">$0.00</span></div>
   <button class="btn-cobrar" onclick="abrirCobro()">💳 Proceder al cobro</button>
 </div>
-
-<!-- Modales dinámicos -->
 <div id="modalContainer"></div>
-
-
 <script>
-// ══════════════════════════════════════════════════════
-// KAIXA PRO — PWA MÓVIL
-// ══════════════════════════════════════════════════════
-
-// ── Estado global ─────────────────────────────────────
 var API = localStorage.getItem('kaixa_api') || '';
 var TOKEN = localStorage.getItem('kaixa_token') || '';
 var usuario = JSON.parse(localStorage.getItem('kaixa_usuario') || 'null');
@@ -541,12 +396,8 @@ var allClis = [];
 var formaPago = 'efectivo';
 var montoIngresado = '';
 
-// ── Headers de auth ────────────────────────────────────
-function headers() {
-  return { 'Content-Type': 'application/json', 'x-caja-token': TOKEN };
-}
+function headers() { return { 'Content-Type': 'application/json', 'x-caja-token': TOKEN }; }
 
-// ── Fetch con auth ─────────────────────────────────────
 async function apiFetch(path, opts) {
   try {
     var r = await fetch(API + path, Object.assign({ headers: headers() }, opts || {}));
@@ -554,7 +405,6 @@ async function apiFetch(path, opts) {
   } catch(e) { return null; }
 }
 
-// ── Notificaciones ─────────────────────────────────────
 function notif(msg, tipo) {
   var el = document.getElementById('notif');
   el.textContent = msg;
@@ -563,13 +413,9 @@ function notif(msg, tipo) {
   el._t = setTimeout(function() { el.className = 'notif'; }, 3000);
 }
 
-// ── Formatear moneda ───────────────────────────────────
 function fmt(n) { return '$' + Number(n || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 function fmtS(n) { return '$' + Number(n || 0).toFixed(0); }
 
-// ══════════════════════════════════════════════════════
-// SPLASH & BOOT
-// ══════════════════════════════════════════════════════
 window.addEventListener('load', function() {
   var bar = document.getElementById('splashBar');
   var txt = document.getElementById('splashTxt');
@@ -591,22 +437,16 @@ window.addEventListener('load', function() {
 });
 
 async function boot() {
-  // Si no hay licencia activada todavía, pedirla
   var claveGuardada = localStorage.getItem('kaixa_clave');
   if (!API || !TOKEN || !claveGuardada) { go('setup'); return; }
-  // Verificar conexión
   try {
     var r = await fetch(API + '/health', { signal: AbortSignal.timeout(5000) });
     if (!r.ok) { go('setup'); return; }
   } catch(e) { go('setup'); return; }
-  // Cargar empleados para login
   await loadEmpleadosLogin();
   go('login');
 }
 
-// ══════════════════════════════════════════════════════
-// NAVEGACIÓN
-// ══════════════════════════════════════════════════════
 function go(screen) {
   document.querySelectorAll('.screen').forEach(function(s) { s.classList.remove('active'); });
   var el = document.getElementById('sc-' + screen);
@@ -626,56 +466,34 @@ var screenCfg = {
   mas:      { title: 'Más', btn: null, load: loadMas },
   proveedores: { title: 'Proveedores', btn: '⊕', load: loadProveedores },
 };
-
 var currentScreen = 'dash';
 var prevScreen = 'dash';
 
 function navTo(screen) {
   prevScreen = currentScreen;
   currentScreen = screen;
-
-  // Actualizar subscreens
   document.querySelectorAll('.subscreen').forEach(function(s) { s.classList.remove('active'); });
   var sub = document.getElementById('sub-' + screen);
   if (sub) sub.classList.add('active');
-
-  // Topbar
   var cfg = screenCfg[screen] || { title: screen };
   document.getElementById('topTitle').textContent = cfg.title;
   var btn1 = document.getElementById('topBtn1');
   if (cfg.btn) { btn1.textContent = cfg.btn; btn1.style.display = ''; }
   else { btn1.style.display = 'none'; }
-
-  // Nav activo — solo para los 5 del bottomnav
-  var navIds = ['dash','pos','inv','clientes','mas'];
   var navMap = { dash:'dash', pos:'pos', inv:'inv', ventas:'mas', clientes:'clientes', emps:'mas', lotes:'mas', pedidos:'mas', corte:'mas', mas:'mas' };
   document.querySelectorAll('.nav-item').forEach(function(n) { n.classList.remove('active'); });
   var navId = navMap[screen] || screen;
   var navEl = document.getElementById('nav-' + navId);
   if (navEl) navEl.classList.add('active');
-
-  // Cart FAB solo en POS
   document.getElementById('cartFab').style.display = screen === 'pos' ? 'flex' : 'none';
-
-  // Cargar datos
   if (cfg.load) cfg.load();
 }
 
 function topBtn1Action() {
-  var actions = {
-    pos: null,
-    inv: abrirNuevoProd,
-    clientes: abrirNuevoCli,
-    emps: abrirNuevoEmp,
-    lotes: abrirNuevoLote,
-    pedidos: abrirNuevoPedido,
-  };
+  var actions = { pos: null, inv: abrirNuevoProd, clientes: abrirNuevoCli, emps: abrirNuevoEmp, lotes: abrirNuevoLote, pedidos: abrirNuevoPedido };
   if (actions[currentScreen]) actions[currentScreen]();
 }
 
-// ══════════════════════════════════════════════════════
-// SETUP & LOGIN
-// ══════════════════════════════════════════════════════
 var _sucursalesDisponibles = [];
 var _negocioInfo = null;
 
@@ -685,7 +503,6 @@ async function activarConLicencia() {
   var btn = document.getElementById('setupBtn');
   err.style.display = 'none';
   if (!clave || clave.length < 8) { err.textContent = 'Ingresa tu clave completa'; err.style.display = 'block'; return; }
-
   btn.disabled = true; btn.textContent = '⏳ Verificando...';
   try {
     var origin = window.location.origin;
@@ -708,9 +525,7 @@ async function activarConLicencia() {
     localStorage.setItem('kaixa_api', API);
     localStorage.setItem('kaixa_giro', giro);
     localStorage.setItem('kaixa_clave', clave);
-
     btn.disabled = false; btn.textContent = 'Activar →';
-
     if (_sucursalesDisponibles.length > 1) {
       mostrarSelectorSucursal();
     } else if (_sucursalesDisponibles.length === 1) {
@@ -731,11 +546,9 @@ function mostrarSelectorSucursal() {
   var cont = document.getElementById('sucList');
   cont.innerHTML = _sucursalesDisponibles.map(function(s, i) {
     return '<div class="card" style="cursor:pointer;margin-bottom:8px" onclick="elegirSucursal(' + i + ')">' +
-      '<div class="card-row">' +
-        '<div class="card-ico">🏪</div>' +
-        '<div class="card-info"><div class="card-title">' + s.nombre + '</div></div>' +
-        '<div style="color:var(--text3)">›</div>' +
-      '</div></div>';
+      '<div class="card-row"><div class="card-ico">🏪</div>' +
+      '<div class="card-info"><div class="card-title">' + s.nombre + '</div></div>' +
+      '<div style="color:var(--text3)">›</div></div></div>';
   }).join('');
   go('sucursal');
 }
@@ -751,7 +564,7 @@ async function elegirSucursal(idx) {
       body: JSON.stringify({ clave: clave, sucursal_id: s.id })
     });
     var d = await r.json();
-    if (!d.ok) { notif('❌ ' + (d.mensaje||'Error al elegir sucursal'), 'err'); return; }
+    if (!d.ok) { notif('❌ ' + (d.mensaje || 'Error al elegir sucursal'), 'err'); return; }
     TOKEN = d.token;
     localStorage.setItem('kaixa_token', TOKEN);
     localStorage.setItem('kaixa_sucursal_id', s.id);
@@ -771,10 +584,8 @@ async function loadEmpleadosLogin() {
     emps.forEach(function(e) {
       sel.innerHTML += '<option value="' + e.id + '">' + e.nombre + ' — ' + e.rol + '</option>';
     });
-    // Si no hay empleados, mostrar botón para crear el primero
     var btnCrear = document.getElementById('btnCrearEmpLogin');
     if (btnCrear) btnCrear.style.display = emps.length === 0 ? 'block' : 'none';
-    // Nombre del negocio
     var lic = await fetch(API + '/api/caja-info', { headers: headers() });
     if (lic.ok) {
       var d = await lic.json();
@@ -792,7 +603,7 @@ function abrirCrearEmpLogin() {
         '<h3 style="margin:0">➕ Crear usuario administrador</h3>' +
         '<span class="modal-close" onclick="document.getElementById(\'modalEmpLogin\').remove()">✕</span>' +
       '</div>' +
-      '<p style="font-size:12px;color:var(--text3);margin-bottom:14px">Crea el primer usuario para poder entrar al sistema. Será administrador con acceso total.</p>' +
+      '<p style="font-size:12px;color:var(--text3);margin-bottom:14px">Crea el primer usuario para poder entrar al sistema.</p>' +
       '<div class="form-field"><label>Tu nombre</label><input id="elNombre" placeholder="Juan Pérez"></div>' +
       '<div class="form-field"><label>Contraseña</label><input id="elPass" type="password" placeholder="••••••••"></div>' +
       '<button class="btn-full primary" onclick="crearEmpDesdeLogin()">Crear y entrar</button>' +
@@ -813,9 +624,8 @@ async function crearEmpDesdeLogin() {
     if (r && r.ok) {
       var d = await r.json();
       document.getElementById('modalContainer').innerHTML = '';
-      notif('✅ Usuario creado — ya puedes iniciar sesión', 'ok');
+      notif('✅ Usuario creado', 'ok');
       await loadEmpleadosLogin();
-      // Pre-seleccionar el empleado recién creado
       var sel = document.getElementById('loginEmp');
       if (sel && d.empleado) sel.value = d.empleado.id;
       document.getElementById('loginPass').value = pass;
@@ -831,7 +641,6 @@ async function doLogin() {
   var pass = document.getElementById('loginPass').value;
   if (!empId) { notif('Selecciona un empleado', 'err'); return; }
   if (!pass) { notif('Ingresa tu contraseña', 'err'); return; }
-
   try {
     var r = await apiFetch('/api/auth/login', {
       method: 'POST',
@@ -840,25 +649,17 @@ async function doLogin() {
     if (r && r.ok) {
       var d = await r.json();
       if (d.ok || d.success || d.token) {
-        // Obtener datos del empleado
         var re = await apiFetch('/api/empleados/' + empId);
-        if (re && re.ok) {
-          usuario = await re.json();
-        } else {
-          usuario = { id: parseInt(empId), nombre: 'Usuario', rol: 'cajero' };
-        }
+        if (re && re.ok) { usuario = await re.json(); }
+        else { usuario = { id: parseInt(empId), nombre: 'Usuario', rol: 'cajero' }; }
         localStorage.setItem('kaixa_usuario', JSON.stringify(usuario));
         go('main');
         navTo('dash');
         document.getElementById('masNombreEmp').textContent = usuario.nombre;
         document.getElementById('masRolEmp').textContent = usuario.rol;
         document.getElementById('loginPass').value = '';
-      } else {
-        notif('Contraseña incorrecta', 'err');
-      }
-    } else {
-      notif('Error de autenticación', 'err');
-    }
+      } else { notif('Contraseña incorrecta', 'err'); }
+    } else { notif('Error de autenticación', 'err'); }
   } catch(e) { notif('Error de conexión', 'err'); }
 }
 
@@ -871,48 +672,34 @@ function cerrarSesion() {
   loadEmpleadosLogin();
 }
 
-// ══════════════════════════════════════════════════════
-// DASHBOARD
-// ══════════════════════════════════════════════════════
 async function loadDash() {
   var hoy = new Date();
   document.getElementById('dashFecha').textContent = 'Hoy · ' + hoy.toLocaleDateString('es-MX', { weekday:'long', day:'numeric', month:'long' });
   try {
     var hoyStr = hoy.toLocaleDateString('en-CA');
-    // El servidor real no filtra por fecha — traemos recientes y filtramos en el cliente
     var r = await apiFetch('/api/ventas');
     var ventas = r && r.ok ? await r.json() : [];
     if (!Array.isArray(ventas)) ventas = [];
     ventas = ventas.filter(function(v) {
-      var esCancelada = (v.estado || '') === 'cancelada';
-      var fechaV = (v.creado_en || '').substring(0, 10);
-      return !esCancelada && fechaV === hoyStr;
+      return (v.estado || '') !== 'cancelada' && (v.creado_en || '').substring(0, 10) === hoyStr;
     });
-
     var monto = ventas.reduce(function(s, v) { return s + Number(v.total || 0); }, 0);
     var efectivo = ventas.filter(function(v) { return v.forma_pago === 'efectivo'; }).reduce(function(s, v) { return s + Number(v.total || 0); }, 0);
     var tarjeta = ventas.filter(function(v) { return v.forma_pago === 'tarjeta'; }).reduce(function(s, v) { return s + Number(v.total || 0); }, 0);
     var transfer = ventas.filter(function(v) { return v.forma_pago === 'transferencia'; }).reduce(function(s, v) { return s + Number(v.total || 0); }, 0);
     var ticket = ventas.length ? monto / ventas.length : 0;
-
     document.getElementById('dashMonto').textContent = fmtS(monto);
     document.getElementById('dashVentas').textContent = ventas.length;
     document.getElementById('kpiEfectivo').textContent = fmtS(efectivo);
     document.getElementById('kpiTarjeta').textContent = fmtS(tarjeta);
     document.getElementById('kpiTransfer').textContent = fmtS(transfer);
     document.getElementById('kpiTicket').textContent = fmtS(ticket);
-
-    // Últimas ventas
     var list = document.getElementById('dashVentasList');
     list.innerHTML = ventas.length === 0 ? '<div class="empty"><div class="ico">🛒</div><p>Sin ventas hoy</p></div>' :
       ventas.slice(0, 5).map(function(v) { return ventaRow(v); }).join('');
-
-    // Top productos
     var prods = {};
     ventas.forEach(function(v) {
-      if (v.items) v.items.forEach(function(it) {
-        prods[it.nombre] = (prods[it.nombre] || 0) + (it.cantidad || 1);
-      });
+      if (v.items) v.items.forEach(function(it) { prods[it.nombre] = (prods[it.nombre] || 0) + (it.cantidad || 1); });
     });
     var top = Object.entries(prods).sort(function(a, b) { return b[1] - a[1]; }).slice(0, 5);
     document.getElementById('dashTopProds').innerHTML = top.length === 0 ?
@@ -923,29 +710,22 @@ async function loadDash() {
           '<div class="card-info"><div class="card-title">' + p[0] + '</div><div class="card-sub">' + p[1] + ' vendidas</div></div>' +
           '</div></div>';
       }).join('');
-
   } catch(e) { notif('Error cargando datos', 'err'); }
-
-  // Empleados en turno
   try {
     var re = await apiFetch('/api/empleados');
     if (re && re.ok) {
       var emps = await re.json();
       if (Array.isArray(emps)) {
-        var activos = emps.filter(function(e) { return e.ultima_entrada && !e.ultima_salida; });
-        document.getElementById('dashEmps').textContent = activos.length;
+        document.getElementById('dashEmps').textContent = emps.filter(function(e) { return e.ultima_entrada && !e.ultima_salida; }).length;
       }
     }
   } catch(e) {}
-
-  // Stock bajo
   try {
     var rp = await apiFetch('/api/productos');
     if (rp && rp.ok) {
       var prods2 = await rp.json();
       if (Array.isArray(prods2)) {
-        var bajo = prods2.filter(function(p) { return p.stock <= (p.stock_minimo || 5); });
-        document.getElementById('dashStock').textContent = bajo.length;
+        document.getElementById('dashStock').textContent = prods2.filter(function(p) { return p.stock <= (p.stock_minimo || 5); }).length;
       }
     }
   } catch(e) {}
@@ -965,9 +745,7 @@ function ventaRow(v) {
     '</div>';
 }
 
-// ══════════════════════════════════════════════════════
-// POS — COBRAR
-// ══════════════════════════════════════════════════════
+// ══ POS ══
 async function loadPos() {
   if (allProds.length) { renderPosGrid(allProds); renderPosCats(allProds); return; }
   try {
@@ -993,24 +771,21 @@ function renderPosCats(prods) {
 function filtrarPorCat(cat, el) {
   document.querySelectorAll('.pos-cat').forEach(function(c) { c.classList.remove('active'); });
   el.classList.add('active');
-  var prods = cat === 'Todos' ? allProds : allProds.filter(function(p) { return p.categoria === cat; });
-  renderPosGrid(prods);
+  renderPosGrid(cat === 'Todos' ? allProds : allProds.filter(function(p) { return p.categoria === cat; }));
 }
 
 function filtrarProds() {
   var q = document.getElementById('posBuscar').value.toLowerCase();
-  var prods = allProds.filter(function(p) {
-    return p.nombre.toLowerCase().includes(q) || (p.codigo_barras || '').includes(q);
-  });
-  renderPosGrid(prods);
+  renderPosGrid(allProds.filter(function(p) { return p.nombre.toLowerCase().includes(q) || (p.codigo_barras || '').includes(q); }));
 }
 
 function renderPosGrid(prods) {
   var cont = document.getElementById('posGrid');
   if (!prods.length) { cont.innerHTML = '<div class="empty" style="grid-column:1/-1"><div class="ico">📦</div><p>Sin productos</p></div>'; return; }
   cont.innerHTML = prods.map(function(p) {
-    var inCart = cart.some(function(c) { return c.id === p.id; });
-    return '<div class="prod-card' + (inCart ? ' in-cart' : '') + '" onclick="addToCart(' + p.id + ')">' +
+    var inCart = cart.some(function(c) { return String(c.id) === String(p.id); });
+    // FIX: UUID con comillas para evitar SyntaxError
+    return '<div class="prod-card' + (inCart ? ' in-cart' : '') + '" onclick="addToCart(\'' + p.id + '\')">' +
       '<div class="prod-emoji">' + (p.emoji || '📦') + '</div>' +
       '<div class="prod-name">' + p.nombre + '</div>' +
       '<div class="prod-price">' + fmt(p.precio) + '</div>' +
@@ -1020,9 +795,10 @@ function renderPosGrid(prods) {
 }
 
 function addToCart(id) {
-  var prod = allProds.find(function(p) { return p.id === id; });
+  // FIX: comparar como string para soportar UUIDs y números
+  var prod = allProds.find(function(p) { return String(p.id) === String(id); });
   if (!prod) return;
-  var existing = cart.find(function(c) { return c.id === id; });
+  var existing = cart.find(function(c) { return String(c.id) === String(id); });
   if (existing) { existing.qty++; }
   else { cart.push({ id: prod.id, nombre: prod.nombre, precio: prod.precio, emoji: prod.emoji || '📦', qty: 1 }); }
   actualizarCartFab();
@@ -1066,8 +842,7 @@ function renderCartDrawer() {
         '<button class="qty-btn" onclick="cambiarQty(' + i + ',-1)">−</button>' +
         '<span class="qty-num">' + c.qty + '</span>' +
         '<button class="qty-btn" onclick="cambiarQty(' + i + ',1)">+</button>' +
-      '</div>' +
-      '</div>';
+      '</div></div>';
   }).join('');
   actualizarCartFab();
 }
@@ -1078,14 +853,13 @@ function cambiarQty(i, delta) {
   renderCartDrawer();
 }
 
-// ── Cobro ─────────────────────────────────────────────
 function abrirCobro() {
   if (!cart.length) { notif('El carrito está vacío', 'err'); return; }
   cerrarCarrito();
   var total = cart.reduce(function(s, c) { return s + c.precio * c.qty; }, 0);
   formaPago = 'efectivo';
   montoIngresado = '';
-  var html = '<div class="cobro-sheet" id="cobroSheet" onclick="function(e){e.stopPropagation()}">' +
+  var html = '<div class="cobro-sheet" id="cobroSheet">' +
     '<div class="cobro-bg" onclick="cerrarCobro()"></div>' +
     '<div class="cobro-panel">' +
       '<div class="cart-handle"></div>' +
@@ -1109,21 +883,15 @@ function abrirCobro() {
           '<button class="num-btn" onclick="numPad(\'0\')">0</button>' +
           '<button class="num-btn del" onclick="numPad(\'del\')">⌫</button>' +
         '</div>' +
-        '<div class="cambio-box" id="cambioBox" style="display:none">' +
-          '<span class="lbl">Cambio</span><span class="val" id="cambioVal">$0.00</span>' +
-        '</div>' +
+        '<div class="cambio-box" id="cambioBox" style="display:none"><span class="lbl">Cambio</span><span class="val" id="cambioVal">$0.00</span></div>' +
       '</div>' +
       '<button class="btn-cobrar" style="margin-top:14px" onclick="confirmarVenta()">✅ Confirmar venta</button>' +
-    '</div>' +
-    '</div>';
+    '</div></div>';
   document.getElementById('modalContainer').innerHTML = html;
-  // Total para cálculo
   window._cobroTotal = total;
 }
 
-function cerrarCobro() {
-  document.getElementById('modalContainer').innerHTML = '';
-}
+function cerrarCobro() { document.getElementById('modalContainer').innerHTML = ''; }
 
 function selFP(fp, btn) {
   formaPago = fp;
@@ -1140,28 +908,18 @@ function numPad(val) {
   document.getElementById('montoDisplay').textContent = fmt(num);
   var cambio = num - window._cobroTotal;
   var cb = document.getElementById('cambioBox');
-  if (cb) {
-    cb.style.display = num > 0 ? 'flex' : 'none';
-    document.getElementById('cambioVal').textContent = fmt(Math.max(0, cambio));
-  }
+  if (cb) { cb.style.display = num > 0 ? 'flex' : 'none'; document.getElementById('cambioVal').textContent = fmt(Math.max(0, cambio)); }
 }
 
 async function confirmarVenta() {
   var total = window._cobroTotal;
   var monto = formaPago === 'efectivo' ? parseFloat(montoIngresado || '0') / 100 : total;
   if (formaPago === 'efectivo' && monto < total) { notif('El monto es menor al total', 'err'); return; }
-
   var venta = {
     items: cart.map(function(c) { return { producto_id: c.id, nombre: c.nombre, cantidad: c.qty, precio_unitario: c.precio, subtotal: c.precio * c.qty }; }),
-    total: total,
-    forma_pago: formaPago,
-    monto_recibido: monto,
-    cambio: Math.max(0, monto - total),
-    giro: giro,
-    usuario_id: usuario ? usuario.id : null,
-    cajero: usuario ? usuario.nombre : 'App Móvil',
+    total: total, forma_pago: formaPago, monto_recibido: monto, cambio: Math.max(0, monto - total),
+    giro: giro, usuario_id: usuario ? usuario.id : null, cajero: usuario ? usuario.nombre : 'App Móvil',
   };
-
   try {
     var r = await apiFetch('/api/ventas', { method: 'POST', body: JSON.stringify(venta) });
     if (r && r.ok) {
@@ -1170,10 +928,8 @@ async function confirmarVenta() {
       actualizarCartFab();
       cerrarCobro();
       notif('✅ Venta registrada — ' + fmt(total), 'ok');
-      // Recargar inventario para actualizar stock
       allProds = [];
       renderPosGrid(allProds);
-      // Mostrar ticket
       mostrarTicketMobile(d, venta);
     } else {
       var e = r ? await r.json().catch(function(){return{};}) : {};
@@ -1194,24 +950,19 @@ function mostrarTicketMobile(d, venta) {
         venta.items.map(function(it) {
           return '<div style="display:flex;justify-content:space-between;font-size:12px;padding:4px 0;border-bottom:1px solid var(--border)">' +
             '<span>' + it.nombre + ' x' + it.cantidad + '</span>' +
-            '<span style="font-weight:700;font-family:var(--fm)">' + fmt(it.subtotal) + '</span>' +
-            '</div>';
+            '<span style="font-weight:700;font-family:var(--fm)">' + fmt(it.subtotal) + '</span></div>';
         }).join('') +
         '<div style="display:flex;justify-content:space-between;font-size:15px;font-weight:900;margin-top:10px;color:var(--accent)">' +
-          '<span>TOTAL</span><span style="font-family:var(--fm)">' + fmt(venta.total) + '</span>' +
-        '</div>' +
+          '<span>TOTAL</span><span style="font-family:var(--fm)">' + fmt(venta.total) + '</span></div>' +
         (venta.cambio > 0 ? '<div style="display:flex;justify-content:space-between;font-size:13px;margin-top:6px;color:#065f46;font-weight:700"><span>Cambio</span><span style="font-family:var(--fm)">' + fmt(venta.cambio) + '</span></div>' : '') +
       '</div>' +
       '<button class="btn-full primary" onclick="document.querySelector(\'.modal-overlay\').remove();navTo(\'pos\')">Nueva venta</button>' +
       '<button class="btn-full sec" style="margin-top:8px" onclick="document.querySelector(\'.modal-overlay\').remove();navTo(\'dash\')">Ver dashboard</button>' +
-    '</div>' +
-    '</div>';
+    '</div></div>';
   document.getElementById('modalContainer').innerHTML += html;
 }
 
-// ══════════════════════════════════════════════════════
-// INVENTARIO
-// ══════════════════════════════════════════════════════
+// ══ INVENTARIO ══
 async function loadInv() {
   try {
     var r = await apiFetch('/api/productos');
@@ -1234,7 +985,7 @@ function renderInvList(prods) {
   cont.innerHTML = prods.map(function(p) {
     var stockCls = p.stock <= 0 ? 'stock-out' : p.stock <= (p.stock_minimo || 5) ? 'stock-low' : '';
     var stockTxt = p.stock <= 0 ? '🔴 Agotado' : p.stock <= (p.stock_minimo || 5) ? '🟡 ' + p.stock + ' uds' : '🟢 ' + p.stock + ' uds';
-    return '<div class="inv-item ' + stockCls + '" onclick="abrirEditProd(' + p.id + ')">' +
+    return '<div class="inv-item ' + stockCls + '" onclick="abrirEditProd(\'' + p.id + '\')">' +
       '<div class="ii-ico">' + (p.emoji || '📦') + '</div>' +
       '<div style="flex:1;min-width:0">' +
         '<div class="ii-name">' + p.nombre + '</div>' +
@@ -1247,8 +998,9 @@ function renderInvList(prods) {
 }
 
 function abrirNuevoProd() { abrirModalProd(null); }
+
 function abrirEditProd(id) {
-  var p = allProds.find(function(x) { return x.id === id; });
+  var p = allProds.find(function(x) { return String(x.id) === String(id); });
   if (p) abrirModalProd(p);
 }
 
@@ -1274,8 +1026,8 @@ function abrirModalProd(p) {
         '<div class="form-field"><label>Emoji</label><input id="pEmoji" value="' + (p ? p.emoji || '📦' : '📦') + '"></div>' +
       '</div>' +
       '<div class="form-field"><label>Código de barras</label><input id="pCodigo" value="' + (p ? p.codigo_barras || '' : '') + '"></div>' +
-      '<button class="btn-full primary" onclick="guardarProd(' + (p ? p.id : 'null') + ')">' + (esNuevo ? 'Crear producto' : 'Guardar cambios') + '</button>' +
-      (p ? '<button class="btn-full danger" onclick="eliminarProd(' + p.id + ')">Eliminar producto</button>' : '') +
+      '<button class="btn-full primary" onclick="guardarProd(\'' + (p ? p.id : '') + '\')">' + (esNuevo ? 'Crear producto' : 'Guardar cambios') + '</button>' +
+      (p ? '<button class="btn-full danger" onclick="eliminarProd(\'' + p.id + '\')">Eliminar producto</button>' : '') +
     '</div></div>';
   document.getElementById('modalContainer').innerHTML = html;
 }
@@ -1315,9 +1067,7 @@ async function eliminarProd(id) {
   } else { notif('Error al eliminar', 'err'); }
 }
 
-// ══════════════════════════════════════════════════════
-// VENTAS
-// ══════════════════════════════════════════════════════
+// ══ VENTAS ══
 async function loadVentas() {
   var fecha = document.getElementById('ventaFiltroFecha')?.value || new Date().toLocaleDateString('en-CA');
   var fp = document.getElementById('ventaFiltroFP')?.value || '';
@@ -1329,34 +1079,26 @@ async function loadVentas() {
     var ventas = r && r.ok ? await r.json() : [];
     if (!Array.isArray(ventas)) ventas = [];
     ventas = ventas.filter(function(v) {
-      var fechaV = (v.creado_en || '').substring(0, 10);
-      var pasaFecha = fechaV === fecha;
-      var pasaFP = !fp || v.forma_pago === fp;
-      return pasaFecha && pasaFP;
+      return (v.creado_en || '').substring(0, 10) === fecha && (!fp || v.forma_pago === fp);
     });
     var cont = document.getElementById('ventasList');
     if (!ventas.length) { cont.innerHTML = '<div class="empty"><div class="ico">🧾</div><p>Sin ventas ese día</p></div>'; return; }
     cont.innerHTML = ventas.map(function(v) {
-      return '<div class="venta-row" onclick="verDetalleVenta(' + v.id + ')">' + ventaRow(v) + '</div>';
-    }).join('').replace(/<div class="venta-row" onclick[^>]*><div class="venta-row">/g, '<div class="venta-row" onclick="verDetalleVenta(' + 0 + ')">');
-    // Fix: render directo
-    cont.innerHTML = ventas.map(function(v) {
       var fp2 = v.forma_pago || 'efectivo';
       var fpCls = { efectivo:'fp-efectivo', tarjeta:'fp-tarjeta', transferencia:'fp-transferencia' };
-      return '<div class="venta-row" onclick="verDetalleVenta(' + v.id + ')">' +
+      return '<div class="venta-row" onclick="verDetalleVenta(\'' + v.id + '\')">' +
         '<div class="vr-num">#' + (v.folio||v.id) + '</div>' +
         '<div class="vr-info"><div class="vr-hora">' + (v.creado_en||'').substring(11,16) + '</div>' +
         '<div class="vr-cajero">' + (v.cajero_nombre||v.usuario_nombre||'—') + '</div>' +
         '<span class="vr-fp ' + (fpCls[fp2]||'fp-efectivo') + '">' + fp2 + '</span></div>' +
-        '<div class="vr-total">' + fmt(v.total) + '</div>' +
-        '</div>';
+        '<div class="vr-total">' + fmt(v.total) + '</div></div>';
     }).join('');
-  } catch(e) { notif('Error cargando ventas','err'); }
+  } catch(e) { notif('Error cargando ventas', 'err'); }
 }
 
 async function verDetalleVenta(id) {
   var r = await apiFetch('/api/ventas/' + id);
-  if (!r || !r.ok) { notif('Error cargando venta','err'); return; }
+  if (!r || !r.ok) { notif('Error cargando venta', 'err'); return; }
   var v = await r.json();
   var items = v.items || v.detalle || [];
   var html = '<div class="modal-overlay" id="modalVenta">' +
@@ -1366,29 +1108,23 @@ async function verDetalleVenta(id) {
         '<span class="modal-close" onclick="document.getElementById(\'modalVenta\').remove()">✕</span>' +
       '</div>' +
       '<div style="font-size:12px;color:var(--text3);margin-bottom:12px">' + (v.creado_en||'').substring(0,16) + ' · ' + (v.cajero_nombre||v.usuario_nombre||'—') + '</div>' +
-      (items.length ? items.map(function(it){return '<div style="display:flex;justify-content:space-between;font-size:13px;padding:8px 0;border-bottom:1px solid var(--border)"><span>' + it.nombre + ' x' + it.cantidad + '</span><span style="font-weight:700;font-family:var(--fm)">' + fmt(it.subtotal||it.precio_unitario*it.cantidad) + '</span></div>';}).join('') : '<p style="color:var(--text3);font-size:12px">Sin detalle disponible</p>') +
+      (items.length ? items.map(function(it){ return '<div style="display:flex;justify-content:space-between;font-size:13px;padding:8px 0;border-bottom:1px solid var(--border)"><span>' + it.nombre + ' x' + it.cantidad + '</span><span style="font-weight:700;font-family:var(--fm)">' + fmt(it.subtotal||it.precio_unitario*it.cantidad) + '</span></div>'; }).join('') : '<p style="color:var(--text3);font-size:12px">Sin detalle disponible</p>') +
       '<div style="display:flex;justify-content:space-between;font-size:16px;font-weight:900;margin-top:12px;color:var(--accent)"><span>TOTAL</span><span style="font-family:var(--fm)">' + fmt(v.total) + '</span></div>' +
       '<div style="display:flex;gap:8px;margin-top:14px">' +
-        '<button class="btn-full sec" onclick="cancelarVenta(' + v.id + ')">✕ Cancelar</button>' +
+        '<button class="btn-full sec" onclick="cancelarVenta(\'' + v.id + '\')">✕ Cancelar</button>' +
         '<button class="btn-full primary" onclick="document.getElementById(\'modalVenta\').remove()">Cerrar</button>' +
-      '</div>' +
-    '</div></div>';
+      '</div></div></div>';
   document.getElementById('modalContainer').innerHTML = html;
 }
 
 async function cancelarVenta(id) {
-  if (!confirm('¿Cancelar esta venta? El stock se restaurará.')) return;
+  if (!confirm('¿Cancelar esta venta?')) return;
   var r = await apiFetch('/api/ventas/' + id + '/cancelar', { method: 'PUT', body: JSON.stringify({ motivo: 'Cancelado desde app' }) });
-  if (r && r.ok) {
-    document.getElementById('modalContainer').innerHTML = '';
-    notif('✅ Venta cancelada','ok');
-    loadVentas();
-  } else { notif('Error al cancelar','err'); }
+  if (r && r.ok) { document.getElementById('modalContainer').innerHTML = ''; notif('✅ Venta cancelada', 'ok'); loadVentas(); }
+  else { notif('Error al cancelar', 'err'); }
 }
 
-// ══════════════════════════════════════════════════════
-// CLIENTES
-// ══════════════════════════════════════════════════════
+// ══ CLIENTES ══
 async function loadCli() {
   try {
     var r = await apiFetch('/api/clientes?giro=' + giro);
@@ -1410,65 +1146,42 @@ function renderCli(clis) {
   if (!clis.length) { cont.innerHTML = '<div class="empty"><div class="ico">👥</div><p>Sin clientes</p></div>'; return; }
   cont.innerHTML = clis.map(function(c) {
     var ini = c.nombre.split(' ').map(function(p){return p[0]||'';}).join('').substring(0,2).toUpperCase();
-    return '<div class="cli-card" onclick="abrirEditCli(' + c.id + ')">' +
+    return '<div class="cli-card" onclick="abrirEditCli(\'' + c.id + '\')">' +
       '<div class="cli-avatar">' + ini + '</div>' +
-      '<div style="flex:1;min-width:0">' +
-        '<div class="cli-name">' + c.nombre + '</div>' +
-        '<div class="cli-tel">' + (c.telefono||'Sin teléfono') + (c.es_mayorista ? ' · 🏪 Mayorista' : '') + '</div>' +
-      '</div>' +
-      '<div style="text-align:right">' +
-        '<div class="cli-saldo">' + fmt(c.saldo_monedero||0) + '</div>' +
-        '<div class="cli-puntos">' + (c.puntos||0) + ' pts</div>' +
-      '</div>' +
+      '<div style="flex:1;min-width:0"><div class="cli-name">' + c.nombre + '</div>' +
+      '<div class="cli-tel">' + (c.telefono||'Sin teléfono') + (c.es_mayorista?' · 🏪 Mayorista':'') + '</div></div>' +
+      '<div style="text-align:right"><div class="cli-saldo">' + fmt(c.saldo_monedero||0) + '</div><div class="cli-puntos">' + (c.puntos||0) + ' pts</div></div>' +
       '</div>';
   }).join('');
 }
 
 function abrirNuevoCli() { abrirModalCli(null); }
-function abrirEditCli(id) {
-  var c = allClis.find(function(x){return x.id===id;});
-  if (c) abrirModalCli(c);
-}
+function abrirEditCli(id) { var c = allClis.find(function(x){return String(x.id)===String(id);}); if (c) abrirModalCli(c); }
 
 function abrirModalCli(c) {
   var esNuevo = !c;
-  var html = '<div class="modal-overlay" id="modalCli">' +
-    '<div class="modal-sheet">' +
-      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">' +
-        '<h3 style="margin:0">' + (esNuevo?'➕ Nuevo cliente':'✏️ Editar cliente') + '</h3>' +
-        '<span class="modal-close" onclick="document.getElementById(\'modalCli\').remove()">✕</span>' +
-      '</div>' +
-      '<div class="form-field"><label>Nombre</label><input id="cNombre" value="' + (c?c.nombre:'') + '"></div>' +
-      '<div class="form-field"><label>Teléfono</label><input id="cTel" type="tel" value="' + (c?c.telefono||'':'') + '"></div>' +
-      '<div class="form-field"><label>Email</label><input id="cEmail" type="email" value="' + (c?c.email||'':'') + '"></div>' +
-      '<div class="form-field"><label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="cMayorista" ' + (c&&c.es_mayorista?'checked':'') + '> Cliente mayorista</label></div>' +
-      '<button class="btn-full primary" onclick="guardarCli(' + (c?c.id:'null') + ')">' + (esNuevo?'Crear cliente':'Guardar') + '</button>' +
+  var html = '<div class="modal-overlay" id="modalCli"><div class="modal-sheet">' +
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">' +
+      '<h3 style="margin:0">' + (esNuevo?'➕ Nuevo cliente':'✏️ Editar cliente') + '</h3>' +
+      '<span class="modal-close" onclick="document.getElementById(\'modalCli\').remove()">✕</span></div>' +
+    '<div class="form-field"><label>Nombre</label><input id="cNombre" value="' + (c?c.nombre:'') + '"></div>' +
+    '<div class="form-field"><label>Teléfono</label><input id="cTel" type="tel" value="' + (c?c.telefono||'':'') + '"></div>' +
+    '<div class="form-field"><label>Email</label><input id="cEmail" type="email" value="' + (c?c.email||'':'') + '"></div>' +
+    '<div class="form-field"><label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="cMayorista" ' + (c&&c.es_mayorista?'checked':'') + '> Cliente mayorista</label></div>' +
+    '<button class="btn-full primary" onclick="guardarCli(\'' + (c?c.id:'') + '\')">' + (esNuevo?'Crear cliente':'Guardar') + '</button>' +
     '</div></div>';
   document.getElementById('modalContainer').innerHTML = html;
 }
 
 async function guardarCli(id) {
-  var data = {
-    nombre: document.getElementById('cNombre').value,
-    telefono: document.getElementById('cTel').value,
-    email: document.getElementById('cEmail').value,
-    es_mayorista: document.getElementById('cMayorista').checked ? 1 : 0,
-    giro: giro,
-  };
-  if (!data.nombre) { notif('El nombre es requerido','err'); return; }
-  var r = await apiFetch('/api/clientes' + (id?'/'+id:''), {
-    method: id?'PUT':'POST', body: JSON.stringify(data)
-  });
-  if (r && r.ok) {
-    document.getElementById('modalContainer').innerHTML = '';
-    notif(id?'✅ Cliente actualizado':'✅ Cliente creado','ok');
-    loadCli();
-  } else { notif('Error al guardar','err'); }
+  var data = { nombre: document.getElementById('cNombre').value, telefono: document.getElementById('cTel').value, email: document.getElementById('cEmail').value, es_mayorista: document.getElementById('cMayorista').checked ? 1 : 0, giro: giro };
+  if (!data.nombre) { notif('El nombre es requerido', 'err'); return; }
+  var r = await apiFetch('/api/clientes' + (id?'/'+id:''), { method: id?'PUT':'POST', body: JSON.stringify(data) });
+  if (r && r.ok) { document.getElementById('modalContainer').innerHTML = ''; notif(id?'✅ Cliente actualizado':'✅ Cliente creado','ok'); loadCli(); }
+  else { notif('Error al guardar','err'); }
 }
 
-// ══════════════════════════════════════════════════════
-// EMPLEADOS
-// ══════════════════════════════════════════════════════
+// ══ EMPLEADOS ══
 var _emps = [];
 async function loadEmps() {
   try {
@@ -1482,10 +1195,7 @@ async function loadEmps() {
 
 function renderEmps() {
   var cont = document.getElementById('empsList');
-  if (!_emps.length) {
-    cont.innerHTML = '<div class="empty"><div class="ico">👥</div><p>Sin empleados</p><p style="font-size:12px;margin-top:8px">Toca ⊕ para agregar</p></div>';
-    return;
-  }
+  if (!_emps.length) { cont.innerHTML = '<div class="empty"><div class="ico">👥</div><p>Sin empleados</p><p style="font-size:12px;margin-top:8px">Toca ⊕ para agregar</p></div>'; return; }
   var activos = _emps.filter(function(e){return e.ultima_entrada&&!e.ultima_salida;});
   var fuera   = _emps.filter(function(e){return !e.ultima_entrada||e.ultima_salida;});
   function mkCard(e, activo) {
@@ -1497,78 +1207,48 @@ function renderEmps() {
         '<div class="card-sub">' + (e.rol||'cajero') + (activo?' · Entró '+String(e.ultima_entrada||'').substring(11,16):'') + '</div></div>' +
         '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">' +
           '<span class="tag ' + (activo?'ok':'') + '">' + (activo?'● Activo':'○ Fuera') + '</span>' +
-          (activo
-            ? '<button onclick="event.stopPropagation();registrarSalida(\'' + e.id + '\')" style="font-size:10px;padding:3px 8px;border-radius:8px;border:1px solid var(--danger);background:transparent;color:var(--danger);cursor:pointer">Salida</button>'
-            : '<button onclick="event.stopPropagation();registrarEntrada(\'' + e.id + '\')" style="font-size:10px;padding:3px 8px;border-radius:8px;border:1px solid var(--ok);background:transparent;color:var(--ok);cursor:pointer">Entrada</button>'
-          ) +
-        '</div>' +
-      '</div></div>';
+          (activo ? '<button onclick="event.stopPropagation();registrarSalida(\'' + e.id + '\')" style="font-size:10px;padding:3px 8px;border-radius:8px;border:1px solid var(--danger);background:transparent;color:var(--danger);cursor:pointer">Salida</button>'
+                  : '<button onclick="event.stopPropagation();registrarEntrada(\'' + e.id + '\')" style="font-size:10px;padding:3px 8px;border-radius:8px;border:1px solid var(--ok);background:transparent;color:var(--ok);cursor:pointer">Entrada</button>') +
+        '</div></div></div>';
   }
   cont.innerHTML =
     (activos.length ? '<div class="section-header"><h2>🟢 En turno (' + activos.length + ')</h2></div>' + activos.map(function(e){return mkCard(e,true);}).join('') : '') +
     (fuera.length   ? '<div class="section-header" style="margin-top:8px"><h2>⚫ Fuera (' + fuera.length + ')</h2></div>' + fuera.map(function(e){return mkCard(e,false);}).join('') : '');
 }
 
-async function registrarEntrada(id) {
-  var r = await apiFetch('/api/empleados/' + id + '/entrada', { method: 'POST' });
-  if (r && r.ok) { notif('✅ Entrada registrada', 'ok'); loadEmps(); }
-  else notif('Error al registrar entrada', 'err');
-}
-
-async function registrarSalida(id) {
-  var r = await apiFetch('/api/empleados/' + id + '/salida', { method: 'POST' });
-  if (r && r.ok) { notif('✅ Salida registrada', 'ok'); loadEmps(); }
-  else notif('Error al registrar salida', 'err');
-}
-
+async function registrarEntrada(id) { var r = await apiFetch('/api/empleados/'+id+'/entrada',{method:'POST'}); if(r&&r.ok){notif('✅ Entrada registrada','ok');loadEmps();}else notif('Error','err'); }
+async function registrarSalida(id) { var r = await apiFetch('/api/empleados/'+id+'/salida',{method:'POST'}); if(r&&r.ok){notif('✅ Salida registrada','ok');loadEmps();}else notif('Error','err'); }
 function abrirNuevoEmp() { abrirModalEmp(null); }
-function abrirEditEmp(id) {
-  var e = _emps.find(function(x){ return String(x.id)===String(id); });
-  if (e) abrirModalEmp(e);
-}
+function abrirEditEmp(id) { var e = _emps.find(function(x){return String(x.id)===String(id);}); if(e) abrirModalEmp(e); }
 
 function abrirModalEmp(e) {
   var esNuevo = !e;
-  var html = '<div class="modal-overlay" id="modalEmp">' +
-    '<div class="modal-sheet">' +
-      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">' +
-        '<h3 style="margin:0">' + (esNuevo?'➕ Nuevo empleado':'✏️ Editar empleado') + '</h3>' +
-        '<span class="modal-close" onclick="document.getElementById(\'modalEmp\').remove()">✕</span>' +
-      '</div>' +
-      '<div class="form-field"><label>Nombre</label><input id="eNombre" value="' + (e?e.nombre:'') + '"></div>' +
-      '<div class="form-field"><label>Rol</label><select id="eRol">' +
-        ['cajero','supervisor','administrador'].map(function(r){return '<option value="'+r+'"'+(e&&e.rol===r?' selected':'')+'>'+r+'</option>';}).join('') +
-      '</select></div>' +
-      '<div class="form-field"><label>Usuario</label><input id="eUsuario" value="' + (e?e.usuario||'':'') + '"></div>' +
-      '<div class="form-field"><label>' + (esNuevo?'Contraseña':'Nueva contraseña (dejar vacío para no cambiar)') + '</label><input id="ePass" type="password"></div>' +
-      '<button class="btn-full primary" onclick="guardarEmp(' + (e?e.id:'null') + ')">' + (esNuevo?'Crear empleado':'Guardar') + '</button>' +
+  var html = '<div class="modal-overlay" id="modalEmp"><div class="modal-sheet">' +
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">' +
+      '<h3 style="margin:0">' + (esNuevo?'➕ Nuevo empleado':'✏️ Editar empleado') + '</h3>' +
+      '<span class="modal-close" onclick="document.getElementById(\'modalEmp\').remove()">✕</span></div>' +
+    '<div class="form-field"><label>Nombre</label><input id="eNombre" value="' + (e?e.nombre:'') + '"></div>' +
+    '<div class="form-field"><label>Rol</label><select id="eRol">' +
+      ['cajero','supervisor','administrador'].map(function(r){return '<option value="'+r+'"'+(e&&e.rol===r?' selected':'')+'>'+r+'</option>';}).join('') +
+    '</select></div>' +
+    '<div class="form-field"><label>Usuario</label><input id="eUsuario" value="' + (e?e.usuario||'':'') + '"></div>' +
+    '<div class="form-field"><label>' + (esNuevo?'Contraseña':'Nueva contraseña (dejar vacío para no cambiar)') + '</label><input id="ePass" type="password"></div>' +
+    '<button class="btn-full primary" onclick="guardarEmp(\'' + (e?e.id:'') + '\')">' + (esNuevo?'Crear empleado':'Guardar') + '</button>' +
     '</div></div>';
   document.getElementById('modalContainer').innerHTML = html;
 }
 
 async function guardarEmp(id) {
-  var data = {
-    nombre: document.getElementById('eNombre').value,
-    rol: document.getElementById('eRol').value,
-    usuario: document.getElementById('eUsuario').value,
-    giro: giro,
-  };
+  var data = { nombre: document.getElementById('eNombre').value, rol: document.getElementById('eRol').value, usuario: document.getElementById('eUsuario').value, giro: giro };
   var pass = document.getElementById('ePass').value;
   if (pass) data.password = pass;
   if (!data.nombre) { notif('El nombre es requerido','err'); return; }
-  var r = await apiFetch('/api/empleados' + (id?'/'+id:''), {
-    method: id?'PUT':'POST', body: JSON.stringify(data)
-  });
-  if (r && r.ok) {
-    document.getElementById('modalContainer').innerHTML = '';
-    notif(id?'✅ Empleado actualizado':'✅ Empleado creado','ok');
-    loadEmps();
-  } else { notif('Error al guardar','err'); }
+  var r = await apiFetch('/api/empleados'+(id?'/'+id:''),{method:id?'PUT':'POST',body:JSON.stringify(data)});
+  if(r&&r.ok){document.getElementById('modalContainer').innerHTML='';notif(id?'✅ Empleado actualizado':'✅ Empleado creado','ok');loadEmps();}
+  else{notif('Error al guardar','err');}
 }
 
-// ══════════════════════════════════════════════════════
-// LOTES
-// ══════════════════════════════════════════════════════
+// ══ LOTES ══
 var _lotes = [];
 async function loadLotes() {
   var cont = document.getElementById('lotesList');
@@ -1578,346 +1258,201 @@ async function loadLotes() {
     _lotes = await r.json();
     if (!Array.isArray(_lotes)) _lotes = [];
     renderLotes();
-  } catch(e) { notif('Error cargando lotes','err'); }
+  } catch(e) {}
 }
 
 function renderLotes() {
   var cont = document.getElementById('lotesList');
-  if (!_lotes.length) { cont.innerHTML = '<div class="empty"><div class="ico">🏷️</div><p>Sin lotes registrados</p><p style="font-size:12px;margin-top:8px">Toca ⊕ para agregar</p></div>'; return; }
+  if (!_lotes.length) { cont.innerHTML = '<div class="empty"><div class="ico">🏷️</div><p>Sin lotes registrados</p></div>'; return; }
   var hoy = new Date();
-  // KPIs rápidos
-  var vencidos = 0, porVencer = 0, ok = 0;
-  _lotes.forEach(function(l) {
-    if (!l.fecha_caducidad) { ok++; return; }
-    var dias = Math.ceil((new Date(l.fecha_caducidad) - hoy) / 86400000);
-    if (dias < 0) vencidos++;
-    else if (dias <= 30) porVencer++;
-    else ok++;
-  });
-  cont.innerHTML =
-    '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;padding:12px 16px">' +
-      '<div class="kpi-card" style="text-align:center"><div style="font-size:20px;font-weight:900;color:var(--ok)">' + ok + '</div><div class="kpi-lbl">OK</div></div>' +
-      '<div class="kpi-card" style="text-align:center"><div style="font-size:20px;font-weight:900;color:var(--warn)">' + porVencer + '</div><div class="kpi-lbl">Por vencer</div></div>' +
-      '<div class="kpi-card" style="text-align:center"><div style="font-size:20px;font-weight:900;color:var(--danger)">' + vencidos + '</div><div class="kpi-lbl">Vencidos</div></div>' +
-    '</div>' +
-    _lotes.map(function(l) {
-      var cad = l.fecha_caducidad ? new Date(l.fecha_caducidad) : null;
-      var dias = cad ? Math.ceil((cad - hoy) / 86400000) : null;
-      var cls = !cad ? 'ok' : dias < 0 ? 'err' : dias <= 30 ? 'warn' : 'ok';
-      var txt = !cad ? '✓ Sin cad.' : dias < 0 ? '🔴 Vencido' : dias <= 30 ? '🟡 ' + dias + ' días' : '🟢 OK';
-      return '<div class="card" onclick="abrirEditLote(\'' + l.id + '\')" style="cursor:pointer;margin:0 16px 8px">' +
-        '<div class="card-row">' +
-          '<div class="card-ico" style="background:' + (cls==='err'?'#fee2e2':cls==='warn'?'#fef3c7':'#d1fae5') + '">🏷️</div>' +
-          '<div class="card-info">' +
-            '<div class="card-title">' + (l.nombre_producto||'Sin producto') + '</div>' +
-            '<div class="card-sub">Lote: ' + l.numero_lote + ' · ' + l.cantidad + ' uds</div>' +
-            (cad ? '<div class="card-sub">Cad: ' + String(l.fecha_caducidad).substring(0,10) + '</div>' : '') +
-          '</div>' +
-          '<span class="tag ' + cls + '">' + txt + '</span>' +
-        '</div></div>';
-    }).join('');
+  cont.innerHTML = _lotes.map(function(l) {
+    var cad = l.fecha_caducidad ? new Date(l.fecha_caducidad) : null;
+    var dias = cad ? Math.ceil((cad - hoy) / 86400000) : null;
+    var cls = !cad ? 'ok' : dias < 0 ? 'err' : dias <= 30 ? 'warn' : 'ok';
+    var txt = !cad ? '✓ Sin cad.' : dias < 0 ? '🔴 Vencido' : dias <= 30 ? '🟡 ' + dias + ' días' : '🟢 OK';
+    return '<div class="card" onclick="abrirEditLote(\'' + l.id + '\')" style="cursor:pointer;margin:0 16px 8px">' +
+      '<div class="card-row"><div class="card-ico">🏷️</div>' +
+      '<div class="card-info"><div class="card-title">' + (l.nombre_producto||'Sin producto') + '</div>' +
+      '<div class="card-sub">Lote: ' + l.numero_lote + ' · ' + l.cantidad + ' uds</div></div>' +
+      '<span class="tag ' + cls + '">' + txt + '</span></div></div>';
+  }).join('');
 }
 
 function abrirNuevoLote() {
-  var optsProds = allProds.length
-    ? allProds.map(function(p){return '<option value="'+p.id+'" data-nombre="'+p.nombre+'">'+p.nombre+'</option>';}).join('')
-    : '<option value="">Sin productos cargados</option>';
-  var html = '<div class="modal-overlay" id="modalLote">' +
-    '<div class="modal-sheet">' +
-      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">' +
-        '<h3 style="margin:0">➕ Nuevo lote</h3>' +
-        '<span class="modal-close" onclick="document.getElementById(\'modalLote\').remove()">✕</span>' +
-      '</div>' +
-      '<div class="form-field"><label>Producto</label><select id="lProd" onchange="var o=this.options[this.selectedIndex];document.getElementById(\'lNomProd\').value=o.text">' + optsProds + '</select></div>' +
-      '<input type="hidden" id="lNomProd" value="' + (allProds[0]?allProds[0].nombre:'') + '">' +
-      '<div class="form-field"><label>Número de lote</label><input id="lNum" placeholder="LOT-001"></div>' +
-      '<div class="form-row">' +
-        '<div class="form-field"><label>Cantidad</label><input id="lQty" type="number" value="0"></div>' +
-        '<div class="form-field"><label>Fecha caducidad</label><input id="lCad" type="date"></div>' +
-      '</div>' +
-      '<button class="btn-full primary" onclick="guardarLote(null)">Crear lote</button>' +
+  var optsProds = allProds.map(function(p){return '<option value="'+p.id+'">'+p.nombre+'</option>';}).join('');
+  var html = '<div class="modal-overlay" id="modalLote"><div class="modal-sheet">' +
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">' +
+      '<h3 style="margin:0">➕ Nuevo lote</h3>' +
+      '<span class="modal-close" onclick="document.getElementById(\'modalLote\').remove()">✕</span></div>' +
+    '<div class="form-field"><label>Producto</label><select id="lProd">' + optsProds + '</select></div>' +
+    '<div class="form-field"><label>Número de lote</label><input id="lNum" placeholder="LOT-001"></div>' +
+    '<div class="form-row">' +
+      '<div class="form-field"><label>Cantidad</label><input id="lQty" type="number" value="0"></div>' +
+      '<div class="form-field"><label>Fecha caducidad</label><input id="lCad" type="date"></div>' +
+    '</div>' +
+    '<button class="btn-full primary" onclick="guardarLote(null)">Crear lote</button>' +
     '</div></div>';
   document.getElementById('modalContainer').innerHTML = html;
 }
 
 async function abrirEditLote(id) {
-  var l = _lotes.find(function(x){ return String(x.id)===String(id); });
-  if (!l) { var r = await apiFetch('/api/lotes/' + id); if (!r||!r.ok) return; l = await r.json(); }
-  var html = '<div class="modal-overlay" id="modalLote">' +
-    '<div class="modal-sheet">' +
-      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">' +
-        '<h3 style="margin:0">✏️ Editar lote</h3>' +
-        '<span class="modal-close" onclick="document.getElementById(\'modalLote\').remove()">✕</span>' +
-      '</div>' +
-      '<div class="form-field"><label>Número de lote</label><input id="lNum" value="' + (l.numero_lote||'') + '"></div>' +
-      '<div class="form-row">' +
-        '<div class="form-field"><label>Cantidad</label><input id="lQty" type="number" value="' + (l.cantidad||1) + '"></div>' +
-        '<div class="form-field"><label>Fecha caducidad</label><input id="lCad" type="date" value="' + (l.fecha_caducidad||'').substring(0,10) + '"></div>' +
-      '</div>' +
-      '<button class="btn-full primary" onclick="guardarLote(' + id + ')">Guardar</button>' +
-      '<button class="btn-full danger" onclick="eliminarLote(' + id + ')">Eliminar lote</button>' +
+  var l = _lotes.find(function(x){return String(x.id)===String(id);});
+  if (!l) { var r = await apiFetch('/api/lotes/'+id); if(!r||!r.ok) return; l = await r.json(); }
+  var html = '<div class="modal-overlay" id="modalLote"><div class="modal-sheet">' +
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">' +
+      '<h3 style="margin:0">✏️ Editar lote</h3>' +
+      '<span class="modal-close" onclick="document.getElementById(\'modalLote\').remove()">✕</span></div>' +
+    '<div class="form-field"><label>Número de lote</label><input id="lNum" value="' + (l.numero_lote||'') + '"></div>' +
+    '<div class="form-row">' +
+      '<div class="form-field"><label>Cantidad</label><input id="lQty" type="number" value="' + (l.cantidad||1) + '"></div>' +
+      '<div class="form-field"><label>Fecha caducidad</label><input id="lCad" type="date" value="' + (l.fecha_caducidad||'').substring(0,10) + '"></div>' +
+    '</div>' +
+    '<button class="btn-full primary" onclick="guardarLote(\'' + id + '\')">Guardar</button>' +
+    '<button class="btn-full danger" onclick="eliminarLote(\'' + id + '\')">Eliminar lote</button>' +
     '</div></div>';
   document.getElementById('modalContainer').innerHTML = html;
 }
 
 async function guardarLote(id) {
-  var data = {
-    numero_lote: document.getElementById('lNum').value,
-    cantidad: parseInt(document.getElementById('lQty').value)||0,
-    fecha_caducidad: document.getElementById('lCad').value||null,
-  };
-  if (!id) {
-    var prodEl = document.getElementById('lProd');
-    data.producto_id = prodEl ? prodEl.value : null;
-    var nomEl = document.getElementById('lNomProd');
-    data.nombre_producto = nomEl ? nomEl.value : (prodEl ? prodEl.options[prodEl.selectedIndex].text : '');
-  }
-  var r = await apiFetch('/api/lotes' + (id?'/'+id:''), {
-    method: id?'PUT':'POST', body: JSON.stringify(data)
-  });
-  if (r && r.ok) {
-    document.getElementById('modalContainer').innerHTML = '';
-    notif(id?'✅ Lote actualizado':'✅ Lote creado','ok');
-    loadLotes();
-  } else { notif('Error al guardar','err'); }
+  var data = { numero_lote: document.getElementById('lNum').value, cantidad: parseInt(document.getElementById('lQty').value)||0, fecha_caducidad: document.getElementById('lCad').value||null };
+  if (!id) { var prodEl = document.getElementById('lProd'); data.producto_id = prodEl?prodEl.value:null; data.nombre_producto = prodEl?prodEl.options[prodEl.selectedIndex].text:''; }
+  var r = await apiFetch('/api/lotes'+(id?'/'+id:''),{method:id?'PUT':'POST',body:JSON.stringify(data)});
+  if(r&&r.ok){document.getElementById('modalContainer').innerHTML='';notif(id?'✅ Lote actualizado':'✅ Lote creado','ok');loadLotes();}
+  else{notif('Error al guardar','err');}
 }
 
 async function eliminarLote(id) {
-  if (!confirm('¿Eliminar este lote?')) return;
-  var r = await apiFetch('/api/lotes/' + id, { method: 'DELETE' });
-  if (r && r.ok) {
-    document.getElementById('modalContainer').innerHTML = '';
-    notif('✅ Lote eliminado','ok');
-    loadLotes();
-  } else { notif('Error al eliminar','err'); }
+  if(!confirm('¿Eliminar este lote?')) return;
+  var r = await apiFetch('/api/lotes/'+id,{method:'DELETE'});
+  if(r&&r.ok){document.getElementById('modalContainer').innerHTML='';notif('✅ Lote eliminado','ok');loadLotes();}
+  else{notif('Error al eliminar','err');}
 }
 
-// ══════════════════════════════════════════════════════
-// PEDIDOS
-// ══════════════════════════════════════════════════════
+// ══ PEDIDOS ══
 var _pedidos = [];
 var _proveedores = [];
 
 async function loadPedidos() {
-  var cont = document.getElementById('pedidosList');
   try {
-    var [rP, rProv] = await Promise.all([
-      apiFetch('/api/pedidos'),
-      apiFetch('/api/proveedores')
-    ]);
+    var rP = await apiFetch('/api/pedidos');
+    var rProv = await apiFetch('/api/proveedores');
     _pedidos = rP && rP.ok ? await rP.json() : [];
     _proveedores = rProv && rProv.ok ? await rProv.json() : [];
     if (!Array.isArray(_pedidos)) _pedidos = [];
     if (!Array.isArray(_proveedores)) _proveedores = [];
     renderPedidos();
-  } catch(e) { notif('Error cargando pedidos','err'); }
+  } catch(e) {}
 }
 
 function renderPedidos() {
   var cont = document.getElementById('pedidosList');
-  var pendientes = _pedidos.filter(function(p){ return p.estado==='pendiente'; });
-  var recibidos  = _pedidos.filter(function(p){ return p.estado==='recibido'; });
-  if (!_pedidos.length) {
-    cont.innerHTML = '<div class="empty"><div class="ico">🚚</div><p>Sin pedidos</p><p style="font-size:12px;margin-top:8px">Toca ⊕ para crear un pedido</p></div>';
-    return;
-  }
-  function mkCard(p) {
-    var cls = {pendiente:'warn', recibido:'ok', cancelado:'err'}[p.estado]||'accent';
+  if (!_pedidos.length) { cont.innerHTML = '<div class="empty"><div class="ico">🚚</div><p>Sin pedidos</p></div>'; return; }
+  cont.innerHTML = _pedidos.map(function(p) {
+    var cls = {pendiente:'warn',recibido:'ok',cancelado:'err'}[p.estado]||'accent';
     return '<div class="card" style="cursor:pointer;margin:0 16px 8px" onclick="verDetallePedido(\'' + p.id + '\')">' +
-      '<div class="card-row">' +
-        '<div class="card-ico" style="background:' + (p.estado==='pendiente'?'#fef3c7':p.estado==='recibido'?'#d1fae5':'var(--s2)') + '">🚚</div>' +
-        '<div class="card-info">' +
-          '<div class="card-title">' + (p.proveedor_nombre||'Sin proveedor') + '</div>' +
-          '<div class="card-sub">' + String(p.creado_en||'').substring(0,10) + ' · ' + (p.items?p.items.filter(Boolean).length:0) + ' productos</div>' +
-        '</div>' +
-        '<div style="text-align:right">' +
-          '<span class="tag ' + cls + '">' + (p.estado||'pendiente') + '</span>' +
-          '<div class="card-val" style="margin-top:4px">' + fmt(p.total||0) + '</div>' +
-        '</div>' +
-      '</div></div>';
-  }
-  cont.innerHTML =
-    (pendientes.length ? '<div class="section-header"><h2>⏳ Pendientes (' + pendientes.length + ')</h2></div>' + pendientes.map(mkCard).join('') : '') +
-    (recibidos.length  ? '<div class="section-header" style="margin-top:8px"><h2>✅ Recibidos (' + recibidos.length + ')</h2></div>' + recibidos.map(mkCard).join('') : '');
+      '<div class="card-row"><div class="card-ico">🚚</div>' +
+      '<div class="card-info"><div class="card-title">' + (p.proveedor_nombre||'Sin proveedor') + '</div>' +
+      '<div class="card-sub">' + String(p.creado_en||'').substring(0,10) + '</div></div>' +
+      '<span class="tag ' + cls + '">' + (p.estado||'pendiente') + '</span></div></div>';
+  }).join('');
 }
 
 function verDetallePedido(id) {
-  var p = _pedidos.find(function(x){ return String(x.id)===String(id); });
+  var p = _pedidos.find(function(x){return String(x.id)===String(id);});
   if (!p) return;
   var items = Array.isArray(p.items) ? p.items.filter(Boolean) : [];
-  var html = '<div class="modal-overlay" id="modalPedido">' +
-    '<div class="modal-sheet">' +
-      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">' +
-        '<h3 style="margin:0">🚚 Pedido</h3>' +
-        '<span class="modal-close" onclick="document.getElementById(\'modalPedido\').remove()">✕</span>' +
-      '</div>' +
-      '<div style="font-size:12px;color:var(--text3);margin-bottom:12px">' + (p.proveedor_nombre||'Sin proveedor') + ' · ' + String(p.creado_en||'').substring(0,10) + '</div>' +
-      (items.length ? items.map(function(it){
-        return '<div style="display:flex;justify-content:space-between;font-size:12px;padding:7px 0;border-bottom:1px solid var(--border)">' +
-          '<span>' + (it.nombre_producto||'Producto') + ' x' + it.cantidad + '</span>' +
-          '<span style="font-weight:700;font-family:var(--fm)">' + fmt(it.subtotal||0) + '</span>' +
-        '</div>';
-      }).join('') : '<p style="color:var(--text3);font-size:12px">Sin detalle</p>') +
-      '<div style="display:flex;justify-content:space-between;font-weight:900;font-size:15px;margin-top:10px;color:var(--accent)">' +
-        '<span>TOTAL</span><span>' + fmt(p.total||0) + '</span>' +
-      '</div>' +
-      (p.estado==='pendiente' ?
-        '<button class="btn-full primary" style="margin-top:14px" onclick="recibirPedido(\'' + p.id + '\')">📦 Marcar como recibido</button>' : '') +
-      '<button class="btn-full sec" style="margin-top:8px" onclick="document.getElementById(\'modalPedido\').remove()">Cerrar</button>' +
+  var html = '<div class="modal-overlay" id="modalPedido"><div class="modal-sheet">' +
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">' +
+      '<h3 style="margin:0">🚚 Pedido</h3>' +
+      '<span class="modal-close" onclick="document.getElementById(\'modalPedido\').remove()">✕</span></div>' +
+    (items.length ? items.map(function(it){return '<div style="display:flex;justify-content:space-between;font-size:12px;padding:7px 0;border-bottom:1px solid var(--border)"><span>'+(it.nombre_producto||'Producto')+' x'+it.cantidad+'</span><span style="font-weight:700;font-family:var(--fm)">'+fmt(it.subtotal||0)+'</span></div>';}).join('') : '<p style="color:var(--text3);font-size:12px">Sin detalle</p>') +
+    (p.estado==='pendiente'?'<button class="btn-full primary" style="margin-top:14px" onclick="recibirPedido(\'' + p.id + '\')">📦 Marcar como recibido</button>':'') +
+    '<button class="btn-full sec" style="margin-top:8px" onclick="document.getElementById(\'modalPedido\').remove()">Cerrar</button>' +
     '</div></div>';
   document.getElementById('modalContainer').innerHTML = html;
 }
 
 async function recibirPedido(id) {
-  if (!confirm('¿Confirmar recepción? El stock se actualizará automáticamente.')) return;
-  var r = await apiFetch('/api/pedidos/' + id + '/recibir', { method: 'PUT', body: JSON.stringify({}) });
-  if (r && r.ok) {
-    notif('✅ Pedido recibido — stock actualizado', 'ok');
-    document.getElementById('modalContainer').innerHTML = '';
-    allProds = []; // Forzar recarga de inventario
-    loadPedidos();
-  } else { notif('Error al recibir pedido', 'err'); }
+  if(!confirm('¿Confirmar recepción?')) return;
+  var r = await apiFetch('/api/pedidos/'+id+'/recibir',{method:'PUT',body:JSON.stringify({})});
+  if(r&&r.ok){notif('✅ Pedido recibido','ok');document.getElementById('modalContainer').innerHTML='';allProds=[];loadPedidos();}
+  else{notif('Error al recibir pedido','err');}
 }
 
 function abrirNuevoPedido() {
-  var optsProvs = _proveedores.length
-    ? _proveedores.map(function(p){return '<option value="'+p.id+'" data-nombre="'+p.nombre+'">'+p.nombre+'</option>';}).join('')
-    : '';
-  var optsProds = allProds.map(function(p){return '<option value="'+p.id+'" data-costo="'+(p.costo||0)+'">'+p.nombre+' — Costo: '+fmt(p.costo||0)+'</option>';}).join('');
-  var html = '<div class="modal-overlay" id="modalNuevoPedido">' +
-    '<div class="modal-sheet">' +
-      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">' +
-        '<h3 style="margin:0">➕ Nuevo pedido</h3>' +
-        '<span class="modal-close" onclick="document.getElementById(\'modalNuevoPedido\').remove()">✕</span>' +
-      '</div>' +
-      '<div class="form-field"><label>Proveedor</label>' +
-        (optsProvs
-          ? '<select id="pedProvSel">' + optsProvs + '</select>'
-          : '<input id="pedProvNom" placeholder="Nombre del proveedor">') +
-      '</div>' +
-      '<div style="font-size:12px;font-weight:700;color:var(--text2);margin-bottom:8px">Productos del pedido</div>' +
-      '<div id="pedItemsWrap"></div>' +
-      '<div class="form-field" style="margin-top:8px">' +
-        '<select id="pedProdSel">' + optsProds + '</select>' +
-      '</div>' +
-      '<div class="form-row">' +
-        '<div class="form-field"><label>Cantidad</label><input id="pedQty" type="number" value="1" min="1"></div>' +
-        '<div class="form-field"><label>Costo unit.</label><input id="pedCosto" type="number" step="0.01" value="0"></div>' +
-      '</div>' +
-      '<button class="btn-full sec" onclick="agregarItemPedidoLocal()" style="margin-bottom:10px">+ Agregar producto</button>' +
-      '<div class="form-field"><label>Notas</label><input id="pedNotas" placeholder="Opcional..."></div>' +
-      '<button class="btn-full primary" onclick="guardarNuevoPedido()">Crear pedido</button>' +
+  var optsProds = allProds.map(function(p){return '<option value="'+p.id+'" data-costo="'+(p.costo||0)+'">'+p.nombre+'</option>';}).join('');
+  var html = '<div class="modal-overlay" id="modalNuevoPedido"><div class="modal-sheet">' +
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">' +
+      '<h3 style="margin:0">➕ Nuevo pedido</h3>' +
+      '<span class="modal-close" onclick="document.getElementById(\'modalNuevoPedido\').remove()">✕</span></div>' +
+    '<div class="form-field"><label>Proveedor</label><input id="pedProvNom" placeholder="Nombre del proveedor"></div>' +
+    '<div id="pedItemsWrap"></div>' +
+    '<div class="form-field"><select id="pedProdSel">' + optsProds + '</select></div>' +
+    '<div class="form-row">' +
+      '<div class="form-field"><label>Cantidad</label><input id="pedQty" type="number" value="1" min="1"></div>' +
+      '<div class="form-field"><label>Costo unit.</label><input id="pedCosto" type="number" step="0.01" value="0"></div>' +
+    '</div>' +
+    '<button class="btn-full sec" onclick="agregarItemPedidoLocal()" style="margin-bottom:10px">+ Agregar producto</button>' +
+    '<button class="btn-full primary" onclick="guardarNuevoPedido()">Crear pedido</button>' +
     '</div></div>';
   document.getElementById('modalContainer').innerHTML = html;
   window._pedItemsLocal = [];
-  // Auto-rellenar costo al cambiar producto
-  setTimeout(function() {
-    var sel = document.getElementById('pedProdSel');
-    if (sel) sel.addEventListener('change', function() {
-      var opt = sel.options[sel.selectedIndex];
-      var costo = opt ? (opt.dataset.costo||0) : 0;
-      var costoEl = document.getElementById('pedCosto');
-      if (costoEl) costoEl.value = costo;
-    });
-  }, 100);
 }
 
 window._pedItemsLocal = [];
+
 function agregarItemPedidoLocal() {
   var prodSel = document.getElementById('pedProdSel');
   var qty = parseInt(document.getElementById('pedQty').value)||1;
   var costo = parseFloat(document.getElementById('pedCosto').value)||0;
-  if (!prodSel || !prodSel.value) { notif('Selecciona un producto', 'err'); return; }
+  if (!prodSel||!prodSel.value) { notif('Selecciona un producto','err'); return; }
   var opt = prodSel.options[prodSel.selectedIndex];
-  window._pedItemsLocal.push({
-    producto_id: prodSel.value,
-    nombre_producto: opt.text.split(' — ')[0],
-    cantidad: qty,
-    costo_unitario: costo,
-    subtotal: qty * costo
-  });
+  window._pedItemsLocal.push({ producto_id: prodSel.value, nombre_producto: opt.text.split(' — ')[0], cantidad: qty, costo_unitario: costo, subtotal: qty*costo });
   var wrap = document.getElementById('pedItemsWrap');
-  wrap.innerHTML = window._pedItemsLocal.map(function(it, i) {
-    return '<div style="display:flex;justify-content:space-between;font-size:12px;padding:6px 0;border-bottom:1px solid var(--border)">' +
-      '<span>' + it.nombre_producto + ' x' + it.cantidad + '</span>' +
-      '<span style="font-weight:700">' + fmt(it.subtotal) + '</span>' +
-    '</div>';
+  wrap.innerHTML = window._pedItemsLocal.map(function(it) {
+    return '<div style="display:flex;justify-content:space-between;font-size:12px;padding:6px 0;border-bottom:1px solid var(--border)"><span>'+it.nombre_producto+' x'+it.cantidad+'</span><span style="font-weight:700">'+fmt(it.subtotal)+'</span></div>';
   }).join('');
-  notif('✓ ' + opt.text.split(' — ')[0] + ' agregado', 'ok');
 }
 
 async function guardarNuevoPedido() {
-  if (!window._pedItemsLocal.length) { notif('Agrega al menos un producto', 'err'); return; }
-  var provSel = document.getElementById('pedProvSel');
-  var provNom = document.getElementById('pedProvNom');
-  var prov_id = provSel ? provSel.value : null;
-  var prov_nombre = provSel ? (provSel.options[provSel.selectedIndex]||{}).text||'' : (provNom ? provNom.value : '');
-  var notas = (document.getElementById('pedNotas')||{}).value||'';
-  var r = await apiFetch('/api/pedidos', {
-    method: 'POST',
-    body: JSON.stringify({ proveedor_id: prov_id, proveedor_nombre: prov_nombre, items: window._pedItemsLocal, notas: notas })
-  });
-  if (r && r.ok) {
-    notif('✅ Pedido creado', 'ok');
-    document.getElementById('modalContainer').innerHTML = '';
-    loadPedidos();
-  } else { notif('Error al crear pedido', 'err'); }
+  if (!window._pedItemsLocal.length) { notif('Agrega al menos un producto','err'); return; }
+  var provNom = (document.getElementById('pedProvNom')||{}).value||'';
+  var r = await apiFetch('/api/pedidos',{method:'POST',body:JSON.stringify({proveedor_nombre:provNom,items:window._pedItemsLocal})});
+  if(r&&r.ok){notif('✅ Pedido creado','ok');document.getElementById('modalContainer').innerHTML='';loadPedidos();}
+  else{notif('Error al crear pedido','err');}
 }
 
-// ══════════════════════════════════════════════════════
-// CORTE DE CAJA
-// ══════════════════════════════════════════════════════
+// ══ CORTE ══
 async function loadCorte() {
   try {
     var r = await apiFetch('/api/caja/resumen?giro=' + giro);
     if (!r || !r.ok) return;
     var d = await r.json();
     var cont = document.getElementById('corteContent');
-    cont.innerHTML =
-      '<div class="page-pad">' +
-        '<div style="background:var(--grad);border-radius:16px;padding:16px 20px;color:#fff;margin-bottom:16px">' +
-          '<div style="font-size:11px;opacity:.8;text-transform:uppercase;letter-spacing:.5px">Ventas del turno actual</div>' +
-          '<div style="font-size:32px;font-weight:900;font-family:var(--fm);margin-top:6px">' + fmt(d.total_monto||0) + '</div>' +
-          '<div style="font-size:13px;opacity:.8;margin-top:4px">' + (d.total_ventas||0) + ' ventas · Ticket promedio: ' + fmt(d.ticket_promedio||0) + '</div>' +
-        '</div>' +
-        '<div class="corte-stat"><span class="cs-lbl">💵 Efectivo</span><span class="cs-val">' + fmt(d.efectivo||0) + '</span></div>' +
-        '<div class="corte-stat"><span class="cs-lbl">💳 Tarjeta</span><span class="cs-val">' + fmt(d.tarjeta||0) + '</span></div>' +
-        '<div class="corte-stat"><span class="cs-lbl">📲 Transferencia</span><span class="cs-val">' + fmt(d.transferencia||0) + '</span></div>' +
-        (d.top_productos && d.top_productos.length ?
-          '<div class="section-header" style="margin-top:8px"><h2>🏆 Top productos</h2></div>' +
-          d.top_productos.slice(0,5).map(function(p,i){
-            return '<div class="card"><div class="card-row">' +
-              '<div class="card-ico">' + (i===0?'🥇':i===1?'🥈':'🥉') + '</div>' +
-              '<div class="card-info"><div class="card-title">' + p.nombre_producto + '</div><div class="card-sub">' + p.qty + ' vendidas</div></div>' +
-              '<div class="card-val">' + fmt(p.monto) + '</div>' +
-              '</div></div>';
-          }).join('') : '') +
-        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:16px">' +
-          '<button class="btn-full sec" style="margin:0" onclick="hacerCorte(\'parcial\')">📋 Corte parcial</button>' +
-          '<button class="btn-full primary" style="margin:0" onclick="hacerCorte(\'final\')">🔒 Corte final</button>' +
-        '</div>' +
-      '</div>';
-  } catch(e) { notif('Error cargando corte','err'); }
+    cont.innerHTML = '<div class="page-pad">' +
+      '<div style="background:var(--grad);border-radius:16px;padding:16px 20px;color:#fff;margin-bottom:16px">' +
+        '<div style="font-size:11px;opacity:.8;text-transform:uppercase;letter-spacing:.5px">Ventas del turno actual</div>' +
+        '<div style="font-size:32px;font-weight:900;font-family:var(--fm);margin-top:6px">' + fmt(d.total_monto||0) + '</div>' +
+        '<div style="font-size:13px;opacity:.8;margin-top:4px">' + (d.total_ventas||0) + ' ventas</div>' +
+      '</div>' +
+      '<div class="corte-stat"><span class="cs-lbl">💵 Efectivo</span><span class="cs-val">' + fmt(d.efectivo||0) + '</span></div>' +
+      '<div class="corte-stat"><span class="cs-lbl">💳 Tarjeta</span><span class="cs-val">' + fmt(d.tarjeta||0) + '</span></div>' +
+      '<div class="corte-stat"><span class="cs-lbl">📲 Transferencia</span><span class="cs-val">' + fmt(d.transferencia||0) + '</span></div>' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:16px">' +
+        '<button class="btn-full sec" style="margin:0" onclick="hacerCorte(\'parcial\')">📋 Corte parcial</button>' +
+        '<button class="btn-full primary" style="margin:0" onclick="hacerCorte(\'final\')">🔒 Corte final</button>' +
+      '</div></div>';
+  } catch(e) {}
 }
 
 async function hacerCorte(tipo) {
-  if (tipo === 'final' && !confirm('¿Hacer corte FINAL? Esto cierra el turno.')) return;
-  try {
-    var r = await apiFetch('/api/caja/corte', {
-      method: 'POST',
-      body: JSON.stringify({ tipo: tipo, giro: giro, usuario_id: usuario ? usuario.id : null })
-    });
-    if (r && r.ok) {
-      var d = await r.json();
-      notif('✅ Corte ' + tipo + ' registrado · Folio: ' + (d.folio||d.id||'—'), 'ok');
-      loadCorte();
-    } else { notif('Error al hacer corte','err'); }
-  } catch(e) { notif('Error de conexión','err'); }
+  if (tipo==='final'&&!confirm('¿Hacer corte FINAL?')) return;
+  var r = await apiFetch('/api/caja/corte',{method:'POST',body:JSON.stringify({tipo:tipo,giro:giro,usuario_id:usuario?usuario.id:null})});
+  if(r&&r.ok){notif('✅ Corte '+tipo+' registrado','ok');loadCorte();}
+  else{notif('Error al hacer corte','err');}
 }
 
-// ══════════════════════════════════════════════════════
-// MÁS — MENÚ
-// ══════════════════════════════════════════════════════
+// ══ MÁS ══
 function loadMas() {
   document.getElementById('masNombreEmp').textContent = usuario ? usuario.nombre : 'Usuario';
   document.getElementById('masRolEmp').textContent = usuario ? usuario.rol : '';
@@ -1931,45 +1466,31 @@ function loadMas() {
   ];
   document.getElementById('masMenu').innerHTML = items.map(function(it) {
     return '<div class="card" onclick="navTo(\'' + it.screen + '\')" style="cursor:pointer;margin-bottom:8px">' +
-      '<div class="card-row">' +
-        '<div class="card-ico">' + it.ico + '</div>' +
-        '<div class="card-info"><div class="card-title">' + it.title + '</div><div class="card-sub">' + it.sub + '</div></div>' +
-        '<div style="color:var(--text3)">›</div>' +
-      '</div></div>';
+      '<div class="card-row"><div class="card-ico">' + it.ico + '</div>' +
+      '<div class="card-info"><div class="card-title">' + it.title + '</div><div class="card-sub">' + it.sub + '</div></div>' +
+      '<div style="color:var(--text3)">›</div></div></div>';
   }).join('');
 }
 
-// ── Perfil ──────────────────────────────────────────────────────
 function abrirPerfil() {
   if (!usuario) return;
-  var html = '<div class="modal-overlay" id="modalPerfil">' +
-    '<div class="modal-sheet">' +
-      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">' +
-        '<h3 style="margin:0">👤 Mi perfil</h3>' +
-        '<span class="modal-close" onclick="document.getElementById(\'modalPerfil\').remove()">✕</span>' +
+  var html = '<div class="modal-overlay" id="modalPerfil"><div class="modal-sheet">' +
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">' +
+      '<h3 style="margin:0">👤 Mi perfil</h3>' +
+      '<span class="modal-close" onclick="document.getElementById(\'modalPerfil\').remove()">✕</span></div>' +
+    '<div style="text-align:center;padding:16px 0">' +
+      '<div style="width:72px;height:72px;border-radius:50%;background:var(--grad);margin:0 auto 12px;display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:900;color:#fff">' +
+        (usuario.nombre||'U').split(' ').map(function(p){return p[0]||'';}).join('').substring(0,2).toUpperCase() +
       '</div>' +
-      '<div style="text-align:center;padding:16px 0">' +
-        '<div style="width:72px;height:72px;border-radius:50%;background:var(--grad);margin:0 auto 12px;display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:900;color:#fff">' +
-          (usuario.nombre||'U').split(' ').map(function(p){return p[0]||'';}).join('').substring(0,2).toUpperCase() +
-        '</div>' +
-        '<div style="font-size:18px;font-weight:900">' + usuario.nombre + '</div>' +
-        '<div style="font-size:12px;color:var(--text3);margin-top:4px">' + usuario.rol + '</div>' +
-      '</div>' +
-      '<button class="btn-full danger" onclick="cerrarSesion()">🚪 Cerrar sesión</button>' +
+      '<div style="font-size:18px;font-weight:900">' + usuario.nombre + '</div>' +
+      '<div style="font-size:12px;color:var(--text3);margin-top:4px">' + usuario.rol + '</div>' +
+    '</div>' +
+    '<button class="btn-full danger" onclick="cerrarSesion()">🚪 Cerrar sesión</button>' +
     '</div></div>';
   document.getElementById('modalContainer').innerHTML = html;
 }
 
-// ── Init fecha filtro ventas ──────────────────────────
-document.addEventListener('DOMContentLoaded', function() {
-  var hoy = new Date().toLocaleDateString('en-CA');
-  var el = document.getElementById('ventaFiltroFecha');
-  if (el) el.value = hoy;
-});
-
-// ══════════════════════════════════════════════════════════════
-// PROVEEDORES
-// ══════════════════════════════════════════════════════════════
+// ══ PROVEEDORES ══
 async function loadProveedores() {
   try {
     var r = await apiFetch('/api/proveedores');
@@ -1977,65 +1498,52 @@ async function loadProveedores() {
     _proveedores = await r.json();
     if (!Array.isArray(_proveedores)) _proveedores = [];
     var cont = document.getElementById('proveedoresList');
-    if (!_proveedores.length) {
-      cont.innerHTML = '<div class="empty"><div class="ico">🏢</div><p>Sin proveedores</p><p style="font-size:12px;margin-top:8px">Toca ⊕ para agregar</p></div>';
-      return;
-    }
+    if (!_proveedores.length) { cont.innerHTML = '<div class="empty"><div class="ico">🏢</div><p>Sin proveedores</p></div>'; return; }
     cont.innerHTML = _proveedores.map(function(p) {
       return '<div class="card" style="cursor:pointer;margin-bottom:8px" onclick="abrirEditProveedor(\'' + p.id + '\')">' +
-        '<div class="card-row">' +
-          '<div class="card-ico">🏢</div>' +
-          '<div class="card-info"><div class="card-title">' + p.nombre + '</div>' +
-          '<div class="card-sub">' + (p.telefono||'Sin teléfono') + (p.email?' · '+p.email:'') + '</div></div>' +
-          '<div style="color:var(--text3)">›</div>' +
-        '</div></div>';
+        '<div class="card-row"><div class="card-ico">🏢</div>' +
+        '<div class="card-info"><div class="card-title">' + p.nombre + '</div>' +
+        '<div class="card-sub">' + (p.telefono||'Sin teléfono') + '</div></div>' +
+        '<div style="color:var(--text3)">›</div></div></div>';
     }).join('');
-  } catch(e) { notif('Error cargando proveedores','err'); }
+  } catch(e) {}
 }
 
 function abrirNuevoProveedor() { abrirModalProveedor(null); }
-function abrirEditProveedor(id) {
-  var p = _proveedores.find(function(x){ return String(x.id)===String(id); });
-  if (p) abrirModalProveedor(p);
-}
+function abrirEditProveedor(id) { var p = _proveedores.find(function(x){return String(x.id)===String(id);}); if(p) abrirModalProveedor(p); }
+
 function abrirModalProveedor(p) {
   var esNuevo = !p;
-  var html = '<div class="modal-overlay" id="modalProv">' +
-    '<div class="modal-sheet">' +
-      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">' +
-        '<h3 style="margin:0">' + (esNuevo?'➕ Nuevo proveedor':'✏️ Editar proveedor') + '</h3>' +
-        '<span class="modal-close" onclick="document.getElementById(\'modalProv\').remove()">✕</span>' +
-      '</div>' +
-      '<div class="form-field"><label>Nombre</label><input id="prvNombre" value="' + (p?p.nombre:'') + '"></div>' +
-      '<div class="form-field"><label>Teléfono</label><input id="prvTel" type="tel" value="' + (p?p.telefono||'':'') + '"></div>' +
-      '<div class="form-field"><label>Email</label><input id="prvEmail" type="email" value="' + (p?p.email||'':'') + '"></div>' +
-      '<button class="btn-full primary" onclick="guardarProveedor()">Guardar</button>' +
+  var html = '<div class="modal-overlay" id="modalProv"><div class="modal-sheet">' +
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">' +
+      '<h3 style="margin:0">' + (esNuevo?'➕ Nuevo proveedor':'✏️ Editar proveedor') + '</h3>' +
+      '<span class="modal-close" onclick="document.getElementById(\'modalProv\').remove()">✕</span></div>' +
+    '<div class="form-field"><label>Nombre</label><input id="prvNombre" value="' + (p?p.nombre:'') + '"></div>' +
+    '<div class="form-field"><label>Teléfono</label><input id="prvTel" type="tel" value="' + (p?p.telefono||'':'') + '"></div>' +
+    '<div class="form-field"><label>Email</label><input id="prvEmail" type="email" value="' + (p?p.email||'':'') + '"></div>' +
+    '<button class="btn-full primary" onclick="guardarProveedor()">Guardar</button>' +
     '</div></div>';
   document.getElementById('modalContainer').innerHTML = html;
 }
+
 async function guardarProveedor() {
-  var data = {
-    nombre: document.getElementById('prvNombre').value,
-    telefono: document.getElementById('prvTel').value,
-    email: document.getElementById('prvEmail').value
-  };
-  if (!data.nombre) { notif('El nombre es requerido', 'err'); return; }
-  var r = await apiFetch('/api/proveedores', { method: 'POST', body: JSON.stringify(data) });
-  if (r && r.ok) {
-    notif('✅ Proveedor guardado', 'ok');
-    document.getElementById('modalContainer').innerHTML = '';
-    loadProveedores();
-  } else { notif('Error al guardar', 'err'); }
+  var data = { nombre: document.getElementById('prvNombre').value, telefono: document.getElementById('prvTel').value, email: document.getElementById('prvEmail').value };
+  if (!data.nombre) { notif('El nombre es requerido','err'); return; }
+  var r = await apiFetch('/api/proveedores',{method:'POST',body:JSON.stringify(data)});
+  if(r&&r.ok){notif('✅ Proveedor guardado','ok');document.getElementById('modalContainer').innerHTML='';loadProveedores();}
+  else{notif('Error al guardar','err');}
 }
 
-// Agregar proveedores al topBtn1
 var _origTopBtn1 = topBtn1Action;
 topBtn1Action = function() {
   if (currentScreen === 'proveedores') { abrirNuevoProveedor(); return; }
   _origTopBtn1();
 };
 
+document.addEventListener('DOMContentLoaded', function() {
+  var el = document.getElementById('ventaFiltroFecha');
+  if (el) el.value = new Date().toLocaleDateString('en-CA');
+});
 </script>
-
 </body>
 </html>
