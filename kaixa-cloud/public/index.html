@@ -856,7 +856,8 @@ function cambiarQty(i, delta) {
 function abrirCobro() {
   if (!cart.length) { notif('El carrito está vacío', 'err'); return; }
   cerrarCarrito();
-  var total = cart.reduce(function(s, c) { return s + c.precio * c.qty; }, 0);
+  var total = cart.reduce(function(s, c) { return s + (parseFloat(c.precio)||0) * c.qty; }, 0);
+  window._cartSnapshot = cart.slice(); // Guardar copia antes de cobrar
   formaPago = 'efectivo';
   montoIngresado = '';
   var html = '<div class="cobro-sheet" id="cobroSheet">' +
@@ -915,8 +916,9 @@ async function confirmarVenta() {
   var total = window._cobroTotal;
   var monto = formaPago === 'efectivo' ? parseFloat(montoIngresado || '0') / 100 : total;
   if (formaPago === 'efectivo' && monto < total) { notif('El monto es menor al total', 'err'); return; }
+  var itemsParaVenta = (window._cartSnapshot && window._cartSnapshot.length) ? window._cartSnapshot : cart.slice();
   var venta = {
-    items: cart.map(function(c) { return { producto_id: c.id, nombre: c.nombre, cantidad: c.qty, precio_unitario: parseFloat(c.precio)||0, subtotal: (parseFloat(c.precio)||0) * c.qty }; }),
+    items: itemsParaVenta.map(function(c) { return { producto_id: c.id, nombre: c.nombre, cantidad: c.qty, precio_unitario: parseFloat(c.precio)||0, subtotal: (parseFloat(c.precio)||0) * c.qty }; }),
     total: parseFloat(total)||0, subtotal: parseFloat(total)||0, forma_pago: formaPago, monto_recibido: parseFloat(monto)||0, cambio: Math.max(0, monto - total),
     giro: giro, usuario_id: usuario ? usuario.id : null, cajero: usuario ? usuario.nombre : 'App Móvil',
   };
