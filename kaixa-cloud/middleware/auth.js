@@ -10,7 +10,8 @@ async function authCaja(req, res, next) {
 
     const r = await pool.query(
       `SELECT c.id AS caja_id, c.nombre AS caja_nombre, c.tipo AS caja_tipo,
-              c.sucursal_id, c.negocio_id, n.nombre AS negocio_nombre, n.activo AS negocio_activo
+              c.sucursal_id, c.negocio_id, n.nombre AS negocio_nombre, n.activo AS negocio_activo,
+              n.giro_principal AS giro
        FROM cajas c
        JOIN negocios n ON n.id = c.negocio_id
        WHERE c.token = $1 AND c.activo = true`,
