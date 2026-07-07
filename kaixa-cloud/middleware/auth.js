@@ -23,18 +23,19 @@ async function authCaja(req, res, next) {
     }
 
     const caja = r.rows[0];
+
     if (!caja.negocio_activo) {
       return res.status(403).json({ error: 'Este negocio está desactivado' });
     }
 
-    // Adjuntar contexto a la request — todas las rutas filtran por esto
     req.caja = {
-      id: caja.caja_id,
-      nombre: caja.caja_nombre,
-      tipo: caja.caja_tipo,
-      sucursal_id: caja.sucursal_id,
-      negocio_id: caja.negocio_id,
-      negocio_nombre: caja.negocio_nombre
+      id:            caja.caja_id,
+      nombre:        caja.caja_nombre,
+      tipo:          caja.caja_tipo,
+      sucursal_id:   caja.sucursal_id,
+      negocio_id:    caja.negocio_id,
+      negocio_nombre: caja.negocio_nombre,
+      giro:          caja.giro || 'tienda'
     };
 
     next();
