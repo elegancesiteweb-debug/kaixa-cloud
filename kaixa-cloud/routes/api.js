@@ -139,7 +139,9 @@ router.post('/ventas', async (req, res) => {
       const m = ultimo.rows[0].folio.match(/(\d+)$/);
       if (m) num = parseInt(m[1]) + 1;
     }
-    const folio = (v.giro||'VTA').toUpperCase().slice(0,3) + '-' + Date.now().toString().slice(-8) + '-' + String(num).padStart(4,'0');
+    // Usar el giro de la caja (del negocio) en lugar del que manda el cliente
+    const giroReal = req.caja.giro || v.giro || 'tienda';
+    const folio = (giroReal||'VTA').toUpperCase().slice(0,3) + '-' + Date.now().toString().slice(-8) + '-' + String(num).padStart(4,'0');
 
     const subtotal = v.items.reduce((s,i) => s + (parseFloat(i.precio_unitario||i.precio||0)) * (parseInt(i.cantidad||i.qty||1)), 0);
     const descuento = v.descuento || 0;
