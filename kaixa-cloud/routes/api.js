@@ -143,11 +143,13 @@ router.post('/ventas', async (req, res) => {
     const giroReal = req.caja.giro || v.giro || 'tienda';
     const folio = (giroReal||'VTA').toUpperCase().slice(0,3) + '-' + Date.now().toString().slice(-8) + '-' + String(num).padStart(4,'0');
 
-    const subtotal = v.items.reduce((s,i) => s + (parseFloat(i.precio_unitario||i.precio||0)) * (parseInt(i.cantidad||i.qty||1)), 0);
+    // Calcular subtotal desde items; si items vacíos usar el total enviado por el cliente
+    const subtotalCalc = v.items.reduce((s,i) => s + (parseFloat(i.precio_unitario||i.precio||0)) * (parseInt(i.cantidad||i.qty||1)), 0);
+    const subtotal = subtotalCalc > 0 ? subtotalCalc : (parseFloat(v.subtotal||v.total||0));
     const descuento = v.descuento || 0;
     const base = subtotal - descuento;
     const iva = v.iva_activo ? parseFloat((base*0.16).toFixed(2)) : 0;
-    const total = base + iva;
+    const total = base + iva > 0 ? base + iva : parseFloat(v.total||0);
 
     await client.query(
       `INSERT INTO ventas (id, negocio_id, sucursal_id, caja_id, folio, cliente_id, subtotal, descuento,
