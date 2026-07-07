@@ -800,7 +800,7 @@ function addToCart(id) {
   if (!prod) return;
   var existing = cart.find(function(c) { return String(c.id) === String(id); });
   if (existing) { existing.qty++; }
-  else { cart.push({ id: prod.id, nombre: prod.nombre, precio: prod.precio, emoji: prod.emoji || '📦', qty: 1 }); }
+  else { cart.push({ id: prod.id, nombre: prod.nombre, precio: parseFloat(prod.precio) || 0, emoji: prod.emoji || '📦', qty: 1 }); }
   actualizarCartFab();
   renderPosGrid(allProds.filter(function(p) {
     var q = document.getElementById('posBuscar').value.toLowerCase();
@@ -916,8 +916,8 @@ async function confirmarVenta() {
   var monto = formaPago === 'efectivo' ? parseFloat(montoIngresado || '0') / 100 : total;
   if (formaPago === 'efectivo' && monto < total) { notif('El monto es menor al total', 'err'); return; }
   var venta = {
-    items: cart.map(function(c) { return { producto_id: c.id, nombre: c.nombre, cantidad: c.qty, precio_unitario: c.precio, subtotal: c.precio * c.qty }; }),
-    total: total, forma_pago: formaPago, monto_recibido: monto, cambio: Math.max(0, monto - total),
+    items: cart.map(function(c) { return { producto_id: c.id, nombre: c.nombre, cantidad: c.qty, precio_unitario: parseFloat(c.precio)||0, subtotal: (parseFloat(c.precio)||0) * c.qty }; }),
+    total: parseFloat(total)||0, subtotal: parseFloat(total)||0, forma_pago: formaPago, monto_recibido: parseFloat(monto)||0, cambio: Math.max(0, monto - total),
     giro: giro, usuario_id: usuario ? usuario.id : null, cajero: usuario ? usuario.nombre : 'App Móvil',
   };
   try {
