@@ -443,6 +443,17 @@ async function boot() {
     var r = await fetch(API + '/health', { signal: AbortSignal.timeout(5000) });
     if (!r.ok) { go('setup'); return; }
   } catch(e) { go('setup'); return; }
+  // Verificar que el token sigue válido
+  try {
+    var rc = await fetch(API + '/api/caja-info', { headers: headers() });
+    if (!rc.ok) {
+      // Token inválido - ir a setup
+      localStorage.removeItem('kaixa_token');
+      TOKEN = '';
+      go('setup');
+      return;
+    }
+  } catch(e) {}
   await loadEmpleadosLogin();
   go('login');
 }
@@ -668,6 +679,7 @@ function cerrarSesion() {
   localStorage.removeItem('kaixa_usuario');
   cart = [];
   actualizarCartFab();
+  // No borrar token ni clave — solo cerrar sesión del empleado
   go('login');
   loadEmpleadosLogin();
 }
