@@ -20,14 +20,14 @@ router.post('/push', async (req, res) => {
     for (const p of productos) {
       await client.query(
         `INSERT INTO productos
-          (id, negocio_id, sucursal_id, nombre, emoji, imagen_url, codigo_barras, precio, costo,
+          (id, negocio_id, nombre, emoji, imagen_url, codigo_barras, precio, costo,
            stock_minimo, categoria_id, giro, por_peso, unidad_peso, tiene_prescripcion, actualizado_en)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15, now())
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14, now())
          ON CONFLICT (id) DO UPDATE SET
-           nombre=$4, emoji=$5, imagen_url=$6, codigo_barras=$7, precio=$8, costo=$9,
-           stock_minimo=$10, categoria_id=$11, giro=$12, por_peso=$13, unidad_peso=$14,
-           tiene_prescripcion=$15, actualizado_en=now()`,
-        [p.uuid, negocio_id, sucursal_id, p.nombre, p.emoji||'📦', p.imagen_url||'', p.codigo_barras||'',
+           nombre=$3, emoji=$4, imagen_url=$5, codigo_barras=$6, precio=$7, costo=$8,
+           stock_minimo=$9, categoria_id=$10, giro=$11, por_peso=$12, unidad_peso=$13,
+           tiene_prescripcion=$14, actualizado_en=now()`,
+        [p.uuid, negocio_id, p.nombre, p.emoji||'📦', p.imagen_url||'', p.codigo_barras||'',
          p.precio||0, p.costo||0, p.stock_minimo||5, p.categoria_id||null, p.giro||'tienda',
          !!p.por_peso, p.unidad_peso||'kg', !!p.tiene_prescripcion]
       );
@@ -73,9 +73,9 @@ router.post('/push', async (req, res) => {
     // Movimientos de stock — append-only, así nunca chocan dos cajas
     for (const m of movimientos) {
       await client.query(
-        `INSERT INTO stock_movimientos (id, negocio_id, sucursal_id, producto_id, caja_id, cantidad, motivo, venta_id, creado_en)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT (id) DO NOTHING`,
-        [m.uuid, negocio_id, sucursal_id, m.producto_uuid, caja_id, m.cantidad, m.motivo||'venta',
+        `INSERT INTO stock_movimientos (id, negocio_id, producto_id, caja_id, cantidad, motivo, venta_id, creado_en)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT (id) DO NOTHING`,
+        [m.uuid, negocio_id, m.producto_uuid, caja_id, m.cantidad, m.motivo||'venta',
          m.venta_uuid||null, m.creado_en||new Date()]
       );
     }
@@ -114,19 +114,15 @@ router.get('/pull', async (req, res) => {
   const since = req.query.since || '1970-01-01T00:00:00Z';
 
   try {
-    const { sucursal_id } = req.caja;
     const [productos, clientes, ventas, movimientos] = await Promise.all([
-      // Productos: filtrar por sucursal — cada sucursal tiene su propio inventario
       pool.query(
-        `SELECT * FROM productos WHERE negocio_id=$1 AND sucursal_id=$2 AND actualizado_en > $3 ORDER BY actualizado_en`,
-        [negocio_id, sucursal_id, since]
+        `SELECT * FROM productos WHERE negocio_id=$1 AND actualizado_en > $2 ORDER BY actualizado_en`,
+        [negocio_id, since]
       ),
-      // Clientes: compartidos en todo el negocio (monedero unificado)
       pool.query(
         `SELECT * FROM clientes WHERE negocio_id=$1 AND actualizado_en > $2 ORDER BY actualizado_en`,
         [negocio_id, since]
       ),
-      // Ventas: filtrar por sucursal — solo ver ventas de esta sucursal
       pool.query(
         `SELECT v.*, json_agg(json_build_object(
             'producto_id', vd.producto_id, 'nombre_producto', vd.nombre_producto,
@@ -134,14 +130,13 @@ router.get('/pull', async (req, res) => {
           )) AS items
          FROM ventas v
          LEFT JOIN venta_detalle vd ON vd.venta_id = v.id
-         WHERE v.negocio_id=$1 AND v.sucursal_id=$2 AND v.creado_en > $3 AND v.caja_id IS DISTINCT FROM $4
+         WHERE v.negocio_id=$1 AND v.creado_en > $2 AND v.caja_id IS DISTINCT FROM $3
          GROUP BY v.id ORDER BY v.creado_en`,
-        [negocio_id, sucursal_id, since, caja_id]
+        [negocio_id, since, caja_id]
       ),
-      // Movimientos de stock: filtrar por sucursal
       pool.query(
-        `SELECT * FROM stock_movimientos WHERE negocio_id=$1 AND sucursal_id=$2 AND creado_en > $3 AND caja_id IS DISTINCT FROM $4 ORDER BY creado_en`,
-        [negocio_id, sucursal_id, since, caja_id]
+        `SELECT * FROM stock_movimientos WHERE negocio_id=$1 AND creado_en > $2 AND caja_id IS DISTINCT FROM $3 ORDER BY creado_en`,
+        [negocio_id, since, caja_id]
       )
     ]);
 
@@ -167,21 +162,6 @@ router.get('/stock/:producto_id', async (req, res) => {
     );
     res.json({ stock: parseInt(r.rows[0].stock) });
   } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
-
-// ── GET /api/sync/sucursales — lista sucursales del negocio ──────────────
-router.get('/sucursales', async (req, res) => {
-  try {
-    const { negocio_id } = req.caja;
-    const r = await pool.query(
-      'SELECT id, nombre FROM sucursales WHERE negocio_id=$1 AND activo=true ORDER BY nombre',
-      [negocio_id]
-    );
-    res.json({ ok: true, sucursales: r.rows });
-  } catch(e) {
     res.status(500).json({ error: e.message });
   }
 });
