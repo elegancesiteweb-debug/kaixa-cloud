@@ -518,11 +518,25 @@ router.post('/vincular-licencia', async (req, res) => {
   try {
     const { clave, negocio_id } = req.body;
     if (!clave || !negocio_id) return res.status(400).json({ ok: false, error: 'Faltan datos' });
-    const r = await pool.query(
-      'UPDATE licencias SET negocio_id=$1 WHERE clave=$2 RETURNING clave, negocio_id',
-      [negocio_id, clave]
-    );
-    if (!r.rows.length) return res.status(404).json({ ok: false, error: 'Licencia no encontrada' });
+
+    // Verificar si la licencia ya tiene un negocio con productos
+    const lic = await pool.query('SELECT negocio_id FROM licencias WHERE clave=$1', [clave]);
+    if (!lic.rows.length) return res.status(404).json({ ok: false, error: 'Licencia no encontrada' });
+
+    const negocioActual = lic.rows[0].negocio_id;
+
+    // Si ya tiene negocio asignado, verificar si tiene productos
+    if (negocioActual && negocioActual !== negocio_id) {
+      const prods = await pool.query('SELECT COUNT(*) as n FROM productos WHERE negocio_id=$1', [negocioActual]);
+      const ventas = await pool.query('SELECT COUNT(*) as n FROM ventas WHERE negocio_id=$1', [negocioActual]);
+      if (parseInt(prods.rows[0].n) > 0 || parseInt(ventas.rows[0].n) > 0) {
+        // Ya tiene datos — no cambiar el negocio
+        console.log('⚠️ Licencia', clave, 'ya tiene negocio con datos — no se cambia');
+        return res.json({ ok: true, sin_cambio: true });
+      }
+    }
+
+    await pool.query('UPDATE licencias SET negocio_id=$1 WHERE clave=$2', [negocio_id, clave]);
     console.log('✅ Licencia', clave, 'vinculada a negocio', negocio_id);
     res.json({ ok: true });
   } catch(e) {
