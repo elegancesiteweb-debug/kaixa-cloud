@@ -1165,7 +1165,7 @@ function renderCli(clis) {
       '<div class="cli-avatar">' + ini + '</div>' +
       '<div style="flex:1;min-width:0"><div class="cli-name">' + c.nombre + '</div>' +
       '<div class="cli-tel">' + (c.telefono||'Sin teléfono') + (c.es_mayorista?' · 🏪 Mayorista':'') + '</div></div>' +
-      '<div style="text-align:right"><div class="cli-saldo">' + fmt(c.saldo_monedero||0) + '</div><div class="cli-puntos">' + (c.puntos||0) + ' pts</div></div>' +
+      '<div style="text-align:right"><div class="cli-saldo">' + fmt(c.saldo_monedero||c.saldo||0) + '</div><div class="cli-puntos">' + (c.puntos||0) + ' pts</div></div>' +
       '</div>';
   }).join('');
 }
