@@ -1129,7 +1129,8 @@ async function cancelarVenta(id) {
 // ══ CLIENTES ══
 async function loadCli() {
   try {
-    var r = await apiFetch('/api/clientes?giro=' + giro);
+    allClis = []; // Siempre limpiar cache
+    var r = await apiFetch('/api/clientes');
     if (r && r.ok) {
       allClis = await r.json();
       if (!Array.isArray(allClis)) allClis = [];
