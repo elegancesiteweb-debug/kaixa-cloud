@@ -37,12 +37,13 @@ router.post('/push', async (req, res) => {
     for (const c of clientes) {
       const activoVal = (c.activo === false || c.activo === 0) ? false : true;
       await client.query(
-        `INSERT INTO clientes (id, negocio_id, nombre, telefono, email, rfc, giro, puntos, saldo, activo, actualizado_en)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10, now())
+        `INSERT INTO clientes (id, negocio_id, nombre, telefono, email, rfc, giro, puntos, saldo, foto, activo, actualizado_en)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11, now())
          ON CONFLICT (id) DO UPDATE SET
-           nombre=$3, telefono=$4, email=$5, rfc=$6, giro=$7, puntos=$8, saldo=$9, activo=$10, actualizado_en=now()`,
+           nombre=$3, telefono=$4, email=$5, rfc=$6, giro=$7, puntos=$8, saldo=$9,
+           foto=COALESCE($10, clientes.foto), activo=$11, actualizado_en=now()`,
         [c.uuid, negocio_id, c.nombre, c.telefono||'', c.email||'', c.rfc||'', c.giro||'tienda',
-         c.puntos||0, c.saldo||0, activoVal]
+         c.puntos||0, c.saldo||0, c.foto||null, activoVal]
       );
     }
 
