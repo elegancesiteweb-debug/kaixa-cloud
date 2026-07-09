@@ -80,13 +80,25 @@ router.get('/clientes', async (req, res) => {
   try {
     const { negocio_id } = req.caja;
     const { q } = req.query;
-    let sql = `SELECT * FROM clientes WHERE negocio_id=$1 AND activo=true`;
+    // Excluir foto del listado (muy pesada) — se carga por separado
+    let sql = `SELECT id, negocio_id, nombre, telefono, email, rfc, giro, puntos, saldo, activo, creado_en, actualizado_en,
+               CASE WHEN foto IS NOT NULL THEN true ELSE false END as tiene_foto
+               FROM clientes WHERE negocio_id=$1 AND activo=true`;
     const params = [negocio_id];
     if (q) { params.push('%'+q+'%'); sql += ` AND nombre ILIKE $${params.length}`; }
     sql += ' ORDER BY nombre';
     const r = await pool.query(sql, params);
     res.json(r.rows);
   } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Endpoint para obtener foto de un cliente específico
+router.get('/clientes/:id/foto', async (req, res) => {
+  try {
+    const r = await pool.query('SELECT foto FROM clientes WHERE id=$1 AND negocio_id=$2', [req.params.id, req.caja.negocio_id]);
+    if (!r.rows.length || !r.rows[0].foto) return res.json({ foto: null });
+    res.json({ foto: r.rows[0].foto });
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
 // ── POST /api/clientes — crear cliente ───────────────────────────
