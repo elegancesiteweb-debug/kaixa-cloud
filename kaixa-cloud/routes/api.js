@@ -84,6 +84,11 @@ router.put('/productos/:id', async (req, res) => {
            VALUES ($1,$2,$3,$4,$5,$6,'ajuste')`,
           [uuid(), negocio_id, sucursal_id, req.params.id, req.caja.id, diferencia]
         );
+        // Tocar actualizado_en para que el pull de la PC recoja el cambio de stock
+        await pool.query(
+          `UPDATE productos SET actualizado_en=now() WHERE id=$1`,
+          [req.params.id]
+        );
       }
     }
     broadcast(req, 'productos:editado', { id: req.params.id });
