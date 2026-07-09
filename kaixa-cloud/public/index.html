@@ -1156,6 +1156,29 @@ function filtrarCli() {
   renderCli(allClis.filter(function(c) { return c.nombre.toLowerCase().includes(q) || (c.telefono||'').includes(q); }));
 }
 
+async function cargarFotosCli(clis) {
+  for (var i = 0; i < clis.length; i++) {
+    var c = clis[i];
+    if (!c.tiene_foto) continue;
+    try {
+      var r = await apiFetch('/api/clientes/' + c.id + '/foto');
+      if (r && r.ok) {
+        var d = await r.json();
+        if (d.foto) {
+          c.foto = d.foto;
+          var el = document.getElementById('avatar-' + c.id);
+          if (el) {
+            el.innerHTML = '<img src="' + d.foto + '" style="width:44px;height:44px;border-radius:50%;object-fit:cover;">';
+            el.style.background = 'transparent';
+            el.style.padding = '0';
+            el.style.overflow = 'hidden';
+          }
+        }
+      }
+    } catch(e) {}
+  }
+}
+
 function renderCli(clis) {
   var cont = document.getElementById('cliList');
   if (!clis.length) { cont.innerHTML = '<div class="empty"><div class="ico">👥</div><p>Sin clientes</p></div>'; return; }
@@ -1168,10 +1191,24 @@ function renderCli(clis) {
       '<div style="text-align:right"><div class="cli-saldo">' + fmt(c.saldo_monedero||c.saldo||0) + '</div><div class="cli-puntos">' + (c.puntos||0) + ' pts</div></div>' +
       '</div>';
   }).join('');
+  // Cargar fotos en segundo plano
+  var clisConFoto = clis.filter(function(c){ return c.tiene_foto; });
+  if (clisConFoto.length) cargarFotosCli(clisConFoto);
 }
 
 function abrirNuevoCli() { abrirModalCli(null); }
-function abrirEditCli(id) { var c = allClis.find(function(x){return String(x.id)===String(id);}); if (c) abrirModalCli(c); }
+async function abrirEditCli(id) {
+  var c = allClis.find(function(x){return String(x.id)===String(id);});
+  if (!c) return;
+  // Cargar foto si tiene
+  if (c.tiene_foto && !c.foto) {
+    try {
+      var r = await apiFetch('/api/clientes/' + id + '/foto');
+      if (r && r.ok) { var d = await r.json(); if (d.foto) c.foto = d.foto; }
+    } catch(e) {}
+  }
+  abrirModalCli(c);
+}
 
 function abrirModalCli(c) {
   var esNuevo = !c;
