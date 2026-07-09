@@ -942,8 +942,9 @@ async function confirmarVenta() {
       actualizarCartFab();
       cerrarCobro();
       notif('✅ Venta registrada — ' + fmt(total), 'ok');
+      // Recargar productos para actualizar stock
       allProds = [];
-      renderPosGrid(allProds);
+      loadPos();
       mostrarTicketMobile(d, venta);
     } else {
       var e = r ? await r.json().catch(function(){return{};}) : {};
