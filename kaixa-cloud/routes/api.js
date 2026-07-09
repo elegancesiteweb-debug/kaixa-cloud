@@ -58,16 +58,34 @@ router.post('/productos', async (req, res) => {
 // ── PUT /api/productos/:id ─────────────────────────────────────
 router.put('/productos/:id', async (req, res) => {
   try {
+    const { negocio_id, sucursal_id } = req.caja;
     const p = req.body;
     await pool.query(
       `UPDATE productos SET nombre=$1, emoji=$2, imagen_url=$3, codigo_barras=$4, precio=$5,
         costo=$6, stock_minimo=$7, categoria_id=$8, por_peso=$9, unidad_peso=$10,
         tiene_prescripcion=$11, actualizado_en=now()
        WHERE id=$12 AND negocio_id=$13`,
-      [p.nombre, p.emoji, p.imagen_url, p.codigo_barras, p.precio, p.costo, p.stock_minimo,
+      [p.nombre, p.emoji, p.imagen_url||'', p.codigo_barras||'', p.precio, p.costo, p.stock_minimo,
        p.categoria_id||null, !!p.por_peso, p.unidad_peso||'kg', !!p.tiene_prescripcion,
-       req.params.id, req.caja.negocio_id]
+       req.params.id, negocio_id]
     );
+    // Si viene stock, registrar movimiento de ajuste
+    if (p.stock !== undefined) {
+      const stockNuevo = parseInt(p.stock) || 0;
+      const stockActual = await pool.query(
+        `SELECT COALESCE(SUM(cantidad),0) as stock FROM stock_movimientos WHERE producto_id=$1 AND sucursal_id=$2`,
+        [req.params.id, sucursal_id]
+      );
+      const stockActualNum = parseInt(stockActual.rows[0].stock) || 0;
+      const diferencia = stockNuevo - stockActualNum;
+      if (diferencia !== 0) {
+        await pool.query(
+          `INSERT INTO stock_movimientos (id, negocio_id, sucursal_id, producto_id, caja_id, cantidad, motivo)
+           VALUES ($1,$2,$3,$4,$5,$6,'ajuste')`,
+          [uuid(), negocio_id, sucursal_id, req.params.id, req.caja.id, diferencia]
+        );
+      }
+    }
     broadcast(req, 'productos:editado', { id: req.params.id });
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
