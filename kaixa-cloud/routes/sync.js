@@ -112,7 +112,7 @@ router.post('/push', async (req, res) => {
 // La caja pide todo lo que cambió DESDE la última vez que se
 // conectó, hecho por OTRAS cajas del mismo negocio.
 router.get('/pull', async (req, res) => {
-  const { negocio_id, id: caja_id } = req.caja;
+  const { negocio_id, sucursal_id, id: caja_id } = req.caja;
   const since = req.query.since || '1970-01-01T00:00:00Z';
 
   try {
