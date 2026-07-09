@@ -1184,8 +1184,10 @@ function renderCli(clis) {
   if (!clis.length) { cont.innerHTML = '<div class="empty"><div class="ico">👥</div><p>Sin clientes</p></div>'; return; }
   cont.innerHTML = clis.map(function(c) {
     var ini = c.nombre.split(' ').map(function(p){return p[0]||'';}).join('').substring(0,2).toUpperCase();
-    return '<div class="cli-card" onclick="abrirEditCli(\'' + c.id + '\')">' +
-      '<div class="cli-avatar">' + ini + '</div>' +
+    var avatarHtml = c.foto ? '<img src="' + c.foto + '" style="width:44px;height:44px;border-radius:50%;object-fit:cover;">' : ini;
+    var avatarStyle = c.foto ? 'background:transparent;padding:0;overflow:hidden;' : '';
+    return '<div class="cli-card" onclick="abrirEditCli(\'' + c.id + '\')"> +
+      '<div class="cli-avatar" style="' + avatarStyle + '">' + avatarHtml + '</div>' +
       '<div style="flex:1;min-width:0"><div class="cli-name">' + c.nombre + '</div>' +
       '<div class="cli-tel">' + (c.telefono||'Sin teléfono') + (c.es_mayorista?' · 🏪 Mayorista':'') + '</div></div>' +
       '<div style="text-align:right"><div class="cli-saldo">' + fmt(c.saldo_monedero||c.saldo||0) + '</div><div class="cli-puntos">' + (c.puntos||0) + ' pts</div></div>' +
