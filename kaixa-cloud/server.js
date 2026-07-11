@@ -247,14 +247,12 @@ app.post('/api/vincular-licencia', async (req, res) => {
     if (lic.estado === 'suspendida') return res.json({ ok: false, mensaje: 'Licencia suspendida' });
     if (lic.estado === 'cancelada')  return res.json({ ok: false, mensaje: 'Licencia cancelada' });
     if (lic.vence_en && new Date(lic.vence_en).getTime() < Date.now()) return res.json({ ok: false, mensaje: 'Licencia vencida' });
-    // Si ya tiene negocio con datos, no cambiar
-    if (lic.negocio_id && lic.negocio_id !== negocioId) {
-      const prods = await pool.query('SELECT COUNT(*) as n FROM productos WHERE negocio_id=$1', [lic.negocio_id]);
-      const ventas = await pool.query('SELECT COUNT(*) as n FROM ventas WHERE negocio_id=$1', [lic.negocio_id]);
-      if (parseInt(prods.rows[0].n) > 0 || parseInt(ventas.rows[0].n) > 0) {
-        console.log('⚠️ Licencia', clave, 'ya tiene negocio con datos — no se cambia');
-        return res.json({ ok: true, sin_cambio: true, negocio_id: lic.negocio_id });
+    // Si ya tiene negocio_id asignado, NUNCA cambiarlo
+    if (lic.negocio_id) {
+      if (lic.negocio_id !== negocioId) {
+        console.log('⚠️ Licencia', clave, 'ya tiene negocio asignado — no se cambia');
       }
+      return res.json({ ok: true, sin_cambio: true, negocio_id: lic.negocio_id });
     }
     const upd = await pool.query('UPDATE licencias SET negocio_id=$1, ultima_verificacion=NOW() WHERE clave=$2 RETURNING id, clave, negocio_id', [negocioId, clave]);
     res.json({ ok: true, mensaje: 'Licencia vinculada correctamente', licencia: upd.rows[0] });
