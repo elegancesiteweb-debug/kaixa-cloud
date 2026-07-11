@@ -55,7 +55,8 @@ router.post('/push', async (req, res) => {
            forma_pago, efectivo_recibido, cambio, cajero, giro, estado, referencia_externa, creado_en)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
          ON CONFLICT (id) DO NOTHING`,
-        [v.uuid, negocio_id, sucursal_id, caja_id, v.folio, v.cliente_uuid||null,
+        [v.uuid, negocio_id, sucursal_id, caja_id,
+         v.folio + '-' + caja_id.substring(0,4), v.cliente_uuid||null,
          v.subtotal||0, v.descuento||0, v.iva||0, v.total||0, v.forma_pago||'efectivo',
          v.efectivo_recibido||0, v.cambio||0, v.cajero||'', v.giro||'tienda',
          v.estado||'completada', v.referencia_externa||null, v.creado_en||new Date()]
