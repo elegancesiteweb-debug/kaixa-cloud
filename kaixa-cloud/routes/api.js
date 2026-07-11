@@ -16,7 +16,7 @@ router.get('/productos', async (req, res) => {
       LEFT JOIN stock_actual s ON s.producto_id = p.id AND s.sucursal_id = $2
       LEFT JOIN categorias c ON c.id = p.categoria_id
       WHERE p.negocio_id = $1
-        AND (p.sucursal_id = $2 OR p.sucursal_id IS NULL)
+        AND p.sucursal_id = $2
         AND p.activo = true`;
     const params = [negocio_id, sucursal_id];
     if (giro) { params.push(giro); sql += ` AND p.giro = $${params.length}`; }
