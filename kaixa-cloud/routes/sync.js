@@ -122,7 +122,7 @@ router.get('/pull', async (req, res) => {
         `SELECT p.*, COALESCE(s.stock,0) AS stock_actual
          FROM productos p
          LEFT JOIN stock_actual s ON s.producto_id = p.id AND s.sucursal_id = $2
-         WHERE p.negocio_id=$1 AND (p.sucursal_id=$2 OR p.sucursal_id IS NULL) AND p.actualizado_en > $3
+         WHERE p.negocio_id=$1 AND p.sucursal_id=$2 AND p.actualizado_en > $3
          ORDER BY p.actualizado_en`,
         [negocio_id, sucursal_id, since]
       ),
