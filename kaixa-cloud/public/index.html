@@ -688,7 +688,10 @@ async function loadDash() {
     var ventas = r && r.ok ? await r.json() : [];
     if (!Array.isArray(ventas)) ventas = [];
     ventas = ventas.filter(function(v) {
-      return (v.estado || '') !== 'cancelada' && (v.creado_en || '').substring(0, 10) === hoyStr;
+      if ((v.estado || '') === 'cancelada') return false;
+      // Convertir fecha UTC a local para comparar correctamente
+      var fechaLocal = new Date(v.creado_en).toLocaleDateString('en-CA');
+      return fechaLocal === hoyStr;
     });
     var monto = ventas.reduce(function(s, v) { return s + Number(v.total || 0); }, 0);
     var efectivo = ventas.filter(function(v) { return v.forma_pago === 'efectivo'; }).reduce(function(s, v) { return s + Number(v.total || 0); }, 0);
@@ -1089,7 +1092,8 @@ async function loadVentas() {
     var ventas = r && r.ok ? await r.json() : [];
     if (!Array.isArray(ventas)) ventas = [];
     ventas = ventas.filter(function(v) {
-      return (v.creado_en || '').substring(0, 10) === fecha && (!fp || v.forma_pago === fp);
+      var fechaLocal = new Date(v.creado_en).toLocaleDateString('en-CA');
+      return fechaLocal === fecha && (!fp || v.forma_pago === fp);
     });
     var cont = document.getElementById('ventasList');
     if (!ventas.length) { cont.innerHTML = '<div class="empty"><div class="ico">🧾</div><p>Sin ventas ese día</p></div>'; return; }
