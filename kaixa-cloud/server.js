@@ -261,6 +261,25 @@ app.post('/api/vincular-licencia', async (req, res) => {
     res.status(500).json({ ok: false, mensaje: e.message });
   }
 });
+// ── FORZAR VINCULAR LICENCIA AL NEGOCIO DEL TOKEN ───────────────────────
+// Solo se llama desde la PC al configurar multi-sucursal con un token válido
+app.post('/api/forzar-vincular-licencia', async (req, res) => {
+  try {
+    const clave     = (req.body.clave || '').trim().toUpperCase();
+    const negocioId = (req.body.negocio_id || '').trim();
+    if (!clave || !negocioId) return res.status(400).json({ ok: false });
+    // Verificar que el negocio existe
+    const neg = await pool.query('SELECT id FROM negocios WHERE id=$1', [negocioId]);
+    if (!neg.rows.length) return res.status(404).json({ ok: false, error: 'Negocio no encontrado' });
+    // Actualizar licencia al negocio del token
+    await pool.query('UPDATE licencias SET negocio_id=$1, ultima_verificacion=NOW() WHERE clave=$2', [negocioId, clave]);
+    console.log('✅ Licencia', clave, 'forzada al negocio', negocioId);
+    res.json({ ok: true });
+  } catch(e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 // ── CANJEAR LICENCIA ──────────────────────────────────────────────────────
 app.post('/api/lic/canjear', async (req, res) => {
   try {
