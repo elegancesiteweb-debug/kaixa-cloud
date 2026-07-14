@@ -18,6 +18,8 @@ router.post('/push', async (req, res) => {
 
     // Productos — se crean o actualizan (mutable)
     for (const p of productos) {
+      const activoProd = (p.activo === false || p.activo === 0) ? false : true;
+      const prodSucursalId = p.sucursal_id || sucursal_id;
       await client.query(
         `INSERT INTO productos
           (id, negocio_id, sucursal_id, nombre, emoji, imagen_url, codigo_barras, precio, costo,
@@ -32,7 +34,6 @@ router.post('/push', async (req, res) => {
          p.precio||0, p.costo||0, p.stock_minimo||5, p.categoria_id||null, p.giro||'tienda',
          !!p.por_peso, p.unidad_peso||'kg', !!p.tiene_prescripcion, activoProd]
       );
-    }
 
     // Clientes — se crean o actualizan (mutable: puntos/saldo cambian)
     for (const c of clientes) {
