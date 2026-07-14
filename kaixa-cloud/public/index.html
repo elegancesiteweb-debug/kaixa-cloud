@@ -1258,7 +1258,20 @@ function renderEmps() {
       '<div class="card-row">' +
         '<div class="card-ico" style="background:' + (activo?'linear-gradient(135deg,#22c55e,#0ea5e9)':'var(--s2)') + ';color:' + (activo?'#fff':'var(--text3)') + ';font-weight:900">' + ini + '</div>' +
         '<div class="card-info"><div class="card-title">' + e.nombre + '</div>' +
-        '<div class="card-sub">' + (e.rol||'cajero') + (activo?' · Entró '+String(e.ultima_entrada||'').substring(11,16):'') + '</div></div>' +
+        '<div class="card-sub">' + (e.rol||'cajero') + (activo?' · Entró '+new Date(e.ultima_entrada).toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'}):'') + '</div>' +
+        (e.ultima_entrada ? (function(){
+          var ini = new Date(e.ultima_entrada);
+          var fin = e.ultima_salida ? new Date(e.ultima_salida) : new Date();
+          var mins = Math.floor((fin-ini)/60000);
+          if (mins <= 0) return '';
+          var hrs = Math.floor(mins/60), mns = mins%60;
+          var dur = hrs > 0 ? hrs+'h '+mns+'m' : mns+'m';
+          var salidaStr = e.ultima_salida ? new Date(e.ultima_salida).toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'}) : '';
+          return '<div style="font-size:11px;color:var(--text3);margin-top:2px">' +
+            (e.ultima_salida ? 'Salida: <span style="color:#ef4444">'+salidaStr+'</span> · ' : '') +
+            'Turno: <span style="color:var(--accent);font-weight:700">'+dur+(e.ultima_salida?'':' ⏱')+'</span></div>';
+        })() : '') +
+        '</div>' +
         '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">' +
           '<span class="tag ' + (activo?'ok':'') + '">' + (activo?'● Activo':'○ Fuera') + '</span>' +
           (activo ? '<button onclick="event.stopPropagation();registrarSalida(\'' + e.id + '\')" style="font-size:10px;padding:3px 8px;border-radius:8px;border:1px solid var(--danger);background:transparent;color:var(--danger);cursor:pointer">Salida</button>'
