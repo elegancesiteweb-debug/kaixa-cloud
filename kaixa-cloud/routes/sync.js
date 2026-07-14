@@ -4,19 +4,14 @@ const router  = express.Router();
 const pool    = require('../db/pool');
 
 // ── POST /api/sync/push ──────────────────────────────────────
-// La caja manda todo lo que cambió localmente (mientras estaba
-// offline, o en el momento si está conectada). Cada registro ya
-// trae su UUID generado en la caja, así que insertar dos veces
-// el mismo registro no genera duplicados (ON CONFLICT DO NOTHING/UPDATE).
 router.post('/push', async (req, res) => {
   const { negocio_id, sucursal_id, id: caja_id } = req.caja;
-  const { productos = [], clientes = [], ventas = [], movimientos = [] } = req.body;
-
+  const { productos = [], clientes = [], ventas = [], movimientos = [], lotes = [] } = req.body;
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
 
-    // Productos — se crean o actualizan (mutable)
+    // Productos
     for (const p of productos) {
       const activoProd = (p.activo === false || p.activo === 0) ? false : true;
       const prodSucursalId = p.sucursal_id || sucursal_id;
@@ -34,9 +29,26 @@ router.post('/push', async (req, res) => {
          p.precio||0, p.costo||0, p.stock_minimo||5, p.categoria_id||null, p.giro||'tienda',
          !!p.por_peso, p.unidad_peso||'kg', !!p.tiene_prescripcion, activoProd]
       );
+      // Ajuste de stock si viene stock
+      if (p.stock !== undefined && p.stock !== null) {
+        const stockNuevo = parseInt(p.stock) || 0;
+        const stockActual = await client.query(
+          `SELECT COALESCE(SUM(cantidad),0) as stock FROM stock_movimientos WHERE producto_id=$1 AND sucursal_id=$2`,
+          [p.uuid, prodSucursalId]
+        );
+        const stockActualNum = parseInt(stockActual.rows[0].stock) || 0;
+        const diferencia = stockNuevo - stockActualNum;
+        if (diferencia !== 0) {
+          await client.query(
+            `INSERT INTO stock_movimientos (id, negocio_id, sucursal_id, producto_id, caja_id, cantidad, motivo)
+             VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,'ajuste')`,
+            [negocio_id, prodSucursalId, p.uuid, caja_id, diferencia]
+          );
+        }
+      }
     }
 
-    // Clientes — se crean o actualizan (mutable: puntos/saldo cambian)
+    // Clientes
     for (const c of clientes) {
       const activoVal = (c.activo === false || c.activo === 0) ? false : true;
       await client.query(
@@ -50,7 +62,7 @@ router.post('/push', async (req, res) => {
       );
     }
 
-    // Ventas — son inmutables una vez creadas (append-only)
+    // Ventas
     for (const v of ventas) {
       await client.query(
         `INSERT INTO ventas
@@ -64,8 +76,6 @@ router.post('/push', async (req, res) => {
          v.efectivo_recibido||0, v.cambio||0, v.cajero||'', v.giro||'tienda',
          v.estado||'completada', v.referencia_externa||null, v.creado_en||new Date()]
       );
-
-      // Detalle de la venta
       for (const item of (v.items||[])) {
         await client.query(
           `INSERT INTO venta_detalle (id, venta_id, producto_id, nombre_producto, cantidad, precio_unitario, subtotal)
@@ -76,7 +86,7 @@ router.post('/push', async (req, res) => {
       }
     }
 
-    // Movimientos de stock — append-only, así nunca chocan dos cajas
+    // Movimientos de stock
     for (const m of movimientos) {
       await client.query(
         `INSERT INTO stock_movimientos (id, negocio_id, sucursal_id, producto_id, caja_id, cantidad, motivo, venta_id, creado_en)
@@ -86,22 +96,42 @@ router.post('/push', async (req, res) => {
       );
     }
 
+    // Lotes
+    for (const l of lotes) {
+      const activoLote = (l.activo === false || l.activo === 0) ? false : true;
+      try {
+        await client.query(
+          `INSERT INTO lotes (id, negocio_id, sucursal_id, producto_id, nombre_producto, numero_lote, cantidad, fecha_caducidad, activo, actualizado_en)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9, now())
+           ON CONFLICT (id) DO UPDATE SET
+             numero_lote=$6, cantidad=$7, fecha_caducidad=$8, activo=$9, actualizado_en=now()`,
+          [l.uuid, negocio_id, sucursal_id, l.producto_uuid||null, '',
+           l.numero_lote, l.cantidad||0, l.fecha_caducidad||null, activoLote]
+        );
+      } catch(e) {
+        // Si falla por schema diferente, intentar sin id
+        await client.query(
+          `INSERT INTO lotes (negocio_id, sucursal_id, producto_id, nombre_producto, numero_lote, cantidad, fecha_caducidad, activo)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT DO NOTHING`,
+          [negocio_id, sucursal_id, l.producto_uuid||null, '', l.numero_lote, l.cantidad||0, l.fecha_caducidad||null, activoLote]
+        ).catch(()=>{});
+      }
+    }
+
     await client.query('UPDATE cajas SET ultimo_sync = now() WHERE id = $1', [caja_id]);
     await client.query('COMMIT');
 
-    // Avisar en tiempo real a las demás cajas conectadas del mismo negocio
     const io = req.app.get('io');
     if (io) {
       io.to('negocio:' + negocio_id).emit('sync:cambios', {
         de_caja: caja_id,
         productos: productos.length, clientes: clientes.length,
-        ventas: ventas.length, movimientos: movimientos.length
+        ventas: ventas.length, movimientos: movimientos.length, lotes: lotes.length
       });
     }
-
     res.json({ ok: true, recibidos: {
       productos: productos.length, clientes: clientes.length,
-      ventas: ventas.length, movimientos: movimientos.length
+      ventas: ventas.length, movimientos: movimientos.length, lotes: lotes.length
     }});
   } catch (e) {
     await client.query('ROLLBACK');
@@ -113,14 +143,11 @@ router.post('/push', async (req, res) => {
 });
 
 // ── GET /api/sync/pull?since=ISO_TIMESTAMP ───────────────────
-// La caja pide todo lo que cambió DESDE la última vez que se
-// conectó, hecho por OTRAS cajas del mismo negocio.
 router.get('/pull', async (req, res) => {
   const { negocio_id, sucursal_id, id: caja_id } = req.caja;
   const since = req.query.since || '1970-01-01T00:00:00Z';
-
   try {
-    const [productos, clientes, ventas, movimientos] = await Promise.all([
+    const [productos, clientes, ventas, movimientos, lotesPull] = await Promise.all([
       pool.query(
         `SELECT p.*, COALESCE(s.stock,0) AS stock_actual
          FROM productos p
@@ -140,14 +167,18 @@ router.get('/pull', async (req, res) => {
           )) AS items
          FROM ventas v
          LEFT JOIN venta_detalle vd ON vd.venta_id = v.id
-         WHERE v.negocio_id=$1 AND v.creado_en > $2 AND v.caja_id IS DISTINCT FROM $3
+         WHERE v.negocio_id=$1 AND v.sucursal_id=$2 AND v.creado_en > $3 AND v.caja_id IS DISTINCT FROM $4
          GROUP BY v.id ORDER BY v.creado_en`,
-        [negocio_id, since, caja_id]
+        [negocio_id, sucursal_id, since, caja_id]
       ),
       pool.query(
-        `SELECT * FROM stock_movimientos WHERE negocio_id=$1 AND creado_en > $2 AND caja_id IS DISTINCT FROM $3 ORDER BY creado_en`,
-        [negocio_id, since, caja_id]
-      )
+        `SELECT * FROM stock_movimientos WHERE negocio_id=$1 AND sucursal_id=$2 AND creado_en > $3 AND caja_id IS DISTINCT FROM $4 ORDER BY creado_en`,
+        [negocio_id, sucursal_id, since, caja_id]
+      ),
+      pool.query(
+        `SELECT * FROM lotes WHERE negocio_id=$1 AND (sucursal_id=$2 OR sucursal_id IS NULL) AND actualizado_en > $3 ORDER BY actualizado_en`,
+        [negocio_id, sucursal_id, since]
+      ).catch(() => ({ rows: [] }))
     ]);
 
     res.json({
@@ -156,14 +187,15 @@ router.get('/pull', async (req, res) => {
       productos: productos.rows,
       clientes: clientes.rows,
       ventas: ventas.rows,
-      movimientos: movimientos.rows
+      movimientos: movimientos.rows,
+      lotes: lotesPull.rows
     });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
 });
 
-// ── GET /api/sync/stock/:producto_id — stock actual calculado ──
+// ── GET /api/sync/stock/:producto_id ──
 router.get('/stock/:producto_id', async (req, res) => {
   try {
     const r = await pool.query(
@@ -171,9 +203,19 @@ router.get('/stock/:producto_id', async (req, res) => {
       [req.params.producto_id]
     );
     res.json({ stock: parseInt(r.rows[0].stock) });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── GET /api/sync/sucursales ──
+router.get('/sucursales', async (req, res) => {
+  try {
+    const { negocio_id } = req.caja;
+    const r = await pool.query(
+      'SELECT id, nombre FROM sucursales WHERE negocio_id=$1 AND activo=true ORDER BY nombre',
+      [negocio_id]
+    );
+    res.json({ ok: true, sucursales: r.rows });
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
 module.exports = router;
