@@ -34,6 +34,7 @@ router.post('/push', async (req, res) => {
          p.precio||0, p.costo||0, p.stock_minimo||5, p.categoria_id||null, p.giro||'tienda',
          !!p.por_peso, p.unidad_peso||'kg', !!p.tiene_prescripcion, activoProd]
       );
+    }
 
     // Clientes — se crean o actualizan (mutable: puntos/saldo cambian)
     for (const c of clientes) {
