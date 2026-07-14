@@ -275,11 +275,27 @@ function broadcast(req, evento, data) {
 // ═══════════════════════════════════════════════════════════
 router.get('/empleados', async (req, res) => {
   try {
-    const { negocio_id, sucursal_id } = req.caja;
-    const r = await pool.query(
-      `SELECT * FROM empleados WHERE negocio_id=$1 AND (sucursal_id=$2 OR sucursal_id IS NULL) AND activo=true ORDER BY nombre`,
-      [negocio_id, sucursal_id]
-    );
+    const { negocio_id } = req.caja;
+    const { todos } = req.query;
+    let sql, params;
+    if (todos === '1') {
+      // Todos los empleados del negocio con nombre de sucursal
+      sql = `SELECT e.*, s.nombre AS sucursal_nombre
+             FROM empleados e
+             LEFT JOIN sucursales s ON s.id = e.sucursal_id
+             WHERE e.negocio_id=$1 AND e.activo=true
+             ORDER BY s.nombre, e.nombre`;
+      params = [negocio_id];
+    } else {
+      const { sucursal_id } = req.caja;
+      sql = `SELECT e.*, s.nombre AS sucursal_nombre
+             FROM empleados e
+             LEFT JOIN sucursales s ON s.id = e.sucursal_id
+             WHERE e.negocio_id=$1 AND (e.sucursal_id=$2 OR e.sucursal_id IS NULL) AND e.activo=true
+             ORDER BY e.nombre`;
+      params = [negocio_id, sucursal_id];
+    }
+    const r = await pool.query(sql, params);
     res.json(r.rows);
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
