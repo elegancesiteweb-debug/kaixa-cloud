@@ -83,6 +83,9 @@ async function aplicarEsquema() {
       )
     `);
     try { await pool.query('ALTER TABLE empleados ALTER COLUMN negocio_id TYPE TEXT USING negocio_id::TEXT'); } catch(e2) {}
+    try { await pool.query('ALTER TABLE empleados ADD COLUMN IF NOT EXISTS sucursal_id UUID'); } catch(e3) {}
+    try { await pool.query('ALTER TABLE empleados ADD COLUMN IF NOT EXISTS ultima_entrada TIMESTAMPTZ'); } catch(e4) {}
+    try { await pool.query('ALTER TABLE empleados ADD COLUMN IF NOT EXISTS ultima_salida TIMESTAMPTZ'); } catch(e5) {}
     console.log('✅ Tabla empleados lista');
   } catch(e) { console.error('⚠️ empleados:', e.message); }
 }
@@ -261,6 +264,42 @@ app.post('/api/vincular-licencia', async (req, res) => {
     res.status(500).json({ ok: false, mensaje: e.message });
   }
 });
+// ── SINCRONIZAR EMPLEADOS DESDE LA PC ───────────────────────────────────
+app.post('/api/sync/empleados', async (req, res) => {
+  try {
+    const token = (req.headers['x-caja-token'] || '').trim();
+    if (!token) return res.status(401).json({ error: 'Falta token' });
+    const caja = await pool.query('SELECT c.*, n.giro_principal FROM cajas c JOIN negocios n ON n.id=c.negocio_id WHERE c.token=$1 AND c.activo=true', [token]);
+    if (!caja.rows.length) return res.status(401).json({ error: 'Token inválido' });
+    const { negocio_id, sucursal_id } = caja.rows[0];
+    const { empleados = [] } = req.body;
+    for (const e of empleados) {
+      await pool.query(`
+        INSERT INTO empleados (negocio_id, sucursal_id, nombre, rol, usuario, password, activo, ultima_entrada, ultima_salida)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+        ON CONFLICT (id) DO UPDATE SET
+          nombre=$3, rol=$4, usuario=$5, activo=$7,
+          ultima_entrada=$8, ultima_salida=$9
+      `, [negocio_id, e.sucursal_id||sucursal_id, e.nombre, e.rol||'cajero',
+          e.usuario||null, e.password||null, e.activo!==false,
+          e.ultima_entrada||null, e.ultima_salida||null])
+      .catch(async () => {
+        // Si falla por constraint, intentar INSERT sin ON CONFLICT id
+        await pool.query(`
+          INSERT INTO empleados (negocio_id, sucursal_id, nombre, rol, usuario, password, activo, ultima_entrada, ultima_salida)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+          ON CONFLICT DO NOTHING
+        `, [negocio_id, e.sucursal_id||sucursal_id, e.nombre, e.rol||'cajero',
+            e.usuario||null, e.password||null, e.activo!==false,
+            e.ultima_entrada||null, e.ultima_salida||null]);
+      });
+    }
+    res.json({ ok: true, sincronizados: empleados.length });
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ── FORZAR VINCULAR LICENCIA AL NEGOCIO DEL TOKEN ───────────────────────
 // Solo se llama desde la PC al configurar multi-sucursal con un token válido
 app.post('/api/forzar-vincular-licencia', async (req, res) => {
