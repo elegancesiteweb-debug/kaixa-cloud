@@ -254,6 +254,10 @@ app.post('/api/vincular-licencia', async (req, res) => {
     if (lic.negocio_id) {
       if (lic.negocio_id !== negocioId) {
         console.log('⚠️ Licencia', clave, 'ya tiene negocio:', lic.negocio_id, '— ignorando solicitud de cambio a:', negocioId);
+        // Si el nuevo negocio_id es diferente, algo intentó cambiarlo — registrar
+        if (lic.negocio_id !== negocioId) {
+          console.error('🚨 ALERTA: Intento de cambiar negocio de licencia', clave, 'de', lic.negocio_id, 'a', negocioId);
+        }
       }
       // Siempre devolver el negocio correcto
       return res.json({ ok: true, sin_cambio: true, negocio_id: lic.negocio_id });
@@ -339,7 +343,9 @@ app.post('/api/lic/canjear', async (req, res) => {
     if (lic.estado === 'cancelada')  return res.json({ ok: false, mensaje: 'Licencia cancelada' });
     if (lic.vence_en && new Date(lic.vence_en).getTime() < Date.now()) return res.json({ ok: false, mensaje: 'Licencia vencida' });
     let negocioId = lic.negocio_id;
+    console.log('🔍 Canjear licencia:', clave, '— negocio_id actual:', negocioId || 'NULL');
     if (!negocioId) {
+      console.log('⚠️ Licencia sin negocio_id — buscando negocio existente con datos...');
       // Buscar si ya existe un negocio con productos/ventas para esta licencia
       // antes de crear uno nuevo
       const negExistente = await pool.query(
