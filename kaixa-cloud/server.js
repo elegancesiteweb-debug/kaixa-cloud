@@ -14,7 +14,7 @@ const server = http.createServer(app);
 const io     = new Server(server, { cors: { origin: '*' } });
 app.set('io', io);
 app.use(cors());
-app.use(express.json({ limit: '5mb' }));
+app.use(express.json({ limit: '50mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 async function aplicarEsquema() {
   try { await pool.query('CREATE EXTENSION IF NOT EXISTS "pgcrypto"'); } catch(e) {}
