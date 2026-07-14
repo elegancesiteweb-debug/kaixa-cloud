@@ -273,28 +273,34 @@ app.post('/api/sync/empleados', async (req, res) => {
     if (!caja.rows.length) return res.status(401).json({ error: 'Token inválido' });
     const { negocio_id, sucursal_id } = caja.rows[0];
     const { empleados = [] } = req.body;
+    let sincronizados = 0;
     for (const e of empleados) {
-      await pool.query(`
-        INSERT INTO empleados (negocio_id, sucursal_id, nombre, rol, usuario, password, activo, ultima_entrada, ultima_salida)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
-        ON CONFLICT (id) DO UPDATE SET
-          nombre=$3, rol=$4, usuario=$5, activo=$7,
-          ultima_entrada=$8, ultima_salida=$9
-      `, [negocio_id, e.sucursal_id||sucursal_id, e.nombre, e.rol||'cajero',
-          e.usuario||null, e.password||null, e.activo!==false,
-          e.ultima_entrada||null, e.ultima_salida||null])
-      .catch(async () => {
-        // Si falla por constraint, intentar INSERT sin ON CONFLICT id
-        await pool.query(`
-          INSERT INTO empleados (negocio_id, sucursal_id, nombre, rol, usuario, password, activo, ultima_entrada, ultima_salida)
-          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
-          ON CONFLICT DO NOTHING
-        `, [negocio_id, e.sucursal_id||sucursal_id, e.nombre, e.rol||'cajero',
-            e.usuario||null, e.password||null, e.activo!==false,
-            e.ultima_entrada||null, e.ultima_salida||null]);
-      });
+      try {
+        // Verificar si ya existe por nombre y negocio
+        const existe = await pool.query(
+          'SELECT id FROM empleados WHERE negocio_id=$1 AND nombre=$2 LIMIT 1',
+          [negocio_id, e.nombre]
+        );
+        if (existe.rows.length) {
+          // Actualizar horarios
+          await pool.query(
+            `UPDATE empleados SET rol=$1, ultima_entrada=$2, ultima_salida=$3, sucursal_id=$4 WHERE id=$5`,
+            [e.rol||'cajero', e.ultima_entrada||null, e.ultima_salida||null, e.sucursal_id||sucursal_id, existe.rows[0].id]
+          );
+        } else {
+          // Insertar nuevo
+          await pool.query(
+            `INSERT INTO empleados (negocio_id, sucursal_id, nombre, rol, usuario, password, activo, ultima_entrada, ultima_salida)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+            [negocio_id, e.sucursal_id||sucursal_id, e.nombre, e.rol||'cajero',
+             e.usuario||null, e.password||null, e.activo!==false,
+             e.ultima_entrada||null, e.ultima_salida||null]
+          );
+        }
+        sincronizados++;
+      } catch(err) { console.error('Error sync empleado:', err.message); }
     }
-    res.json({ ok: true, sincronizados: empleados.length });
+    res.json({ ok: true, sincronizados });
   } catch(e) {
     res.status(500).json({ error: e.message });
   }
