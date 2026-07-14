@@ -1345,7 +1345,14 @@ function renderLotes() {
   }).join('');
 }
 
-function abrirNuevoLote() {
+async function abrirNuevoLote() {
+  // Cargar productos si no están en memoria
+  if (!allProds.length) {
+    try {
+      var r = await apiFetch('/api/productos');
+      if (r && r.ok) allProds = await r.json();
+    } catch(e) {}
+  }
   var optsProds = allProds.map(function(p){return '<option value="'+p.id+'">'+p.nombre+'</option>';}).join('');
   var html = '<div class="modal-overlay" id="modalLote"><div class="modal-sheet">' +
     '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">' +
