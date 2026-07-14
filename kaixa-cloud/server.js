@@ -393,7 +393,26 @@ app.post('/api/auth/login', authCaja, async (req, res) => {
 });
 app.get('/api/empleados', authCaja, async (req, res) => {
   try {
-    const r = await pool.query('SELECT id,nombre,rol,usuario,ultima_entrada,ultima_salida FROM empleados WHERE negocio_id=$1 AND activo=true ORDER BY nombre', [req.caja.negocio_id]);
+    const { negocio_id } = req.caja;
+    const todos = req.query.todos === '1';
+    let sql, params;
+    if (todos) {
+      sql = `SELECT e.id, e.nombre, e.rol, e.usuario, e.ultima_entrada, e.ultima_salida, e.sucursal_id,
+             COALESCE(s.nombre, 'Sin sucursal') AS sucursal_nombre
+             FROM empleados e
+             LEFT JOIN sucursales s ON s.id::text = e.sucursal_id::text
+             WHERE e.negocio_id=$1 AND e.activo=true
+             ORDER BY sucursal_nombre, e.nombre`;
+      params = [negocio_id];
+    } else {
+      sql = `SELECT e.id, e.nombre, e.rol, e.usuario, e.ultima_entrada, e.ultima_salida, e.sucursal_id,
+             COALESCE(s.nombre, 'Sin sucursal') AS sucursal_nombre
+             FROM empleados e
+             LEFT JOIN sucursales s ON s.id::text = e.sucursal_id::text
+             WHERE e.negocio_id=$1 AND e.activo=true ORDER BY e.nombre`;
+      params = [negocio_id];
+    }
+    const r = await pool.query(sql, params);
     res.json(r.rows);
   } catch(e) { res.json([]); }
 });
