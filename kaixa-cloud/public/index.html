@@ -1102,7 +1102,7 @@ async function loadVentas() {
       var fpCls = { efectivo:'fp-efectivo', tarjeta:'fp-tarjeta', transferencia:'fp-transferencia' };
       return '<div class="venta-row" onclick="verDetalleVenta(\'' + v.id + '\')">' +
         '<div class="vr-num">#' + (v.folio||v.id) + '</div>' +
-        '<div class="vr-info"><div class="vr-hora">' + (v.creado_en||'').substring(11,16) + '</div>' +
+        '<div class="vr-info"><div class="vr-hora">' + (v.creado_en ? fmtHora(v.creado_en) : '') + '</div>' +
         '<div class="vr-cajero">' + (v.cajero_nombre||v.usuario_nombre||'—') + '</div>' +
         '<span class="vr-fp ' + (fpCls[fp2]||'fp-efectivo') + '">' + fp2 + '</span></div>' +
         '<div class="vr-total">' + fmt(v.total) + '</div></div>';
@@ -1426,7 +1426,7 @@ function renderPedidos() {
     return '<div class="card" style="cursor:pointer;margin:0 16px 8px" onclick="verDetallePedido(\'' + p.id + '\')">' +
       '<div class="card-row"><div class="card-ico">🚚</div>' +
       '<div class="card-info"><div class="card-title">' + (p.proveedor_nombre||'Sin proveedor') + '</div>' +
-      '<div class="card-sub">' + String(p.creado_en||'').substring(0,10) + '</div></div>' +
+      '<div class="card-sub">' + (p.creado_en ? fmtFecha(p.creado_en) : '—') + '</div></div>' +
       '<span class="tag ' + cls + '">' + (p.estado||'pendiente') + '</span></div></div>';
   }).join('');
 }
@@ -1661,6 +1661,20 @@ async function loadEmpleados() {
   } catch(e) {
     cont.innerHTML = '<div class="empty"><p>Error: ' + e.message + '</p></div>';
   }
+}
+
+// ── Helper: formatear fecha/hora UTC a local ──────────────────────────
+function fmtHora(dt) {
+  if (!dt) return '—';
+  return new Date(dt).toLocaleTimeString('es-MX', {hour:'2-digit', minute:'2-digit'});
+}
+function fmtFecha(dt) {
+  if (!dt) return '—';
+  return new Date(dt).toLocaleDateString('es-MX', {day:'2-digit', month:'2-digit', year:'numeric'});
+}
+function fmtFechaHora(dt) {
+  if (!dt) return '—';
+  return new Date(dt).toLocaleString('es-MX', {day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit'});
 }
 
 // Auto-refresh inventario, POS y clientes cada 30 segundos
