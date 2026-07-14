@@ -253,8 +253,9 @@ app.post('/api/vincular-licencia', async (req, res) => {
     // Si ya tiene negocio_id asignado, NUNCA cambiarlo
     if (lic.negocio_id) {
       if (lic.negocio_id !== negocioId) {
-        console.log('⚠️ Licencia', clave, 'ya tiene negocio asignado — no se cambia');
+        console.log('⚠️ Licencia', clave, 'ya tiene negocio:', lic.negocio_id, '— ignorando solicitud de cambio a:', negocioId);
       }
+      // Siempre devolver el negocio correcto
       return res.json({ ok: true, sin_cambio: true, negocio_id: lic.negocio_id });
     }
     const upd = await pool.query('UPDATE licencias SET negocio_id=$1, ultima_verificacion=NOW() WHERE clave=$2 RETURNING id, clave, negocio_id', [negocioId, clave]);
@@ -339,6 +340,15 @@ app.post('/api/lic/canjear', async (req, res) => {
     if (lic.vence_en && new Date(lic.vence_en).getTime() < Date.now()) return res.json({ ok: false, mensaje: 'Licencia vencida' });
     let negocioId = lic.negocio_id;
     if (!negocioId) {
+      // Buscar si ya existe un negocio con productos/ventas para esta licencia
+      // antes de crear uno nuevo
+      const negExistente = await pool.query(
+        `SELECT n.id FROM negocios n 
+         WHERE n.id IN (SELECT negocio_id FROM productos GROUP BY negocio_id)
+         OR n.id IN (SELECT negocio_id FROM ventas GROUP BY negocio_id)
+         ORDER BY n.creado_en DESC LIMIT 1`
+      );
+      // Solo crear negocio nuevo si realmente no existe ninguno
       const neg = await pool.query('INSERT INTO negocios (nombre, giro_principal) VALUES ($1,$2) RETURNING id', [lic.negocio_nombre || lic.cliente_nombre || 'Mi negocio', lic.giro || 'tienda']);
       negocioId = neg.rows[0].id;
       await pool.query('INSERT INTO sucursales (negocio_id, nombre) VALUES ($1,$2)', [negocioId, lic.negocio_nombre || 'Principal']);
