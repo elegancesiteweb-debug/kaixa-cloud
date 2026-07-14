@@ -20,16 +20,17 @@ router.post('/push', async (req, res) => {
     for (const p of productos) {
       await client.query(
         `INSERT INTO productos
-          (id, negocio_id, nombre, emoji, imagen_url, codigo_barras, precio, costo,
-           stock_minimo, categoria_id, giro, por_peso, unidad_peso, tiene_prescripcion, actualizado_en)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14, now())
+          (id, negocio_id, sucursal_id, nombre, emoji, imagen_url, codigo_barras, precio, costo,
+           stock_minimo, categoria_id, giro, por_peso, unidad_peso, tiene_prescripcion, activo, actualizado_en)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16, now())
          ON CONFLICT (id) DO UPDATE SET
-           nombre=$3, emoji=$4, imagen_url=$5, codigo_barras=$6, precio=$7, costo=$8,
-           stock_minimo=$9, categoria_id=$10, giro=$11, por_peso=$12, unidad_peso=$13,
-           tiene_prescripcion=$14, actualizado_en=now()`,
-        [p.uuid, negocio_id, p.nombre, p.emoji||'📦', p.imagen_url||'', p.codigo_barras||'',
+           sucursal_id=COALESCE(productos.sucursal_id, $3),
+           nombre=$4, emoji=$5, imagen_url=$6, codigo_barras=$7, precio=$8, costo=$9,
+           stock_minimo=$10, categoria_id=$11, giro=$12, por_peso=$13, unidad_peso=$14,
+           tiene_prescripcion=$15, activo=$16, actualizado_en=now()`,
+        [p.uuid, negocio_id, prodSucursalId, p.nombre, p.emoji||'📦', p.imagen_url||'', p.codigo_barras||'',
          p.precio||0, p.costo||0, p.stock_minimo||5, p.categoria_id||null, p.giro||'tienda',
-         !!p.por_peso, p.unidad_peso||'kg', !!p.tiene_prescripcion]
+         !!p.por_peso, p.unidad_peso||'kg', !!p.tiene_prescripcion, activoProd]
       );
     }
 
