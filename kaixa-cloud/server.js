@@ -46,8 +46,8 @@ async function aplicarEsquema() {
         sucursal_id       UUID
       )
     `);
-    try { await pool.query('ALTER TABLE licencias DROP COLUMN IF EXISTS negocio_id'); } catch(e) {}
-    try { await pool.query('ALTER TABLE licencias ADD COLUMN negocio_id UUID'); } catch(e) {}
+    // NO borrar negocio_id — solo agregar si no existe
+    try { await pool.query('ALTER TABLE licencias ADD COLUMN IF NOT EXISTS negocio_id UUID'); } catch(e) {}
     try { await pool.query('ALTER TABLE licencias ADD COLUMN IF NOT EXISTS sucursal_id UUID'); } catch(e) {}
     console.log('✅ Tabla licencias lista');
   } catch(e) { console.error('⚠️ licencias:', e.message); }
