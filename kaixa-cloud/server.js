@@ -283,9 +283,10 @@ app.post('/api/sync/empleados', async (req, res) => {
         );
         if (existe.rows.length) {
           // Actualizar horarios
+          const activoEmp = (e.activo === false || e.activo === 0) ? false : true;
           await pool.query(
-            `UPDATE empleados SET rol=$1, ultima_entrada=$2, ultima_salida=$3, sucursal_id=$4 WHERE id=$5`,
-            [e.rol||'cajero', e.ultima_entrada||null, e.ultima_salida||null, e.sucursal_id||sucursal_id, existe.rows[0].id]
+            `UPDATE empleados SET rol=$1, ultima_entrada=$2, ultima_salida=$3, sucursal_id=$4, activo=$5 WHERE id=$6`,
+            [e.rol||'cajero', e.ultima_entrada||null, e.ultima_salida||null, e.sucursal_id||sucursal_id, activoEmp, existe.rows[0].id]
           );
         } else {
           // Insertar nuevo
