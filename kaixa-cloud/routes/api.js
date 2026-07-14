@@ -11,7 +11,11 @@ router.get('/productos', async (req, res) => {
     const { negocio_id, sucursal_id } = req.caja;
     const { giro, q } = req.query;
     let sql = `
-      SELECT p.*, COALESCE(s.stock,0) AS stock, c.nombre AS categoria_nombre, c.emoji AS categoria_emoji
+      SELECT p.id, p.negocio_id, p.sucursal_id, p.nombre, p.emoji, p.codigo_barras,
+             p.precio, p.costo, p.stock_minimo, p.categoria_id, p.giro, p.por_peso,
+             p.unidad_peso, p.tiene_prescripcion, p.activo, p.creado_en, p.actualizado_en,
+             CASE WHEN p.imagen_url IS NOT NULL AND p.imagen_url != '' THEN true ELSE false END as tiene_imagen,
+             COALESCE(s.stock,0) AS stock, c.nombre AS categoria_nombre, c.emoji AS categoria_emoji
       FROM productos p
       LEFT JOIN stock_actual s ON s.producto_id = p.id AND s.sucursal_id = $2
       LEFT JOIN categorias c ON c.id = p.categoria_id
