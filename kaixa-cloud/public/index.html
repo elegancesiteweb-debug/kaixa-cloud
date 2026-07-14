@@ -789,6 +789,22 @@ function filtrarProds() {
   renderPosGrid(allProds.filter(function(p) { return p.nombre.toLowerCase().includes(q) || (p.codigo_barras || '').includes(q); }));
 }
 
+function lazyLoadImagenes(prods) {
+  prods.forEach(function(p) {
+    if (!p.tiene_imagen) return;
+    var el = document.getElementById('pe-' + p.id);
+    if (!el) return;
+    apiFetch('/api/productos/' + p.id + '/imagen').then(function(r) {
+      if (!r || !r.ok) return;
+      return r.json();
+    }).then(function(d) {
+      if (!d || !d.imagen_url) return;
+      var el2 = document.getElementById('pe-' + p.id);
+      if (el2) el2.innerHTML = '<img src="' + d.imagen_url + '" style="width:36px;height:36px;object-fit:cover;border-radius:8px;">';
+    }).catch(function(){});
+  });
+}
+
 function renderPosGrid(prods) {
   var cont = document.getElementById('posGrid');
   if (!prods.length) { cont.innerHTML = '<div class="empty" style="grid-column:1/-1"><div class="ico">📦</div><p>Sin productos</p></div>'; return; }
@@ -796,7 +812,7 @@ function renderPosGrid(prods) {
     var inCart = cart.some(function(c) { return String(c.id) === String(p.id); });
     // FIX: UUID con comillas para evitar SyntaxError
     return '<div class="prod-card' + (inCart ? ' in-cart' : '') + '" onclick="addToCart(\'' + p.id + '\')">' +
-      '<div class="prod-emoji">' + (p.emoji || '📦') + '</div>' +
+      '<div class="prod-emoji" id="pe-'+p.id+'">' + (p.emoji || '📦') + '</div>' +
       '<div class="prod-name">' + p.nombre + '</div>' +
       '<div class="prod-price">' + fmt(p.precio) + '</div>' +
       '<div class="prod-stock">Stock: ' + (p.stock || 0) + '</div>' +
