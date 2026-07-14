@@ -1599,6 +1599,37 @@ document.addEventListener('DOMContentLoaded', function() {
   if (el) el.value = new Date().toLocaleDateString('en-CA');
 });
 
+// ── Empleados ────────────────────────────────────────────
+async function loadEmpleados() {
+  var cont = document.getElementById('empList');
+  if (!cont) return;
+  try {
+    var r = await apiFetch('/api/empleados?todos=1');
+    if (!r || !r.ok) { cont.innerHTML = '<div class="empty"><p>Error al cargar empleados</p></div>'; return; }
+    var emps = await r.json();
+    if (!emps.length) { cont.innerHTML = '<div class="empty"><div class="ico">👥</div><p>Sin empleados</p></div>'; return; }
+    cont.innerHTML = emps.map(function(e) {
+      var estado = e.ultima_entrada && !e.ultima_salida ? 'Activo' : 'Inactivo';
+      var color  = e.ultima_entrada && !e.ultima_salida ? '#10b981' : '#94a3b8';
+      var entrada = e.ultima_entrada ? new Date(e.ultima_entrada).toLocaleTimeString('es-MX', {hour:'2-digit',minute:'2-digit'}) : '—';
+      var salida  = e.ultima_salida  ? new Date(e.ultima_salida).toLocaleTimeString('es-MX',  {hour:'2-digit',minute:'2-digit'}) : '—';
+      return '<div style="background:var(--s1);border-radius:12px;padding:14px;margin-bottom:10px;border:1px solid var(--border)">' +
+        '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">' +
+          '<div style="font-weight:700;font-size:15px">' + e.nombre + '</div>' +
+          '<div style="background:' + color + '20;color:' + color + ';padding:3px 10px;border-radius:20px;font-size:12px;font-weight:700">' + estado + '</div>' +
+        '</div>' +
+        '<div style="font-size:12px;color:var(--text2);margin-bottom:6px">🏪 ' + (e.sucursal_nombre || 'Sin sucursal') + ' · ' + (e.rol || 'cajero') + '</div>' +
+        '<div style="display:flex;gap:16px;font-size:12px">' +
+          '<div><span style="color:var(--text3)">Entrada: </span><span style="color:#10b981;font-weight:600">' + entrada + '</span></div>' +
+          '<div><span style="color:var(--text3)">Salida: </span><span style="color:#ef4444;font-weight:600">' + salida + '</span></div>' +
+        '</div>' +
+      '</div>';
+    }).join('');
+  } catch(e) {
+    cont.innerHTML = '<div class="empty"><p>Error: ' + e.message + '</p></div>';
+  }
+}
+
 // Auto-refresh inventario, POS y clientes cada 30 segundos
 setInterval(function() {
   if (typeof currentScreen === 'undefined') return;
