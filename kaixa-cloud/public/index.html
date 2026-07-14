@@ -1613,15 +1613,28 @@ async function loadEmpleados() {
       var color  = e.ultima_entrada && !e.ultima_salida ? '#10b981' : '#94a3b8';
       var entrada = e.ultima_entrada ? new Date(e.ultima_entrada).toLocaleTimeString('es-MX', {hour:'2-digit',minute:'2-digit'}) : '—';
       var salida  = e.ultima_salida  ? new Date(e.ultima_salida).toLocaleTimeString('es-MX',  {hour:'2-digit',minute:'2-digit'}) : '—';
+      // Calcular duración del turno
+      var duracionStr = '';
+      if (e.ultima_entrada) {
+        var ini = new Date(e.ultima_entrada);
+        var fin = e.ultima_salida ? new Date(e.ultima_salida) : new Date();
+        var mins = Math.floor((fin - ini) / 60000);
+        if (mins > 0) {
+          var hrs = Math.floor(mins / 60);
+          var mns = mins % 60;
+          duracionStr = hrs > 0 ? hrs + 'h ' + mns + 'm' : mns + 'm';
+        }
+      }
       return '<div style="background:var(--s1);border-radius:12px;padding:14px;margin-bottom:10px;border:1px solid var(--border)">' +
         '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">' +
           '<div style="font-weight:700;font-size:15px">' + e.nombre + '</div>' +
           '<div style="background:' + color + '20;color:' + color + ';padding:3px 10px;border-radius:20px;font-size:12px;font-weight:700">' + estado + '</div>' +
         '</div>' +
-        '<div style="font-size:12px;color:var(--text2);margin-bottom:6px">🏪 ' + (e.sucursal_nombre || 'Sin sucursal') + ' · ' + (e.rol || 'cajero') + '</div>' +
-        '<div style="display:flex;gap:16px;font-size:12px">' +
+        '<div style="font-size:12px;color:var(--text2);margin-bottom:8px">🏪 ' + (e.sucursal_nombre || 'Sin sucursal') + ' · ' + (e.rol || 'cajero') + '</div>' +
+        '<div style="display:flex;gap:16px;font-size:12px;flex-wrap:wrap">' +
           '<div><span style="color:var(--text3)">Entrada: </span><span style="color:#10b981;font-weight:600">' + entrada + '</span></div>' +
           '<div><span style="color:var(--text3)">Salida: </span><span style="color:#ef4444;font-weight:600">' + salida + '</span></div>' +
+          (duracionStr ? '<div><span style="color:var(--text3)">Turno: </span><span style="color:var(--accent);font-weight:600">' + duracionStr + (e.ultima_salida ? '' : ' ⏱') + '</span></div>' : '') +
         '</div>' +
       '</div>';
     }).join('');
