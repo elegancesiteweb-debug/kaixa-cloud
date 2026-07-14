@@ -367,7 +367,14 @@ router.get('/lotes', async (req, res) => {
   try {
     const { negocio_id, sucursal_id } = req.caja;
     const r = await pool.query(
-      `SELECT * FROM lotes WHERE negocio_id=$1 AND (sucursal_id=$2 OR sucursal_id IS NULL) AND activo=true ORDER BY fecha_caducidad ASC NULLS LAST`,
+      `SELECT l.*, p.nombre AS nombre_producto, p.emoji AS producto_emoji,
+        CASE WHEN l.fecha_caducidad IS NULL THEN NULL
+          ELSE (l.fecha_caducidad::date - CURRENT_DATE)
+        END AS dias_restantes
+       FROM lotes l
+       LEFT JOIN productos p ON p.id::text = l.producto_id::text
+       WHERE l.negocio_id=$1 AND (l.sucursal_id=$2 OR l.sucursal_id IS NULL) AND l.activo=true
+       ORDER BY l.fecha_caducidad ASC NULLS LAST`,
       [negocio_id, sucursal_id]
     );
     res.json(r.rows);
