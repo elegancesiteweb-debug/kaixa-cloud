@@ -1598,6 +1598,14 @@ document.addEventListener('DOMContentLoaded', function() {
   var el = document.getElementById('ventaFiltroFecha');
   if (el) el.value = new Date().toLocaleDateString('en-CA');
 });
+
+// Auto-refresh inventario, POS y clientes cada 30 segundos
+setInterval(function() {
+  if (typeof currentScreen === 'undefined') return;
+  if (currentScreen === 'inv') { allProds = []; loadInv(); }
+  else if (currentScreen === 'pos') { allProds = []; loadPos(); }
+  else if (currentScreen === 'clientes') loadCli();
+}, 30000);
 </script>
 </body>
 </html>
