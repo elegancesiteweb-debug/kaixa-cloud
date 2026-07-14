@@ -1026,9 +1026,27 @@ function renderInvList(prods) {
 
 function abrirNuevoProd() { abrirModalProd(null); }
 
-function abrirEditProd(id) {
+async function abrirEditProd(id) {
   var p = allProds.find(function(x) { return String(x.id) === String(id); });
-  if (p) abrirModalProd(p);
+  if (p) {
+    abrirModalProd(p);
+    // Cargar imagen si tiene foto
+    if (p.tiene_imagen) {
+      try {
+        var r = await apiFetch('/api/productos/' + id + '/imagen');
+        if (r && r.ok) {
+          var d = await r.json();
+          if (d.imagen_url) {
+            var img = document.getElementById('pFotoImg');
+            if (img) img.src = d.imagen_url;
+            // También actualizar en el POS
+            var el = document.getElementById('pe-' + id);
+            if (el) el.innerHTML = '<img src="' + d.imagen_url + '" style="width:36px;height:36px;object-fit:cover;border-radius:8px;">';
+          }
+        }
+      } catch(e) {}
+    }
+  }
 }
 
 function abrirModalProd(p) {
@@ -1039,6 +1057,15 @@ function abrirModalProd(p) {
         '<h3 style="margin:0">' + (esNuevo ? '➕ Nuevo producto' : '✏️ Editar producto') + '</h3>' +
         '<span class="modal-close" onclick="document.getElementById(\'modalProd\').remove()">✕</span>' +
       '</div>' +
+      // Foto del producto
+      (p ? '<div style="text-align:center;margin-bottom:12px">' +
+        '<div id="pFotoPreview" style="width:64px;height:64px;border-radius:12px;margin:0 auto 8px;overflow:hidden;background:var(--s2);display:flex;align-items:center;justify-content:center;font-size:28px">' +
+          (p.tiene_imagen ? '<img id="pFotoImg" src="" style="width:100%;height:100%;object-fit:cover;" onerror="this.parentNode.innerHTML='' + (p.emoji||'📦') + ''">' : (p.emoji||'📦')) +
+        '</div>' +
+        '<label style="font-size:12px;color:var(--accent);font-weight:700;cursor:pointer">📷 Cambiar foto' +
+          '<input type="file" accept="image/*" style="display:none" onchange="subirFotoProd(this,'' + p.id + '')">' +
+        '</label>' +
+      '</div>' : '') +
       '<div class="form-field"><label>Nombre</label><input id="pNombre" value="' + (p ? p.nombre : '') + '"></div>' +
       '<div class="form-row">' +
         '<div class="form-field"><label>Precio</label><input id="pPrecio" type="number" step="0.01" value="' + (p ? p.precio : '') + '"></div>' +
