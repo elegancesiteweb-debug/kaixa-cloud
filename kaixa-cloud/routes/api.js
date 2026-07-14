@@ -280,20 +280,22 @@ router.get('/empleados', async (req, res) => {
     let sql, params;
     if (todos === '1') {
       // Todos los empleados del negocio con nombre de sucursal
-      sql = `SELECT e.*, s.nombre AS sucursal_nombre
+      sql = `SELECT e.*,
+             COALESCE(s.nombre, 'Sin sucursal') AS sucursal_nombre
              FROM empleados e
-             LEFT JOIN sucursales s ON s.id = e.sucursal_id
+             LEFT JOIN sucursales s ON s.id::text = e.sucursal_id::text
              WHERE e.negocio_id=$1 AND e.activo=true
-             ORDER BY s.nombre, e.nombre`;
+             ORDER BY sucursal_nombre, e.nombre`;
       params = [negocio_id];
     } else {
       const { sucursal_id } = req.caja;
-      sql = `SELECT e.*, s.nombre AS sucursal_nombre
+      sql = `SELECT e.*,
+             COALESCE(s.nombre, 'Sin sucursal') AS sucursal_nombre
              FROM empleados e
-             LEFT JOIN sucursales s ON s.id = e.sucursal_id
-             WHERE e.negocio_id=$1 AND (e.sucursal_id=$2 OR e.sucursal_id IS NULL) AND e.activo=true
+             LEFT JOIN sucursales s ON s.id::text = e.sucursal_id::text
+             WHERE e.negocio_id=$1 AND e.activo=true
              ORDER BY e.nombre`;
-      params = [negocio_id, sucursal_id];
+      params = [negocio_id];
     }
     const r = await pool.query(sql, params);
     res.json(r.rows);
