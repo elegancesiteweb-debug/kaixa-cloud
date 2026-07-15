@@ -800,7 +800,11 @@ async function lazyLoadImagenes(prods) {
       if (!d || !d.imagen_url) continue;
       var el = document.getElementById('pe-' + p.id);
       if (el) {
-        el.innerHTML = '<img src="' + d.imagen_url + '" style="width:36px;height:36px;object-fit:cover;border-radius:8px;" onerror="this.parentNode.innerHTML='' + (p.emoji||'📦') + ''">';
+        var img2 = document.createElement('img');
+        img2.src = d.imagen_url;
+        img2.style.cssText = 'width:36px;height:36px;object-fit:cover;border-radius:8px;';
+        el.innerHTML = '';
+        el.appendChild(img2);
         p.imagen_url = d.imagen_url; // cachear para no recargar
       }
     } catch(e) {}
