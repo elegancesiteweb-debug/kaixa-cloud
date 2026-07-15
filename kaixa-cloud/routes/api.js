@@ -15,6 +15,7 @@ router.get('/productos', async (req, res) => {
              p.precio, p.costo, p.stock_minimo, p.categoria_id, p.giro, p.por_peso,
              p.unidad_peso, p.tiene_prescripcion, p.activo, p.creado_en, p.actualizado_en,
              CASE WHEN p.imagen_url IS NOT NULL AND p.imagen_url != '' THEN true ELSE false END as tiene_imagen,
+             CASE WHEN length(p.imagen_url) < 200000 THEN p.imagen_url ELSE NULL END as imagen_url,
              COALESCE(s.stock,0) AS stock, c.nombre AS categoria_nombre, c.emoji AS categoria_emoji
       FROM productos p
       LEFT JOIN stock_actual s ON s.producto_id = p.id AND s.sucursal_id = $2
