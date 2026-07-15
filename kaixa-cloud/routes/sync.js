@@ -15,6 +15,11 @@ router.post('/push', async (req, res) => {
     for (const p of productos) {
       const activoProd = (p.activo === false || p.activo === 0) ? false : true;
       const prodSucursalId = p.sucursal_id || sucursal_id;
+      if (p.imagen_url && p.imagen_url.length > 10) {
+        console.log('🖼️ Push prod con imagen:', p.uuid?.substring(0,8), 'len:', p.imagen_url?.length);
+      } else {
+        console.log('🖼️ Push prod sin imagen:', p.uuid?.substring(0,8), 'valor:', JSON.stringify(p.imagen_url)?.substring(0,20));
+      }
       await client.query(
         `INSERT INTO productos
           (id, negocio_id, sucursal_id, nombre, emoji, imagen_url, codigo_barras, precio, costo,
