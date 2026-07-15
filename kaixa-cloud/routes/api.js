@@ -60,6 +60,30 @@ router.post('/productos', async (req, res) => {
 });
 
 // ── PUT /api/productos/:id ─────────────────────────────────────
+// ── GET /api/productos/:id/imagen ─────────────────────────────────────────
+router.get('/productos/:id/imagen', async (req, res) => {
+  try {
+    const r = await pool.query(
+      'SELECT imagen_url FROM productos WHERE id=$1 AND negocio_id=$2',
+      [req.params.id, req.caja.negocio_id]
+    );
+    if (!r.rows.length) return res.json({ imagen_url: null });
+    res.json({ imagen_url: r.rows[0].imagen_url || null });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── PUT /api/productos/:id/imagen ──────────────────────────────────────────
+router.put('/productos/:id/imagen', async (req, res) => {
+  try {
+    const { imagen_url } = req.body;
+    await pool.query(
+      'UPDATE productos SET imagen_url=$1, actualizado_en=now() WHERE id=$2 AND negocio_id=$3',
+      [imagen_url||'', req.params.id, req.caja.negocio_id]
+    );
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 router.put('/productos/:id', async (req, res) => {
   try {
     const { negocio_id, sucursal_id } = req.caja;
