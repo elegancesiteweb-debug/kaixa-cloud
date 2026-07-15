@@ -79,10 +79,14 @@ router.put('/productos/:id/imagen', async (req, res) => {
     const { imagen_url } = req.body;
     console.log('PUT imagen:', req.params.id, 'body keys:', Object.keys(req.body||{}), 'img len:', imagen_url?.length||0, 'content-type:', req.headers['content-type']);
     if (!imagen_url) return res.status(400).json({ error: 'imagen_url requerida' });
-    await pool.query(
+    const result = await pool.query(
       'UPDATE productos SET imagen_url=$1, actualizado_en=now() WHERE id=$2 AND negocio_id=$3',
       [imagen_url, req.params.id, req.caja.negocio_id]
     );
+    console.log('PUT imagen resultado: rowCount=', result.rowCount, 'negocio_id=', req.caja.negocio_id);
+    // Verificar que se guardó
+    const check = await pool.query('SELECT length(imagen_url) as len FROM productos WHERE id=$1', [req.params.id]);
+    console.log('PUT imagen verificacion: len=', check.rows[0]?.len);
     res.json({ ok: true });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
