@@ -149,7 +149,11 @@ router.get('/pull', async (req, res) => {
   try {
     const [productos, clientes, ventas, movimientos, lotesPull] = await Promise.all([
       pool.query(
-        `SELECT p.*, COALESCE(s.stock,0) AS stock_actual
+        `SELECT p.id, p.negocio_id, p.sucursal_id, p.nombre, p.emoji, p.codigo_barras,
+                p.precio, p.costo, p.stock_minimo, p.categoria_id, p.giro, p.por_peso,
+                p.unidad_peso, p.tiene_prescripcion, p.activo, p.creado_en, p.actualizado_en,
+                CASE WHEN length(p.imagen_url) < 300000 THEN p.imagen_url ELSE NULL END as imagen_url,
+                COALESCE(s.stock,0) AS stock_actual
          FROM productos p
          LEFT JOIN stock_actual s ON s.producto_id = p.id AND s.sucursal_id = $2
          WHERE p.negocio_id=$1 AND p.sucursal_id=$2 AND p.actualizado_en > $3
