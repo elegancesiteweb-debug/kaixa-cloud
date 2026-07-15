@@ -396,7 +396,9 @@ function headers() { return { 'Content-Type': 'application/json', 'x-caja-token'
 
 async function apiFetch(path, opts) {
   try {
-    var r = await fetch(API + path, Object.assign({ headers: headers() }, opts || {}));
+    var merged = Object.assign({}, opts || {});
+    merged.headers = Object.assign({}, headers(), (opts && opts.headers) || {});
+    var r = await fetch(API + path, merged);
     return r;
   } catch(e) { return null; }
 }
