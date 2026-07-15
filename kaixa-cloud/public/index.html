@@ -1007,6 +1007,35 @@ async function loadInv() {
   } catch(e) {}
 }
 
+function lazyLoadInvImagenes(prods) {
+  prods.forEach(async function(p) {
+    if (!p.tiene_imagen) return;
+    try {
+      var r = await apiFetch('/api/productos/' + p.id + '/imagen');
+      if (!r || !r.ok) return;
+      var d = await r.json();
+      if (!d || !d.imagen_url) return;
+      p.imagen_url = d.imagen_url;
+      var el = document.getElementById('ii-' + p.id);
+      if (el) {
+        var img = document.createElement('img');
+        img.src = d.imagen_url;
+        img.style.cssText = 'width:100%;height:100%;object-fit:cover;border-radius:8px;';
+        el.innerHTML = '';
+        el.appendChild(img);
+      }
+      var el2 = document.getElementById('pe-' + p.id);
+      if (el2) {
+        var img2 = document.createElement('img');
+        img2.src = d.imagen_url;
+        img2.style.cssText = 'width:36px;height:36px;object-fit:cover;border-radius:8px;';
+        el2.innerHTML = '';
+        el2.appendChild(img2);
+      }
+    } catch(e) {}
+  });
+}
+
 function filtrarInv() {
   var q = document.getElementById('invBuscar').value.toLowerCase();
   renderInvList(allProds.filter(function(p) { return p.nombre.toLowerCase().includes(q) || (p.categoria || '').toLowerCase().includes(q); }));
@@ -1018,8 +1047,9 @@ function renderInvList(prods) {
   cont.innerHTML = prods.map(function(p) {
     var stockCls = p.stock <= 0 ? 'stock-out' : p.stock <= (p.stock_minimo || 5) ? 'stock-low' : '';
     var stockTxt = p.stock <= 0 ? '🔴 Agotado' : p.stock <= (p.stock_minimo || 5) ? '🟡 ' + p.stock + ' uds' : '🟢 ' + p.stock + ' uds';
+    var icoHtml = p.tiene_imagen ? '<img id="ii-img-' + p.id + '" src="" style="width:100%;height:100%;object-fit:cover;border-radius:8px;">' : (p.emoji || '📦');
     return '<div class="inv-item ' + stockCls + '" onclick="abrirEditProd(\'' + p.id + '\')">' +
-      '<div class="ii-ico">' + (p.emoji || '📦') + '</div>' +
+      '<div class="ii-ico" id="ii-' + p.id + '">' + icoHtml + '</div>' +
       '<div style="flex:1;min-width:0">' +
         '<div class="ii-name">' + p.nombre + '</div>' +
         '<div class="ii-cat">' + (p.categoria || '—') + '</div>' +
@@ -1727,6 +1757,73 @@ function fmtFecha(dt) {
 function fmtFechaHora(dt) {
   if (!dt) return '—';
   return new Date(dt).toLocaleString('es-MX', {day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit'});
+}
+
+// ── Subir foto de producto desde la app ──────────────────────────────────
+async function subirFotoProd(input, id) {
+  if (!input || !input.files || !input.files[0]) return;
+  var file = input.files[0];
+  if (file.size > 3*1024*1024) { notif('Imagen debe ser menor a 3MB', 'err'); return; }
+  var reader = new FileReader();
+  reader.onload = async function(e) {
+    var base64 = e.target.result;
+    var preview = document.getElementById('pFotoPreview');
+    if (preview) {
+      var img = document.createElement('img');
+      img.src = base64;
+      img.style.cssText = 'width:100%;height:100%;object-fit:cover;';
+      preview.innerHTML = '';
+      preview.appendChild(img);
+    }
+    try {
+      var r = await apiFetch('/api/productos/' + id + '/imagen', {
+        method: 'PUT',
+        body: JSON.stringify({ imagen_url: base64 })
+      });
+      if (r && r.ok) {
+        notif('✅ Foto guardada', 'ok');
+        var prod = allProds.find(function(x){ return String(x.id)===String(id); });
+        if (prod) { prod.imagen_url = base64; prod.tiene_imagen = true; }
+        var el = document.getElementById('pe-' + id);
+        if (el) {
+          var img2 = document.createElement('img');
+          img2.src = base64;
+          img2.style.cssText = 'width:36px;height:36px;object-fit:cover;border-radius:8px;';
+          el.innerHTML = '';
+          el.appendChild(img2);
+        }
+      } else { notif('Error al guardar foto', 'err'); }
+    } catch(err) { notif('Error: ' + err.message, 'err'); }
+  };
+  reader.readAsDataURL(file);
+}
+
+// ── Subir foto de cliente desde la app ───────────────────────────────────
+async function subirFotoCli(input, id) {
+  if (!input || !input.files || !input.files[0]) return;
+  var file = input.files[0];
+  if (file.size > 3*1024*1024) { notif('Imagen debe ser menor a 3MB', 'err'); return; }
+  var reader = new FileReader();
+  reader.onload = async function(e) {
+    var base64 = e.target.result;
+    var preview = document.getElementById('cliFotoPreview');
+    if (preview) {
+      var img = document.createElement('img');
+      img.src = base64;
+      img.style.cssText = 'width:100%;height:100%;object-fit:cover;border-radius:50%;';
+      preview.innerHTML = '';
+      preview.appendChild(img);
+    }
+    try {
+      var r = await apiFetch('/api/clientes/' + id, {
+        method: 'PUT',
+        body: JSON.stringify({ foto: base64 })
+      });
+      if (r && r.ok) { notif('✅ Foto guardada', 'ok'); }
+      else { notif('Error al guardar foto', 'err'); }
+    } catch(err) { notif('Error: ' + err.message, 'err'); }
+  };
+  reader.readAsDataURL(file);
 }
 
 // Auto-refresh inventario, POS y clientes cada 30 segundos
