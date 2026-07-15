@@ -818,7 +818,7 @@ function renderPosGrid(prods) {
     var inCart = cart.some(function(c) { return String(c.id) === String(p.id); });
     // FIX: UUID con comillas para evitar SyntaxError
     return '<div class="prod-card' + (inCart ? ' in-cart' : '') + '" onclick="addToCart(\'' + p.id + '\')">' +
-      '<div class="prod-emoji" id="pe-'+p.id+'">' + (p.emoji || '📦') + '</div>' +
+      '<div class="prod-emoji" id="pe-'+p.id+'">' + (p.imagen_url ? '<img src="'+p.imagen_url+'" style="width:36px;height:36px;object-fit:cover;border-radius:8px;">' : (p.emoji || '📦')) + '</div>' +
       '<div class="prod-name">' + p.nombre + '</div>' +
       '<div class="prod-price">' + fmt(p.precio) + '</div>' +
       '<div class="prod-stock">Stock: ' + (p.stock || 0) + '</div>' +
@@ -1047,7 +1047,7 @@ function renderInvList(prods) {
   cont.innerHTML = prods.map(function(p) {
     var stockCls = p.stock <= 0 ? 'stock-out' : p.stock <= (p.stock_minimo || 5) ? 'stock-low' : '';
     var stockTxt = p.stock <= 0 ? '🔴 Agotado' : p.stock <= (p.stock_minimo || 5) ? '🟡 ' + p.stock + ' uds' : '🟢 ' + p.stock + ' uds';
-    var icoHtml = p.tiene_imagen ? '<img id="ii-img-' + p.id + '" src="" style="width:100%;height:100%;object-fit:cover;border-radius:8px;">' : (p.emoji || '📦');
+    var icoHtml = (p.imagen_url) ? '<img src="' + p.imagen_url + '" style="width:100%;height:100%;object-fit:cover;border-radius:8px;">' : (p.emoji || '📦');
     return '<div class="inv-item ' + stockCls + '" onclick="abrirEditProd(\'' + p.id + '\')">' +
       '<div class="ii-ico" id="ii-' + p.id + '">' + icoHtml + '</div>' +
       '<div style="flex:1;min-width:0">' +
