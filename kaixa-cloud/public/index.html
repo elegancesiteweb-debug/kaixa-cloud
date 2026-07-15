@@ -789,20 +789,22 @@ function filtrarProds() {
   renderPosGrid(allProds.filter(function(p) { return p.nombre.toLowerCase().includes(q) || (p.codigo_barras || '').includes(q); }));
 }
 
-function lazyLoadImagenes(prods) {
-  prods.forEach(function(p) {
-    if (!p.tiene_imagen) return;
-    var el = document.getElementById('pe-' + p.id);
-    if (!el) return;
-    apiFetch('/api/productos/' + p.id + '/imagen').then(function(r) {
-      if (!r || !r.ok) return;
-      return r.json();
-    }).then(function(d) {
-      if (!d || !d.imagen_url) return;
-      var el2 = document.getElementById('pe-' + p.id);
-      if (el2) el2.innerHTML = '<img src="' + d.imagen_url + '" style="width:36px;height:36px;object-fit:cover;border-radius:8px;">';
-    }).catch(function(){});
-  });
+async function lazyLoadImagenes(prods) {
+  for (var i = 0; i < prods.length; i++) {
+    var p = prods[i];
+    if (!p.tiene_imagen) continue;
+    try {
+      var r = await apiFetch('/api/productos/' + p.id + '/imagen');
+      if (!r || !r.ok) continue;
+      var d = await r.json();
+      if (!d || !d.imagen_url) continue;
+      var el = document.getElementById('pe-' + p.id);
+      if (el) {
+        el.innerHTML = '<img src="' + d.imagen_url + '" style="width:36px;height:36px;object-fit:cover;border-radius:8px;" onerror="this.parentNode.innerHTML='' + (p.emoji||'📦') + ''">';
+        p.imagen_url = d.imagen_url; // cachear para no recargar
+      }
+    } catch(e) {}
+  }
 }
 
 function renderPosGrid(prods) {
