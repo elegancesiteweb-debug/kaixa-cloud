@@ -1788,7 +1788,7 @@ async function subirFotoProd(input, id) {
   var file = input.files[0];
   notif('Comprimiendo foto...', 'ok');
   // Comprimir a max 400x400 con calidad 0.7 → ~30-80KB
-  var base64 = await comprimirImagen(file, 400, 400, 0.7);
+  var base64 = await comprimirImagen(file, 300, 300, 0.6);
   // Mostrar preview inmediatamente
   var preview = document.getElementById('pFotoPreview');
   if (preview) {
