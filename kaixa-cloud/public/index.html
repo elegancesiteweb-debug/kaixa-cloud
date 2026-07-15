@@ -1036,6 +1036,11 @@ async function abrirEditProd(id) {
   var p = allProds.find(function(x) { return String(x.id) === String(id); });
   if (p) {
     abrirModalProd(p);
+    // Agregar listener de foto
+    setTimeout(function() {
+      var inp = document.getElementById('pFotoInput');
+      if (inp) inp.onchange = function() { subirFotoProd(this, id); };
+    }, 100);
     // Cargar imagen si tiene foto
     if (p.tiene_imagen) {
       try {
@@ -1064,6 +1069,14 @@ function abrirModalProd(p) {
         '<span class="modal-close" onclick="document.getElementById(\'modalProd\').remove()">✕</span>' +
       '</div>' +
 
+      (p ? (function() {
+        var fotoHtml = p.tiene_imagen ? '<img id="pFotoImg" src="" style="width:100%;height:100%;object-fit:cover;">' : (p.emoji||'📦');
+        return '<div style="text-align:center;margin-bottom:12px">' +
+          '<div id="pFotoPreview" style="width:64px;height:64px;border-radius:12px;margin:0 auto 8px;overflow:hidden;background:var(--s2);display:flex;align-items:center;justify-content:center;font-size:28px">' + fotoHtml + '</div>' +
+          '<label style="font-size:12px;color:var(--accent);font-weight:700;cursor:pointer" for="pFotoInput">📷 Cambiar foto' +
+          '<input type="file" id="pFotoInput" accept="image/*" style="display:none">' +
+          '</label></div>';
+      })() : '') +
       '<div class="form-field"><label>Nombre</label><input id="pNombre" value="' + (p ? p.nombre : '') + '"></div>' +
       '<div class="form-row">' +
         '<div class="form-field"><label>Precio</label><input id="pPrecio" type="number" step="0.01" value="' + (p ? p.precio : '') + '"></div>' +
