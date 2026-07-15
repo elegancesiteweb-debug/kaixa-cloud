@@ -22,7 +22,7 @@ router.post('/push', async (req, res) => {
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16, now())
          ON CONFLICT (id) DO UPDATE SET
            sucursal_id=COALESCE(productos.sucursal_id, $3),
-           nombre=$4, emoji=$5, imagen_url=$6, codigo_barras=$7, precio=$8, costo=$9,
+           nombre=$4, emoji=$5, imagen_url=COALESCE(NULLIF($6,''), productos.imagen_url), codigo_barras=$7, precio=$8, costo=$9,
            stock_minimo=$10, categoria_id=$11, giro=$12, por_peso=$13, unidad_peso=$14,
            tiene_prescripcion=$15, activo=$16, actualizado_en=now()`,
         [p.uuid, negocio_id, prodSucursalId, p.nombre, p.emoji||'📦', p.imagen_url||'', p.codigo_barras||'',
