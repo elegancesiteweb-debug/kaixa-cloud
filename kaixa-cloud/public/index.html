@@ -1863,9 +1863,11 @@ async function subirFotoCli(input, id) {
 // Auto-refresh inventario, POS y clientes cada 30 segundos
 setInterval(function() {
   if (typeof currentScreen === 'undefined') return;
-  if (currentScreen === 'inv') { allProds = []; loadInv(); }
-  else if (currentScreen === 'pos') { allProds = []; loadPos(); }
+  // No vaciar allProds para conservar imgCache
+  if (currentScreen === 'inv') loadInv();
+  else if (currentScreen === 'pos') loadPos();
   else if (currentScreen === 'clientes') loadCli();
+  else if (currentScreen === 'empleados') loadEmpleados();
 }, 30000);
 </script>
 </body>
