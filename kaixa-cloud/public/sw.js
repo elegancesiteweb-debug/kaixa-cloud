@@ -20,3 +20,31 @@ self.addEventListener('fetch', function(e) {
     fetch(e.request).catch(function() { return caches.match(e.request); })
   );
 });
+
+// ── Notificaciones push (stock bajo / lotes por caducar) ──────
+self.addEventListener('push', function(e) {
+  var data = {};
+  try { data = e.data ? e.data.json() : {}; } catch(err) {}
+  var title = data.title || 'Kaixa Pro';
+  var options = {
+    body: data.body || '',
+    icon: '/kaixa_icon.png',
+    badge: '/kaixa_icon.png',
+    tag: data.tag || 'kaixa',
+    data: { url: data.url || '/' }
+  };
+  e.waitUntil(self.registration.showNotification(title, options));
+});
+
+self.addEventListener('notificationclick', function(e) {
+  e.notification.close();
+  var url = (e.notification.data && e.notification.data.url) || '/';
+  e.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function(list) {
+      for (var i = 0; i < list.length; i++) {
+        if (list[i].url.indexOf(url) !== -1 && 'focus' in list[i]) return list[i].focus();
+      }
+      if (self.clients.openWindow) return self.clients.openWindow(url);
+    })
+  );
+});

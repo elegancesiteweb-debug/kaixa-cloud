@@ -9,6 +9,7 @@ const crypto   = require('crypto');
 const { Server } = require('socket.io');
 const pool     = require('./db/pool');
 const { authCaja } = require('./middleware/auth');
+const { router: pushRouter, revisarAlertas, crearTablasPush } = require('./routes/push');
 const app    = express();
 const server = http.createServer(app);
 const io     = new Server(server, { cors: { origin: '*' } });
@@ -489,6 +490,7 @@ app.put('/api/empleados/:id', authCaja, async (req, res) => {
 });
 app.use('/api/sync',      authCaja, require('./routes/sync'));
 app.use('/api/dashboard', authCaja, require('./routes/dashboard'));
+app.use('/api/push',      authCaja, pushRouter);
 app.use('/api',           authCaja, require('./routes/api'));
 app.get('*', (req, res) => {
   const idx = path.join(__dirname, 'public', 'index.html');
@@ -512,10 +514,14 @@ io.on('connection', (socket) => {
   socket.on('disconnect', () => console.log('🔴 Desconectada:', socket.caja.nombre));
 });
 const PORT = process.env.PORT || 4500;
-aplicarEsquema().then(() => {
+aplicarEsquema().then(async () => {
+  await crearTablasPush();
   server.listen(PORT, () => {
     console.log('🚀 Kaixa Cloud v2.0 en puerto', PORT);
     console.log('📱 PWA en /  |  🔧 Admin en /admin.html');
     console.log('🔑 Panel licencias en /licencias.html');
   });
+  // Revisa stock bajo y lotes por caducar cada 45 minutos
+  setTimeout(revisarAlertas, 30 * 1000);
+  setInterval(revisarAlertas, 45 * 60 * 1000);
 });
