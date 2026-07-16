@@ -334,6 +334,7 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:var(--ff);backgroun
     <div class="subscreen" id="sub-lotes"><div id="lotesList"></div></div>
     <div class="subscreen" id="sub-traspasos"><div id="traspasosList"></div></div>
     <div class="subscreen" id="sub-pedidosonline"><div id="pedidosOnlineList"></div></div>
+    <div class="subscreen" id="sub-kits"><div id="kitsList"></div></div>
     <div class="subscreen" id="sub-pedidos"><div id="pedidosList"></div></div>
     <div class="subscreen" id="sub-corte"><div id="corteContent"></div></div>
     <div class="subscreen" id="sub-proveedores"><div id="proveedoresList"></div></div>
@@ -516,6 +517,7 @@ var screenCfg = {
   lotes:    { title: 'Lotes', btn: '⊕', load: loadLotes },
   traspasos: { title: 'Traspasos', btn: '⊕', load: loadTraspasos },
   pedidosonline: { title: 'Pedidos en línea', btn: null, load: loadPedidosOnline },
+  kits:     { title: 'Kits y combos', btn: null, load: loadKits },
   pedidos:  { title: 'Pedidos', btn: '⊕', load: loadPedidos },
   corte:    { title: 'Corte de caja', btn: null, load: loadCorte },
   mas:      { title: 'Más', btn: null, load: loadMas },
@@ -535,12 +537,12 @@ function navTo(screen) {
   var btn1 = document.getElementById('topBtn1');
   if (cfg.btn) { btn1.textContent = cfg.btn; btn1.style.display = ''; }
   else { btn1.style.display = 'none'; }
-  var navMap = { dash:'dash', pos:'pos', inv:'inv', ventas:'mas', clientes:'clientes', emps:'mas', lotes:'mas', traspasos:'mas', pedidosonline:'mas', pedidos:'mas', corte:'mas', mas:'mas' };
+  var navMap = { dash:'dash', pos:'pos', inv:'inv', ventas:'mas', clientes:'clientes', emps:'mas', lotes:'mas', traspasos:'mas', pedidosonline:'mas', kits:'mas', pedidos:'mas', corte:'mas', mas:'mas' };
   document.querySelectorAll('.nav-item').forEach(function(n) { n.classList.remove('active'); });
   var navId = navMap[screen] || screen;
   var navEl = document.getElementById('nav-' + navId);
   if (navEl) navEl.classList.add('active');
-  document.getElementById('cartFab').style.display = screen === 'pos' ? 'flex' : 'none';
+  document.getElementById('cartFab').style.display = (screen === 'pos' || (screen === 'kits' && cart.length)) ? 'flex' : 'none';
   if (cfg.load) cfg.load();
 }
 
@@ -895,7 +897,7 @@ function actualizarCartFab() {
   var total = cart.reduce(function(s, c) { return s + c.precio * c.qty; }, 0);
   var count = cart.reduce(function(s, c) { return s + c.qty; }, 0);
   var fab = document.getElementById('cartFab');
-  if (currentScreen === 'pos') fab.style.display = count > 0 ? 'flex' : 'none';
+  if (currentScreen === 'pos' || currentScreen === 'kits') fab.style.display = count > 0 ? 'flex' : 'none';
   document.getElementById('cartCount').textContent = count + (count === 1 ? ' item' : ' items');
   document.getElementById('cartTotal').textContent = fmtS(total);
   document.getElementById('cartTotalDrawer').textContent = fmt(total);
@@ -933,6 +935,53 @@ function cambiarQty(i, delta) {
   cart[i].qty += delta;
   if (cart[i].qty <= 0) cart.splice(i, 1);
   renderCartDrawer();
+}
+
+// ══ KITS Y COMBOS ══
+var allKits = [];
+async function loadKits() {
+  var cont = document.getElementById('kitsList');
+  cont.innerHTML = '<div class="empty"><div class="ico">⏳</div><p>Cargando...</p></div>';
+  try {
+    var r = await apiFetch('/api/kits');
+    allKits = r && r.ok ? await r.json() : [];
+    if (!Array.isArray(allKits)) allKits = [];
+    renderKitsList();
+  } catch(e) { cont.innerHTML = '<div class="empty"><div class="ico">⚠️</div><p>Error cargando kits</p></div>'; }
+}
+
+function renderKitsList() {
+  var cont = document.getElementById('kitsList');
+  if (!allKits.length) { cont.innerHTML = '<div class="empty"><div class="ico">🎁</div><p>Sin kits creados todavía</p><p style="font-size:11px;color:var(--text3);margin-top:4px">Los kits se crean desde la PC</p></div>'; return; }
+  cont.innerHTML = allKits.map(function(k) {
+    var items = (k.items||[]).map(function(i){ return i.cantidad+'x '+i.nombre_producto; }).join(' • ');
+    return '<div class="card" style="margin:0 16px 10px">' +
+      '<div class="card-row" style="align-items:flex-start">' +
+        '<div class="card-ico">'+(k.emoji||'🎁')+'</div>' +
+        '<div class="card-info">' +
+          '<div class="card-title">'+k.nombre+' · '+fmt(k.precio)+'</div>' +
+          '<div class="card-sub">'+(items||'Sin productos')+'</div>' +
+        '</div>' +
+      '</div>' +
+      '<button class="btn-full primary" style="padding:8px;font-size:12px;margin-top:8px" onclick="addKitToCart(\''+k.id+'\')">🛒 Agregar al carrito</button>' +
+    '</div>';
+  }).join('');
+}
+
+function addKitToCart(kitId) {
+  var k = allKits.find(function(x){ return x.id === kitId; });
+  if (!k) return;
+  var existing = cart.find(function(c){ return c.kit_id === kitId; });
+  if (existing) { existing.qty++; }
+  else {
+    cart.push({
+      id: 'kit_' + k.id, kit_id: k.id, nombre: (k.emoji||'🎁') + ' ' + k.nombre,
+      precio: parseFloat(k.precio) || 0, emoji: k.emoji || '🎁', qty: 1,
+      componentes: (k.items||[]).map(function(i){ return { producto_id: i.producto_id, cantidad: i.cantidad || 1 }; })
+    });
+  }
+  actualizarCartFab();
+  notif('✓ ' + k.nombre + ' agregado', 'ok');
 }
 
 function abrirCobro() {
@@ -1000,7 +1049,12 @@ async function confirmarVenta() {
   if (formaPago === 'efectivo' && monto < total) { notif('El monto es menor al total', 'err'); return; }
   var itemsParaVenta = (window._cartSnapshot && window._cartSnapshot.length) ? window._cartSnapshot : cart.slice();
   var venta = {
-    items: itemsParaVenta.map(function(c) { return { producto_id: c.id, nombre: c.nombre, cantidad: c.qty, precio_unitario: parseFloat(c.precio)||0, subtotal: (parseFloat(c.precio)||0) * c.qty }; }),
+    items: itemsParaVenta.map(function(c) {
+      var precioU = parseFloat(c.precio)||0;
+      return c.kit_id
+        ? { kit_id: c.kit_id, nombre: c.nombre, cantidad: c.qty, precio_unitario: precioU, subtotal: precioU * c.qty, componentes: c.componentes||[] }
+        : { producto_id: c.id, nombre: c.nombre, cantidad: c.qty, precio_unitario: precioU, subtotal: precioU * c.qty };
+    }),
     total: parseFloat(total)||0, subtotal: parseFloat(total)||0, forma_pago: formaPago, monto_recibido: parseFloat(monto)||0, cambio: Math.max(0, monto - total),
     giro: giro, usuario_id: usuario ? usuario.id : null, cajero: usuario ? usuario.nombre : 'App Móvil',
   };
@@ -2083,6 +2137,7 @@ function loadMas() {
   document.getElementById('masRolEmp').textContent = usuario ? usuario.rol : '';
   var items = [
     { ico:'🛍️', title:'Pedidos en línea', sub:'Apartados desde la tienda web', screen:'pedidosonline' },
+    { ico:'🎁', title:'Kits y combos', sub:'Ver y vender paquetes armados', screen:'kits' },
     { ico:'🖼️', title:'Mi tienda en línea', sub:'Imagen y descripción públicas', accion:'abrirTiendaConfig' },
     { ico:'🧾', title:'Ventas', sub:'Historial y devoluciones', screen:'ventas' },
     { ico:'👥', title:'Empleados', sub:'Gestión y asistencia', screen:'emps' },

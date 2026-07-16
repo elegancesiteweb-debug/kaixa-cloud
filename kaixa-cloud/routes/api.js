@@ -234,7 +234,10 @@ router.post('/ventas', async (req, res) => {
        v.referencia_externa||null]
     );
     for (const item of v.items) {
-      const itemId   = item.producto_id || item.id || null;
+      // Los kits no son un producto real — no llevan producto_id propio,
+      // se venden como una sola línea y su stock se descuenta por
+      // componente más abajo (igual que en la PC).
+      const itemId   = item.kit_id ? null : (item.producto_id || item.id || null);
       const itemNom  = item.nombre || item.nombre_producto || '';
       const itemQty  = parseInt(item.cantidad || item.qty || 1);
       const itemPrc  = parseFloat(item.precio_unitario || item.precio || 0);
@@ -253,6 +256,18 @@ router.post('/ventas', async (req, res) => {
         // el nuevo stock — antes se quedaba con el timestamp viejo y una
         // venta hecha desde el celular nunca bajaba el stock en la PC.
         await client.query('UPDATE productos SET actualizado_en=now() WHERE id=$1', [itemId]);
+      }
+      if (item.kit_id && Array.isArray(item.componentes)) {
+        for (const comp of item.componentes) {
+          if (!comp.producto_id) continue;
+          const compCantidad = itemQty * (parseFloat(comp.cantidad) || 1);
+          await client.query(
+            `INSERT INTO stock_movimientos (id, negocio_id, sucursal_id, producto_id, caja_id, cantidad, motivo, venta_id)
+             VALUES ($1,$2,$3,$4,$5,$6,'kit_venta',$7)`,
+            [uuid(), negocio_id, sucursal_id, comp.producto_id, caja_id, -compCantidad, ventaId]
+          );
+          await client.query('UPDATE productos SET actualizado_en=now() WHERE id=$1', [comp.producto_id]);
+        }
       }
     }
     await client.query('COMMIT');
