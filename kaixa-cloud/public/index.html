@@ -493,6 +493,7 @@ async function boot() {
       return;
     }
   } catch(e) {}
+  activarNotificacionesPush();
   await loadEmpleadosLogin();
   go('login');
 }
