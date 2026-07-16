@@ -242,3 +242,24 @@ CREATE TABLE IF NOT EXISTS cortes_caja (
   creado_en       TIMESTAMPTZ DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_cortes_sucursal ON cortes_caja(sucursal_id);
+
+-- ── TRASPASOS ENTRE SUCURSALES ────────────────────────────────
+-- Instantáneo: se descuenta de origen y se suma a destino en el mismo momento.
+CREATE TABLE IF NOT EXISTS traspasos (
+  id                   UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  negocio_id           UUID NOT NULL REFERENCES negocios(id) ON DELETE CASCADE,
+  sucursal_origen_id   UUID NOT NULL REFERENCES sucursales(id),
+  sucursal_destino_id  UUID NOT NULL REFERENCES sucursales(id),
+  tipo                 TEXT NOT NULL DEFAULT 'producto',
+  producto_origen_id   UUID REFERENCES productos(id),
+  producto_destino_id  UUID REFERENCES productos(id),
+  lote_origen_id       UUID REFERENCES lotes(id),
+  lote_destino_id      UUID REFERENCES lotes(id),
+  nombre_item          TEXT DEFAULT '',
+  cantidad             NUMERIC(10,3) NOT NULL,
+  usuario_nombre       TEXT DEFAULT '',
+  notas                TEXT DEFAULT '',
+  creado_en            TIMESTAMPTZ DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_traspasos_origen  ON traspasos(sucursal_origen_id);
+CREATE INDEX IF NOT EXISTS idx_traspasos_destino ON traspasos(sucursal_destino_id);

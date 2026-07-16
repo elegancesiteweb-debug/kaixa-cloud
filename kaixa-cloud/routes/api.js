@@ -712,7 +712,7 @@ router.put('/kits/:id', async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-// DELETE /api/kits/:id  
+// DELETE /api/kits/:id
 router.delete('/kits/:id', async (req, res) => {
   try {
     const { negocio_id } = req.caja;
@@ -722,5 +722,172 @@ router.delete('/kits/:id', async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+// ══════════════════════════════════════════════════════════════
+// TRASPASOS — mover productos o lotes entre sucursales del mismo negocio
+// Instantáneo: se descuenta de origen y se suma a destino en el mismo momento.
+// Solo administradores (usuario_rol enviado por el cliente, igual de confiable
+// que el resto de los checks de rol en este sistema — no hay token por empleado).
+// ══════════════════════════════════════════════════════════════
+async function ensureTraspasosTable() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS traspasos (
+      id                   UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      negocio_id           UUID NOT NULL,
+      sucursal_origen_id   UUID NOT NULL,
+      sucursal_destino_id  UUID NOT NULL,
+      tipo                 TEXT NOT NULL DEFAULT 'producto',
+      producto_origen_id   UUID,
+      producto_destino_id  UUID,
+      lote_origen_id       UUID,
+      lote_destino_id      UUID,
+      nombre_item          TEXT DEFAULT '',
+      cantidad             NUMERIC(10,3) NOT NULL,
+      usuario_nombre       TEXT DEFAULT '',
+      notas                TEXT DEFAULT '',
+      creado_en            TIMESTAMPTZ DEFAULT now()
+    )`);
+}
+
+// ── GET /api/traspasos — historial de la sucursal (enviados y recibidos) ──
+router.get('/traspasos', async (req, res) => {
+  try {
+    await ensureTraspasosTable();
+    const { negocio_id, sucursal_id } = req.caja;
+    const r = await pool.query(
+      `SELECT t.*, so.nombre AS sucursal_origen_nombre, sd.nombre AS sucursal_destino_nombre
+       FROM traspasos t
+       JOIN sucursales so ON so.id = t.sucursal_origen_id
+       JOIN sucursales sd ON sd.id = t.sucursal_destino_id
+       WHERE t.negocio_id=$1 AND (t.sucursal_origen_id=$2 OR t.sucursal_destino_id=$2)
+       ORDER BY t.creado_en DESC LIMIT 100`,
+      [negocio_id, sucursal_id]
+    );
+    res.json(r.rows);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── POST /api/traspasos — crear un traspaso (instantáneo) ──
+router.post('/traspasos', async (req, res) => {
+  const { negocio_id, sucursal_id: sucursalOrigenId, id: cajaId } = req.caja;
+  const {
+    tipo = 'producto', producto_id, lote_id, sucursal_destino_id,
+    cantidad, notas = '', usuario_nombre = '', usuario_rol = ''
+  } = req.body;
+
+  if (!(usuario_rol || '').toLowerCase().includes('admin')) {
+    return res.status(403).json({ error: 'Solo un administrador puede hacer traspasos entre sucursales' });
+  }
+  const cant = parseFloat(cantidad);
+  if (!cant || cant <= 0) return res.status(400).json({ error: 'Cantidad inválida' });
+  if (!sucursal_destino_id || sucursal_destino_id === sucursalOrigenId) {
+    return res.status(400).json({ error: 'Elige una sucursal destino distinta a la actual' });
+  }
+
+  const client = await pool.connect();
+  try {
+    await ensureTraspasosTable();
+    await client.query('BEGIN');
+
+    const destino = await client.query(
+      'SELECT id, nombre FROM sucursales WHERE id=$1 AND negocio_id=$2 AND activo=true',
+      [sucursal_destino_id, negocio_id]
+    );
+    if (!destino.rows.length) throw Object.assign(new Error('Sucursal destino no encontrada'), { status: 404 });
+
+    let productoOrigenId = null, productoDestinoId = null, loteOrigenId = null, loteDestinoId = null, nombreItem = '';
+
+    if (tipo === 'lote') {
+      const lote = await client.query(
+        'SELECT * FROM lotes WHERE id=$1 AND negocio_id=$2 AND sucursal_id=$3 AND activo=true',
+        [lote_id, negocio_id, sucursalOrigenId]
+      );
+      if (!lote.rows.length) throw Object.assign(new Error('Lote no encontrado en esta sucursal'), { status: 404 });
+      const l = lote.rows[0];
+      if (parseFloat(l.cantidad) < cant) throw Object.assign(new Error('No hay suficiente cantidad en ese lote (' + l.cantidad + ' disponible)'), { status: 400 });
+
+      loteOrigenId = l.id;
+      nombreItem = l.nombre_producto || '';
+      await client.query('UPDATE lotes SET cantidad = cantidad - $1, actualizado_en = now() WHERE id=$2', [cant, l.id]);
+
+      const nuevoLote = await client.query(
+        `INSERT INTO lotes (negocio_id, sucursal_id, producto_id, nombre_producto, numero_lote, cantidad, fecha_caducidad)
+         VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
+        [negocio_id, sucursal_destino_id, l.producto_id, l.nombre_producto, l.numero_lote, cant, l.fecha_caducidad]
+      );
+      loteDestinoId = nuevoLote.rows[0].id;
+
+    } else {
+      const prod = await client.query(
+        'SELECT * FROM productos WHERE id=$1 AND negocio_id=$2 AND sucursal_id=$3 AND activo=true',
+        [producto_id, negocio_id, sucursalOrigenId]
+      );
+      if (!prod.rows.length) throw Object.assign(new Error('Producto no encontrado en esta sucursal'), { status: 404 });
+      const p = prod.rows[0];
+
+      const stockActual = await client.query(
+        `SELECT COALESCE(SUM(cantidad),0) AS stock FROM stock_movimientos WHERE producto_id=$1 AND sucursal_id=$2`,
+        [p.id, sucursalOrigenId]
+      );
+      if (parseFloat(stockActual.rows[0].stock) < cant) {
+        throw Object.assign(new Error('No hay suficiente stock (' + stockActual.rows[0].stock + ' disponible)'), { status: 400 });
+      }
+
+      productoOrigenId = p.id;
+      nombreItem = p.nombre;
+
+      // Buscar el mismo producto (por nombre) ya existente en la sucursal destino
+      const existente = await client.query(
+        'SELECT id FROM productos WHERE negocio_id=$1 AND sucursal_id=$2 AND lower(nombre)=lower($3) AND activo=true',
+        [negocio_id, sucursal_destino_id, p.nombre]
+      );
+      if (existente.rows.length) {
+        productoDestinoId = existente.rows[0].id;
+      } else {
+        const nuevoProd = await client.query(
+          `INSERT INTO productos (id, negocio_id, sucursal_id, nombre, emoji, imagen_url, codigo_barras, precio, costo,
+            stock_minimo, categoria_id, giro, por_peso, unidad_peso, tiene_prescripcion, actualizado_en)
+           VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14, now()) RETURNING id`,
+          [negocio_id, sucursal_destino_id, p.nombre, p.emoji||'📦', p.imagen_url||'', p.codigo_barras||'',
+           p.precio, p.costo, p.stock_minimo, p.categoria_id, p.giro, p.por_peso, p.unidad_peso, p.tiene_prescripcion]
+        );
+        productoDestinoId = nuevoProd.rows[0].id;
+      }
+
+      await client.query(
+        `INSERT INTO stock_movimientos (id, negocio_id, sucursal_id, producto_id, caja_id, cantidad, motivo)
+         VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,'traspaso_salida')`,
+        [negocio_id, sucursalOrigenId, productoOrigenId, cajaId, -cant]
+      );
+      await client.query(
+        `INSERT INTO stock_movimientos (id, negocio_id, sucursal_id, producto_id, caja_id, cantidad, motivo)
+         VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,'traspaso_entrada')`,
+        [negocio_id, sucursal_destino_id, productoDestinoId, cajaId, cant]
+      );
+      await client.query('UPDATE productos SET actualizado_en=now() WHERE id IN ($1,$2)', [productoOrigenId, productoDestinoId]);
+    }
+
+    const traspaso = await client.query(
+      `INSERT INTO traspasos (negocio_id, sucursal_origen_id, sucursal_destino_id, tipo,
+         producto_origen_id, producto_destino_id, lote_origen_id, lote_destino_id,
+         nombre_item, cantidad, usuario_nombre, notas)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
+      [negocio_id, sucursalOrigenId, sucursal_destino_id, tipo,
+       productoOrigenId, productoDestinoId, loteOrigenId, loteDestinoId,
+       nombreItem, cant, usuario_nombre, notas]
+    );
+
+    await client.query('COMMIT');
+
+    const io = req.app.get('io');
+    if (io) io.to('negocio:' + negocio_id).emit('traspaso:nuevo', { id: traspaso.rows[0].id });
+
+    res.json({ ok: true, traspaso: traspaso.rows[0] });
+  } catch (e) {
+    await client.query('ROLLBACK');
+    res.status(e.status || 500).json({ error: e.message });
+  } finally {
+    client.release();
+  }
+});
 
 module.exports = router;

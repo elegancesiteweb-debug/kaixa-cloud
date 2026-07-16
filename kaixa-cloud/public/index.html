@@ -332,6 +332,7 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:var(--ff);backgroun
     </div>
     <div class="subscreen" id="sub-emps"><div id="empsList"></div></div>
     <div class="subscreen" id="sub-lotes"><div id="lotesList"></div></div>
+    <div class="subscreen" id="sub-traspasos"><div id="traspasosList"></div></div>
     <div class="subscreen" id="sub-pedidos"><div id="pedidosList"></div></div>
     <div class="subscreen" id="sub-corte"><div id="corteContent"></div></div>
     <div class="subscreen" id="sub-proveedores"><div id="proveedoresList"></div></div>
@@ -512,6 +513,7 @@ var screenCfg = {
   clientes: { title: 'Clientes', btn: '⊕', load: loadCli },
   emps:     { title: 'Empleados', btn: '⊕', load: loadEmps },
   lotes:    { title: 'Lotes', btn: '⊕', load: loadLotes },
+  traspasos: { title: 'Traspasos', btn: '⊕', load: loadTraspasos },
   pedidos:  { title: 'Pedidos', btn: '⊕', load: loadPedidos },
   corte:    { title: 'Corte de caja', btn: null, load: loadCorte },
   mas:      { title: 'Más', btn: null, load: loadMas },
@@ -531,7 +533,7 @@ function navTo(screen) {
   var btn1 = document.getElementById('topBtn1');
   if (cfg.btn) { btn1.textContent = cfg.btn; btn1.style.display = ''; }
   else { btn1.style.display = 'none'; }
-  var navMap = { dash:'dash', pos:'pos', inv:'inv', ventas:'mas', clientes:'clientes', emps:'mas', lotes:'mas', pedidos:'mas', corte:'mas', mas:'mas' };
+  var navMap = { dash:'dash', pos:'pos', inv:'inv', ventas:'mas', clientes:'clientes', emps:'mas', lotes:'mas', traspasos:'mas', pedidos:'mas', corte:'mas', mas:'mas' };
   document.querySelectorAll('.nav-item').forEach(function(n) { n.classList.remove('active'); });
   var navId = navMap[screen] || screen;
   var navEl = document.getElementById('nav-' + navId);
@@ -541,7 +543,7 @@ function navTo(screen) {
 }
 
 function topBtn1Action() {
-  var actions = { pos: null, inv: abrirNuevoProd, clientes: abrirNuevoCli, emps: abrirNuevoEmp, lotes: abrirNuevoLote, pedidos: abrirNuevoPedido };
+  var actions = { pos: null, inv: abrirNuevoProd, clientes: abrirNuevoCli, emps: abrirNuevoEmp, lotes: abrirNuevoLote, traspasos: abrirNuevoTraspaso, pedidos: abrirNuevoPedido };
   if (actions[currentScreen]) actions[currentScreen]();
 }
 
@@ -1532,6 +1534,118 @@ async function eliminarLote(id) {
   else{notif('Error al eliminar','err');}
 }
 
+// ══ TRASPASOS ENTRE SUCURSALES (solo administrador) ══
+var _traspasos = [];
+var _sucursalesNegocio = [];
+
+async function loadTraspasos() {
+  var cont = document.getElementById('traspasosList');
+  try {
+    var r = await apiFetch('/api/traspasos');
+    if (!r || !r.ok) { cont.innerHTML = '<div class="empty"><div class="ico">🔀</div><p>Sin traspasos</p></div>'; return; }
+    _traspasos = await r.json();
+    if (!Array.isArray(_traspasos)) _traspasos = [];
+    renderTraspasos();
+  } catch(e) {}
+}
+
+function renderTraspasos() {
+  var cont = document.getElementById('traspasosList');
+  if (!_traspasos.length) { cont.innerHTML = '<div class="empty"><div class="ico">🔀</div><p>Sin traspasos registrados</p></div>'; return; }
+  var miSucursal = localStorage.getItem('kaixa_sucursal_id');
+  cont.innerHTML = _traspasos.map(function(t) {
+    var esSalida = String(t.sucursal_origen_id) === String(miSucursal);
+    var dir = esSalida
+      ? '➡️ a ' + t.sucursal_destino_nombre
+      : '⬅️ de ' + t.sucursal_origen_nombre;
+    var fecha = t.creado_en ? new Date(t.creado_en).toLocaleString('es-MX', {day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}) : '';
+    return '<div class="card" style="margin:0 16px 8px">' +
+      '<div class="card-row"><div class="card-ico">' + (t.tipo==='lote'?'🏷️':'📦') + '</div>' +
+      '<div class="card-info"><div class="card-title">' + (t.nombre_item||'') + ' · ' + t.cantidad + '</div>' +
+      '<div class="card-sub">' + dir + ' · ' + fecha + (t.usuario_nombre?' · '+t.usuario_nombre:'') + '</div></div></div></div>';
+  }).join('');
+}
+
+async function abrirNuevoTraspaso() {
+  if (!usuario || !(usuario.rol||'').toLowerCase().includes('admin')) {
+    notif('Solo un administrador puede hacer traspasos', 'err');
+    return;
+  }
+  if (!allProds.length) {
+    try { var rp = await apiFetch('/api/productos'); if (rp && rp.ok) allProds = await rp.json(); } catch(e) {}
+  }
+  if (!_lotes.length) {
+    try { var rl = await apiFetch('/api/lotes'); if (rl && rl.ok) _lotes = await rl.json(); } catch(e) {}
+  }
+  try {
+    var rs = await apiFetch('/api/sync/sucursales');
+    var ds = rs && rs.ok ? await rs.json() : { sucursales: [] };
+    _sucursalesNegocio = ds.sucursales || [];
+  } catch(e) { _sucursalesNegocio = []; }
+  var miSucursal = localStorage.getItem('kaixa_sucursal_id');
+  var optsSuc = _sucursalesNegocio.filter(function(s){ return String(s.id) !== String(miSucursal); })
+    .map(function(s){ return '<option value="'+s.id+'">'+s.nombre+'</option>'; }).join('');
+  if (!optsSuc) { notif('No hay otra sucursal a la cual traspasar', 'err'); return; }
+
+  var html = '<div class="modal-overlay" id="modalTraspaso"><div class="modal-sheet">' +
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">' +
+      '<h3 style="margin:0">🔀 Nuevo traspaso</h3>' +
+      '<span class="modal-close" onclick="document.getElementById(\'modalTraspaso\').remove()">✕</span></div>' +
+    '<div class="form-field"><label>Tipo</label><select id="trTipo" onchange="cambiarTipoTraspaso()">' +
+      '<option value="producto">Producto</option><option value="lote">Lote</option></select></div>' +
+    '<div class="form-field" id="trItemWrap"></div>' +
+    '<div class="form-field"><label>Cantidad a traspasar</label><input id="trCant" type="number" min="0.001" step="0.001" value="1"></div>' +
+    '<div class="form-field"><label>Sucursal destino</label><select id="trDestino">' + optsSuc + '</select></div>' +
+    '<div class="form-field"><label>Notas (opcional)</label><input id="trNotas" placeholder="Motivo del traspaso"></div>' +
+    '<button class="btn-full primary" onclick="guardarTraspaso()">Traspasar</button>' +
+    '</div></div>';
+  document.getElementById('modalContainer').innerHTML = html;
+  cambiarTipoTraspaso();
+}
+
+function cambiarTipoTraspaso() {
+  var tipo = document.getElementById('trTipo').value;
+  var wrap = document.getElementById('trItemWrap');
+  if (tipo === 'lote') {
+    var optsLotes = _lotes.map(function(l){ return '<option value="'+l.id+'">'+(l.nombre_producto||'Sin producto')+' · lote '+l.numero_lote+' ('+l.cantidad+' disp.)</option>'; }).join('');
+    wrap.innerHTML = '<label>Lote</label><select id="trItem">' + (optsLotes || '<option value="">Sin lotes</option>') + '</select>';
+  } else {
+    var optsProds = allProds.map(function(p){ return '<option value="'+p.id+'">'+p.nombre+' (stock: '+(p.stock||0)+')</option>'; }).join('');
+    wrap.innerHTML = '<label>Producto</label><select id="trItem">' + (optsProds || '<option value="">Sin productos</option>') + '</select>';
+  }
+}
+
+async function guardarTraspaso() {
+  var tipo = document.getElementById('trTipo').value;
+  var itemId = document.getElementById('trItem').value;
+  var cantidad = parseFloat(document.getElementById('trCant').value) || 0;
+  var destino = document.getElementById('trDestino').value;
+  var notas = document.getElementById('trNotas').value.trim();
+  if (!itemId) { notif('Selecciona un ' + (tipo==='lote'?'lote':'producto'), 'err'); return; }
+  if (!cantidad || cantidad <= 0) { notif('Cantidad inválida', 'err'); return; }
+  if (!destino) { notif('Selecciona la sucursal destino', 'err'); return; }
+
+  var body = {
+    tipo: tipo,
+    sucursal_destino_id: destino,
+    cantidad: cantidad,
+    notas: notas,
+    usuario_nombre: usuario ? usuario.nombre : '',
+    usuario_rol: usuario ? usuario.rol : ''
+  };
+  if (tipo === 'lote') body.lote_id = itemId; else body.producto_id = itemId;
+
+  var r = await apiFetch('/api/traspasos', { method: 'POST', body: JSON.stringify(body) });
+  if (r && r.ok) {
+    document.getElementById('modalContainer').innerHTML = '';
+    notif('✅ Traspaso realizado', 'ok');
+    loadTraspasos();
+  } else {
+    var err = r ? await r.json().catch(function(){return {};}) : {};
+    notif('❌ ' + (err.error || 'Error al traspasar'), 'err');
+  }
+}
+
 // ══ PEDIDOS ══
 var _pedidos = [];
 var _proveedores = [];
@@ -1668,6 +1782,9 @@ function loadMas() {
     { ico:'💰', title:'Corte de caja', sub:'Resumen y cierre de turno', screen:'corte' },
     { ico:'🏢', title:'Proveedores', sub:'Gestionar proveedores', screen:'proveedores' },
   ];
+  if (usuario && (usuario.rol||'').toLowerCase().includes('admin')) {
+    items.push({ ico:'🔀', title:'Traspasos entre sucursales', sub:'Mover productos o lotes', screen:'traspasos' });
+  }
   document.getElementById('masMenu').innerHTML = items.map(function(it) {
     return '<div class="card" onclick="navTo(\'' + it.screen + '\')" style="cursor:pointer;margin-bottom:8px">' +
       '<div class="card-row"><div class="card-ico">' + it.ico + '</div>' +
