@@ -1926,10 +1926,12 @@ function fmtFechaHora(dt) {
 
 // ── Subir foto de producto desde la app ──────────────────────────────────
 function comprimirImagen(file, maxWidth, maxHeight, quality) {
-  return new Promise(function(resolve) {
+  return new Promise(function(resolve, reject) {
     var reader = new FileReader();
+    reader.onerror = function() { reject(new Error('No se pudo leer el archivo')); };
     reader.onload = function(e) {
       var img = new Image();
+      img.onerror = function() { reject(new Error('Formato de imagen no soportado')); };
       img.onload = function() {
         var canvas = document.createElement('canvas');
         var w = img.width, h = img.height;
@@ -1950,7 +1952,13 @@ async function subirFotoProd(input, id) {
   var file = input.files[0];
   notif('Comprimiendo foto...', 'ok');
   // Comprimir a max 400x400 con calidad 0.7 → ~30-80KB
-  var base64 = await comprimirImagen(file, 300, 300, 0.6);
+  var base64;
+  try {
+    base64 = await comprimirImagen(file, 300, 300, 0.6);
+  } catch(err) {
+    notif('❌ No se pudo procesar la foto: ' + err.message, 'err');
+    return;
+  }
   // Mostrar preview inmediatamente
   var preview = document.getElementById('pFotoPreview');
   if (preview) {
