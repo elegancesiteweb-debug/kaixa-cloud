@@ -890,4 +890,123 @@ router.post('/traspasos', async (req, res) => {
   }
 });
 
+// ══════════════════════════════════════════════════════════════
+// PEDIDOS EN LÍNEA — apartados desde la tienda pública (/tienda/:slug)
+// Confirmar aquí descuenta stock y registra la venta automáticamente.
+// ══════════════════════════════════════════════════════════════
+const { ensureTiendaTables } = require('./tienda');
+
+// ── GET /api/pedidos-online — historial de esta sucursal ──
+router.get('/pedidos-online', async (req, res) => {
+  try {
+    await ensureTiendaTables();
+    const { negocio_id, sucursal_id } = req.caja;
+    const r = await pool.query(`
+      SELECT po.*,
+        COALESCE(json_agg(json_build_object(
+          'producto_id', poi.producto_id, 'nombre_producto', poi.nombre_producto,
+          'cantidad', poi.cantidad, 'precio_unitario', poi.precio_unitario
+        )) FILTER (WHERE poi.id IS NOT NULL), '[]') AS items
+      FROM pedidos_online po
+      LEFT JOIN pedido_online_items poi ON poi.pedido_id = po.id
+      WHERE po.negocio_id=$1 AND po.sucursal_id=$2
+      GROUP BY po.id ORDER BY po.creado_en DESC LIMIT 100`,
+      [negocio_id, sucursal_id]
+    );
+    res.json(r.rows);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── POST /api/pedidos-online/:id/confirmar — descuenta stock y registra la venta ──
+router.post('/pedidos-online/:id/confirmar', async (req, res) => {
+  const { negocio_id, sucursal_id, id: cajaId } = req.caja;
+  const client = await pool.connect();
+  try {
+    await ensureTiendaTables();
+    await client.query('BEGIN');
+
+    const pedido = await client.query(
+      "SELECT * FROM pedidos_online WHERE id=$1 AND negocio_id=$2 AND sucursal_id=$3 AND estado='pendiente'",
+      [req.params.id, negocio_id, sucursal_id]
+    );
+    if (!pedido.rows.length) throw Object.assign(new Error('Pedido no encontrado o ya procesado'), { status: 404 });
+    const p = pedido.rows[0];
+    const items = await client.query('SELECT * FROM pedido_online_items WHERE pedido_id=$1', [p.id]);
+
+    // Verificar stock disponible de cada item antes de confirmar
+    for (const it of items.rows) {
+      if (!it.producto_id) continue;
+      const stock = await client.query(
+        'SELECT COALESCE(SUM(cantidad),0) AS stock FROM stock_movimientos WHERE producto_id=$1 AND sucursal_id=$2',
+        [it.producto_id, sucursal_id]
+      );
+      if (parseFloat(stock.rows[0].stock) < it.cantidad) {
+        throw Object.assign(new Error('Sin stock suficiente de "' + it.nombre_producto + '" (' + stock.rows[0].stock + ' disponible)'), { status: 400 });
+      }
+    }
+
+    const ventaId = uuid();
+    const ultimo = await client.query('SELECT folio FROM ventas WHERE negocio_id=$1 ORDER BY creado_en DESC LIMIT 1', [negocio_id]);
+    let num = 1;
+    if (ultimo.rows[0]) { const m = ultimo.rows[0].folio.match(/(\d+)$/); if (m) num = parseInt(m[1]) + 1; }
+    const folioVenta = 'WEB-' + Date.now().toString().slice(-8) + '-' + String(num).padStart(4,'0');
+
+    await client.query(
+      `INSERT INTO ventas (id, negocio_id, sucursal_id, caja_id, folio, subtotal, descuento, iva, total,
+         forma_pago, efectivo_recibido, cambio, cajero, giro, referencia_externa)
+       VALUES ($1,$2,$3,$4,$5,$6,0,0,$6,'pedido_online',$6,0,$7,'tienda',$8)`,
+      [ventaId, negocio_id, sucursal_id, cajaId, folioVenta, p.subtotal, req.body.cajero || 'Pedido en línea', p.folio]
+    );
+
+    for (const it of items.rows) {
+      await client.query(
+        `INSERT INTO venta_detalle (id, venta_id, producto_id, nombre_producto, cantidad, precio_unitario, subtotal)
+         VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+        [uuid(), ventaId, it.producto_id, it.nombre_producto, it.cantidad, it.precio_unitario, it.cantidad * it.precio_unitario]
+      );
+      if (it.producto_id) {
+        await client.query(
+          `INSERT INTO stock_movimientos (id, negocio_id, sucursal_id, producto_id, caja_id, cantidad, motivo, venta_id)
+           VALUES ($1,$2,$3,$4,$5,$6,'venta',$7)`,
+          [uuid(), negocio_id, sucursal_id, it.producto_id, cajaId, -it.cantidad, ventaId]
+        );
+      }
+    }
+
+    await client.query(
+      "UPDATE pedidos_online SET estado='confirmado', venta_id=$1, confirmado_en=now() WHERE id=$2",
+      [ventaId, p.id]
+    );
+
+    await client.query('COMMIT');
+
+    const io = req.app.get('io');
+    if (io) io.to('negocio:' + negocio_id).emit('pedido_online:confirmado', { id: p.id });
+
+    res.json({ ok: true, venta_id: ventaId, folio_venta: folioVenta });
+  } catch (e) {
+    await client.query('ROLLBACK');
+    res.status(e.status || 500).json({ error: e.message });
+  } finally {
+    client.release();
+  }
+});
+
+// ── POST /api/pedidos-online/:id/rechazar ──
+router.post('/pedidos-online/:id/rechazar', async (req, res) => {
+  try {
+    await ensureTiendaTables();
+    const { negocio_id, sucursal_id } = req.caja;
+    const { motivo = '' } = req.body;
+    const r = await pool.query(
+      "UPDATE pedidos_online SET estado='rechazado', rechazo_motivo=$1 WHERE id=$2 AND negocio_id=$3 AND sucursal_id=$4 AND estado='pendiente' RETURNING id",
+      [motivo, req.params.id, negocio_id, sucursal_id]
+    );
+    if (!r.rows.length) return res.status(404).json({ error: 'Pedido no encontrado o ya procesado' });
+    const io = req.app.get('io');
+    if (io) io.to('negocio:' + negocio_id).emit('pedido_online:rechazado', { id: req.params.id });
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 module.exports = router;

@@ -154,4 +154,4 @@ async function revisarAlertas() {
   }
 }
 
-module.exports = { router, revisarAlertas, crearTablasPush };
+module.exports = { router, revisarAlertas, crearTablasPush, enviarASucursal };

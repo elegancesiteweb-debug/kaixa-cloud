@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Tienda en línea</title>
+<style>
+  :root{ --acc:#8b5cf6; --bg:#f7f6fb; --s1:#fff; --text:#1a1a2e; --text2:#6b6b80; --text3:#9c9cb0; --border:#eae8f5; }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--text);padding-bottom:80px}
+  .top{background:linear-gradient(135deg,var(--acc),#6d28d9);color:#fff;padding:20px 16px;text-align:center}
+  .top h1{margin:0;font-size:19px;font-weight:900}
+  .top p{margin:4px 0 0;font-size:12px;opacity:.85}
+  .wrap{max-width:520px;margin:0 auto;padding:14px}
+  .card{background:var(--s1);border-radius:14px;padding:14px;margin-bottom:12px;box-shadow:0 2px 10px rgba(0,0,0,.05)}
+  select,input,textarea{width:100%;padding:11px 12px;border-radius:10px;border:1.5px solid var(--border);font-size:14px;background:#fff;color:var(--text);font-family:inherit}
+  label{font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:6px}
+  .field{margin-bottom:12px}
+  .prods{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .p{background:var(--s1);border-radius:12px;padding:10px;box-shadow:0 2px 8px rgba(0,0,0,.05);text-align:center}
+  .p-em{font-size:30px;display:block;margin-bottom:6px}
+  .p-em img{width:56px;height:56px;object-fit:cover;border-radius:8px}
+  .p-nm{font-size:12px;font-weight:700;line-height:1.3;margin-bottom:4px;min-height:31px}
+  .p-pr{font-size:14px;font-weight:900;color:var(--acc);margin-bottom:8px}
+  .p-st{font-size:10px;color:var(--text3);margin-bottom:6px}
+  .btn{padding:9px;border-radius:9px;border:none;background:var(--acc);color:#fff;font-weight:700;font-size:13px;cursor:pointer;width:100%}
+  .btn:disabled{background:#d8d5e8;cursor:not-allowed}
+  .btn-o{background:transparent;border:1.5px solid var(--acc);color:var(--acc)}
+  .qty{display:flex;align-items:center;justify-content:center;gap:10px}
+  .qty button{width:26px;height:26px;border-radius:7px;border:1px solid var(--border);background:#fff;font-weight:900;cursor:pointer;font-size:14px}
+  .cartbar{position:fixed;left:0;right:0;bottom:0;background:var(--acc);color:#fff;padding:14px 16px;display:none;align-items:center;justify-content:space-between;cursor:pointer;box-shadow:0 -4px 16px rgba(0,0,0,.15)}
+  .cartbar.show{display:flex}
+  .overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:200;display:none;align-items:flex-end;justify-content:center}
+  .overlay.show{display:flex}
+  .sheet{background:#fff;border-radius:18px 18px 0 0;max-width:520px;width:100%;max-height:88vh;overflow-y:auto;padding:20px}
+  .sheet h2{margin:0 0 14px;font-size:16px}
+  .item-row{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)}
+  .item-row .nm{flex:1;font-size:13px;font-weight:700}
+  .close{position:absolute;top:16px;right:16px;background:rgba(0,0,0,.06);border:none;width:30px;height:30px;border-radius:50%;font-size:15px;cursor:pointer}
+  .empty{text-align:center;padding:50px 20px;color:var(--text3)}
+  .empty div{font-size:38px;margin-bottom:10px}
+  .totalrow{display:flex;justify-content:space-between;font-size:16px;font-weight:900;padding:12px 0;border-top:2px solid var(--border);margin-top:6px}
+  .notif{position:fixed;top:14px;left:50%;transform:translateX(-50%);background:#1a1a2e;color:#fff;padding:10px 18px;border-radius:10px;font-size:13px;font-weight:600;z-index:999;opacity:0;transition:opacity .25s;pointer-events:none}
+  .notif.show{opacity:1}
+</style>
+</head>
+<body>
+
+<div class="top">
+  <h1 id="negNombre">Cargando…</h1>
+  <p>🛍️ Haz tu pedido en línea — pagas al recoger en tienda</p>
+</div>
+
+<div class="wrap">
+  <div class="card" id="sucCard" style="display:none">
+    <div class="field" style="margin-bottom:0">
+      <label>Sucursal donde vas a recoger</label>
+      <select id="sucSel" onchange="elegirSucursal()"></select>
+    </div>
+  </div>
+
+  <div id="prodsBox"></div>
+</div>
+
+<div class="cartbar" id="cartBar" onclick="abrirCarrito()">
+  <span id="cartTxt">0 productos</span>
+  <span id="cartTotal" style="font-weight:900">$0.00</span>
+</div>
+
+<div class="overlay" id="ovCarrito">
+  <div class="sheet" style="position:relative">
+    <button class="close" onclick="cerrar('ovCarrito')">✕</button>
+    <h2>🛒 Tu pedido</h2>
+    <div id="carritoList"></div>
+    <div class="totalrow"><span>Total</span><span id="carritoTotal">$0.00</span></div>
+    <button class="btn" style="margin-top:10px" onclick="irACheckout()">Continuar</button>
+  </div>
+</div>
+
+<div class="overlay" id="ovCheckout">
+  <div class="sheet" style="position:relative">
+    <button class="close" onclick="cerrar('ovCheckout')">✕</button>
+    <h2>📋 Tus datos</h2>
+    <div class="field"><label>Tu nombre *</label><input id="ckNombre" placeholder="Nombre completo"></div>
+    <div class="field"><label>Teléfono</label><input id="ckTel" type="tel" placeholder="10 dígitos"></div>
+    <div class="field"><label>Email (opcional)</label><input id="ckEmail" type="email" placeholder="tu@correo.com"></div>
+    <div class="field"><label>Notas (opcional)</label><textarea id="ckNotas" rows="2" placeholder="Ej: recojo después de las 5pm"></textarea></div>
+    <div class="totalrow"><span>Total a pagar en tienda</span><span id="ckTotal">$0.00</span></div>
+    <button class="btn" id="ckBtn" onclick="enviarPedido()">✅ Enviar pedido</button>
+  </div>
+</div>
+
+<div class="overlay" id="ovOk">
+  <div class="sheet" style="text-align:center;position:relative">
+    <button class="close" onclick="cerrar('ovOk')">✕</button>
+    <div style="font-size:48px;margin:10px 0">✅</div>
+    <h2>¡Pedido enviado!</h2>
+    <p style="color:var(--text2);font-size:13px;line-height:1.6">
+      Tu folio es <b id="okFolio"></b>.<br>
+      La tienda revisará tu pedido y te contactará para confirmarlo. Pagas al recoger.
+    </p>
+    <button class="btn" onclick="location.reload()">Hacer otro pedido</button>
+  </div>
+</div>
+
+<div class="notif" id="notif"></div>
+
+<script>
+var slug = location.pathname.split('/').filter(Boolean).pop();
+var negocio = null;
+var sucursales = [];
+var sucursalId = null;
+var productos = [];
+var cart = {}; // { producto_id: {producto, qty} }
+
+function notif(msg){
+  var el = document.getElementById('notif');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(el._t);
+  el._t = setTimeout(function(){ el.classList.remove('show'); }, 2500);
+}
+
+async function init(){
+  try{
+    var r = await fetch('/api/tienda/' + slug + '/info');
+    if (!r.ok) { document.getElementById('negNombre').textContent = 'Tienda no encontrada'; return; }
+    var d = await r.json();
+    negocio = d.negocio;
+    sucursales = d.sucursales || [];
+    document.getElementById('negNombre').textContent = negocio.nombre;
+    document.title = negocio.nombre + ' — Pedidos en línea';
+
+    if (!sucursales.length) {
+      document.getElementById('prodsBox').innerHTML = '<div class="empty"><div>🏪</div>Esta tienda no tiene sucursales activas todavía.</div>';
+      return;
+    }
+    if (sucursales.length === 1) {
+      sucursalId = sucursales[0].id;
+      await cargarProductos();
+    } else {
+      var box = document.getElementById('sucCard');
+      box.style.display = 'block';
+      var sel = document.getElementById('sucSel');
+      sel.innerHTML = '<option value="">Elige una sucursal…</option>' +
+        sucursales.map(function(s){ return '<option value="'+s.id+'">'+s.nombre+'</option>'; }).join('');
+      document.getElementById('prodsBox').innerHTML = '<div class="empty"><div>👆</div>Elige tu sucursal para ver el catálogo</div>';
+    }
+  }catch(e){
+    document.getElementById('negNombre').textContent = 'Error de conexión';
+  }
+}
+
+async function elegirSucursal(){
+  sucursalId = document.getElementById('sucSel').value;
+  cart = {};
+  actualizarCartBar();
+  if (sucursalId) await cargarProductos();
+}
+
+async function cargarProductos(){
+  var box = document.getElementById('prodsBox');
+  box.innerHTML = '<div class="empty"><div>⏳</div>Cargando catálogo…</div>';
+  try{
+    var r = await fetch('/api/tienda/' + slug + '/productos?sucursal_id=' + sucursalId);
+    productos = r.ok ? await r.json() : [];
+    renderProductos();
+  }catch(e){
+    box.innerHTML = '<div class="empty"><div>⚠️</div>No se pudo cargar el catálogo</div>';
+  }
+}
+
+function renderProductos(){
+  var box = document.getElementById('prodsBox');
+  if (!productos.length) {
+    box.innerHTML = '<div class="empty"><div>📦</div>Sin productos disponibles por ahora</div>';
+    return;
+  }
+  box.innerHTML = '<div class="prods">' + productos.map(function(p){
+    var img = (p.imagen_url && p.imagen_url.startsWith('data:'))
+      ? '<img src="'+p.imagen_url+'">' : (p.emoji || '📦');
+    var enCarrito = cart[p.id];
+    return '<div class="p">' +
+      '<span class="p-em">'+img+'</span>' +
+      '<div class="p-nm">'+p.nombre+'</div>' +
+      '<div class="p-pr">$'+Number(p.precio).toFixed(2)+'</div>' +
+      '<div class="p-st">Disponibles: '+p.stock+'</div>' +
+      (enCarrito
+        ? '<div class="qty"><button onclick="cambiarQty(\''+p.id+'\',-1)">−</button><b>'+enCarrito.qty+'</b><button onclick="cambiarQty(\''+p.id+'\',1)">+</button></div>'
+        : '<button class="btn" onclick="agregarCarrito(\''+p.id+'\')">Agregar</button>') +
+      '</div>';
+  }).join('') + '</div>';
+}
+
+function agregarCarrito(id){
+  var p = productos.find(function(x){ return x.id === id; });
+  if (!p) return;
+  cart[id] = { producto: p, qty: 1 };
+  renderProductos();
+  actualizarCartBar();
+  notif('✅ ' + p.nombre + ' agregado');
+}
+
+function cambiarQty(id, delta){
+  var it = cart[id];
+  if (!it) return;
+  it.qty += delta;
+  if (it.qty <= 0 || it.qty > it.producto.stock) {
+    if (it.qty > it.producto.stock) { notif('Solo hay ' + it.producto.stock + ' disponibles'); it.qty = it.producto.stock; }
+    if (it.qty <= 0) delete cart[id];
+  }
+  renderProductos();
+  actualizarCartBar();
+  if (document.getElementById('ovCarrito').classList.contains('show')) renderCarrito();
+}
+
+function totalCarrito(){
+  return Object.values(cart).reduce(function(s, it){ return s + it.producto.precio * it.qty; }, 0);
+}
+function cantidadCarrito(){
+  return Object.values(cart).reduce(function(s, it){ return s + it.qty; }, 0);
+}
+
+function actualizarCartBar(){
+  var n = cantidadCarrito();
+  var bar = document.getElementById('cartBar');
+  if (n > 0) {
+    bar.classList.add('show');
+    document.getElementById('cartTxt').textContent = n + (n === 1 ? ' producto' : ' productos');
+    document.getElementById('cartTotal').textContent = '$' + totalCarrito().toFixed(2);
+  } else {
+    bar.classList.remove('show');
+  }
+}
+
+function abrirCarrito(){
+  renderCarrito();
+  document.getElementById('ovCarrito').classList.add('show');
+}
+function renderCarrito(){
+  var list = document.getElementById('carritoList');
+  var items = Object.keys(cart).map(function(id){ return cart[id]; });
+  if (!items.length) {
+    list.innerHTML = '<div class="empty"><div>🛒</div>Tu carrito está vacío</div>';
+  } else {
+    list.innerHTML = items.map(function(it){
+      return '<div class="item-row">' +
+        '<div class="nm">'+it.producto.nombre+'<br><span style="color:var(--text3);font-weight:400">$'+Number(it.producto.precio).toFixed(2)+' c/u</span></div>' +
+        '<div class="qty"><button onclick="cambiarQty(\''+it.producto.id+'\',-1)">−</button><b>'+it.qty+'</b><button onclick="cambiarQty(\''+it.producto.id+'\',1)">+</button></div>' +
+        '<div style="font-weight:800;min-width:60px;text-align:right">$'+(it.producto.precio*it.qty).toFixed(2)+'</div>' +
+        '</div>';
+    }).join('');
+  }
+  document.getElementById('carritoTotal').textContent = '$' + totalCarrito().toFixed(2);
+}
+
+function irACheckout(){
+  if (!cantidadCarrito()) { notif('Agrega al menos un producto'); return; }
+  cerrar('ovCarrito');
+  document.getElementById('ckTotal').textContent = '$' + totalCarrito().toFixed(2);
+  document.getElementById('ovCheckout').classList.add('show');
+}
+
+async function enviarPedido(){
+  var nombre = document.getElementById('ckNombre').value.trim();
+  if (!nombre) { notif('Escribe tu nombre'); return; }
+  var btn = document.getElementById('ckBtn');
+  btn.disabled = true; btn.textContent = 'Enviando…';
+  try{
+    var items = Object.values(cart).map(function(it){ return { producto_id: it.producto.id, cantidad: it.qty }; });
+    var r = await fetch('/api/tienda/' + slug + '/pedidos', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sucursal_id: sucursalId,
+        cliente_nombre: nombre,
+        cliente_telefono: document.getElementById('ckTel').value.trim(),
+        cliente_email: document.getElementById('ckEmail').value.trim(),
+        notas: document.getElementById('ckNotas').value.trim(),
+        items: items
+      })
+    });
+    var d = await r.json();
+    if (!r.ok || !d.ok) { notif('❌ ' + (d.error || 'Error al enviar el pedido')); btn.disabled=false; btn.textContent='✅ Enviar pedido'; return; }
+    cerrar('ovCheckout');
+    document.getElementById('okFolio').textContent = d.folio;
+    document.getElementById('ovOk').classList.add('show');
+    cart = {};
+    actualizarCartBar();
+  }catch(e){
+    notif('❌ Error de conexión');
+    btn.disabled = false; btn.textContent = '✅ Enviar pedido';
+  }
+}
+
+function cerrar(id){ document.getElementById(id).classList.remove('show'); }
+
+init();
+</script>
+</body>
+</html>

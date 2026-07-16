@@ -416,6 +416,12 @@ app.post('/api/lic/elegir-sucursal', async (req, res) => {
   }
 });
 app.use('/api/admin',    require('./routes/negocios'));
+app.use('/api',          require('./routes/tienda').router); // público: /api/tienda/:slug/*
+app.get('/tienda/:slug', (req, res) => {
+  const p = path.join(__dirname, 'public', 'tienda.html');
+  if (fs.existsSync(p)) res.sendFile(p);
+  else res.status(404).send('Tienda no disponible');
+});
 app.get('/api/caja-info', authCaja, (req, res) => res.json(req.caja));
 app.post('/api/auth/login', authCaja, async (req, res) => {
   try {

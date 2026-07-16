@@ -333,6 +333,7 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:var(--ff);backgroun
     <div class="subscreen" id="sub-emps"><div id="empsList"></div></div>
     <div class="subscreen" id="sub-lotes"><div id="lotesList"></div></div>
     <div class="subscreen" id="sub-traspasos"><div id="traspasosList"></div></div>
+    <div class="subscreen" id="sub-pedidosonline"><div id="pedidosOnlineList"></div></div>
     <div class="subscreen" id="sub-pedidos"><div id="pedidosList"></div></div>
     <div class="subscreen" id="sub-corte"><div id="corteContent"></div></div>
     <div class="subscreen" id="sub-proveedores"><div id="proveedoresList"></div></div>
@@ -514,6 +515,7 @@ var screenCfg = {
   emps:     { title: 'Empleados', btn: '⊕', load: loadEmps },
   lotes:    { title: 'Lotes', btn: '⊕', load: loadLotes },
   traspasos: { title: 'Traspasos', btn: '⊕', load: loadTraspasos },
+  pedidosonline: { title: 'Pedidos en línea', btn: null, load: loadPedidosOnline },
   pedidos:  { title: 'Pedidos', btn: '⊕', load: loadPedidos },
   corte:    { title: 'Corte de caja', btn: null, load: loadCorte },
   mas:      { title: 'Más', btn: null, load: loadMas },
@@ -533,7 +535,7 @@ function navTo(screen) {
   var btn1 = document.getElementById('topBtn1');
   if (cfg.btn) { btn1.textContent = cfg.btn; btn1.style.display = ''; }
   else { btn1.style.display = 'none'; }
-  var navMap = { dash:'dash', pos:'pos', inv:'inv', ventas:'mas', clientes:'clientes', emps:'mas', lotes:'mas', traspasos:'mas', pedidos:'mas', corte:'mas', mas:'mas' };
+  var navMap = { dash:'dash', pos:'pos', inv:'inv', ventas:'mas', clientes:'clientes', emps:'mas', lotes:'mas', traspasos:'mas', pedidosonline:'mas', pedidos:'mas', corte:'mas', mas:'mas' };
   document.querySelectorAll('.nav-item').forEach(function(n) { n.classList.remove('active'); });
   var navId = navMap[screen] || screen;
   var navEl = document.getElementById('nav-' + navId);
@@ -1646,6 +1648,65 @@ async function guardarTraspaso() {
   }
 }
 
+// ══ PEDIDOS EN LÍNEA (apartados desde la tienda web) ══
+var _pedidosOnline = [];
+
+async function loadPedidosOnline() {
+  var cont = document.getElementById('pedidosOnlineList');
+  try {
+    var r = await apiFetch('/api/pedidos-online');
+    if (!r || !r.ok) { cont.innerHTML = '<div class="empty"><div class="ico">🛍️</div><p>Sin pedidos</p></div>'; return; }
+    _pedidosOnline = await r.json();
+    if (!Array.isArray(_pedidosOnline)) _pedidosOnline = [];
+    renderPedidosOnline();
+  } catch(e) {}
+}
+
+function renderPedidosOnline() {
+  var cont = document.getElementById('pedidosOnlineList');
+  if (!_pedidosOnline.length) { cont.innerHTML = '<div class="empty"><div class="ico">🛍️</div><p>Sin pedidos en línea todavía</p></div>'; return; }
+  cont.innerHTML = _pedidosOnline.map(function(p) {
+    var estCls = p.estado === 'pendiente' ? 'warn' : p.estado === 'confirmado' ? 'ok' : 'err';
+    var estTxt = p.estado === 'pendiente' ? '⏳ Pendiente' : p.estado === 'confirmado' ? '✅ Confirmado' : '❌ Rechazado';
+    var fecha = p.creado_en ? new Date(p.creado_en).toLocaleString('es-MX', {day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}) : '';
+    var items = (p.items||[]).map(function(i){ return i.cantidad+'x '+i.nombre_producto; }).join(' • ');
+    var acciones = p.estado === 'pendiente'
+      ? '<div style="display:flex;gap:8px;margin-top:8px">' +
+          '<button class="btn-full primary" style="padding:8px;font-size:12px" onclick="confirmarPedidoOnline(\''+p.id+'\')">✅ Confirmar</button>' +
+          '<button class="btn-full danger" style="padding:8px;font-size:12px" onclick="rechazarPedidoOnline(\''+p.id+'\')">❌ Rechazar</button>' +
+        '</div>'
+      : '';
+    return '<div class="card" style="margin:0 16px 10px">' +
+      '<div class="card-row" style="align-items:flex-start">' +
+        '<div class="card-ico">🛍️</div>' +
+        '<div class="card-info">' +
+          '<div class="card-title">'+p.cliente_nombre+' · $'+Number(p.subtotal).toFixed(2)+'</div>' +
+          '<div class="card-sub">'+items+'</div>' +
+          '<div class="card-sub" style="margin-top:2px">'+p.folio+' · '+fecha+(p.cliente_telefono?' · 📞 '+p.cliente_telefono:'')+'</div>' +
+        '</div>' +
+        '<span class="tag '+estCls+'">'+estTxt+'</span>' +
+      '</div>' + acciones +
+    '</div>';
+  }).join('');
+}
+
+async function confirmarPedidoOnline(id) {
+  if (!confirm('¿Confirmar este pedido? Se descontará el stock y se registrará la venta.')) return;
+  var r = await apiFetch('/api/pedidos-online/' + id + '/confirmar', {
+    method: 'POST',
+    body: JSON.stringify({ cajero: usuario ? usuario.nombre : 'Pedido en línea' })
+  });
+  if (r && r.ok) { notif('✅ Pedido confirmado y venta registrada', 'ok'); loadPedidosOnline(); }
+  else { var err = r ? await r.json().catch(function(){return {};}) : {}; notif('❌ ' + (err.error || 'Error al confirmar'), 'err'); }
+}
+
+async function rechazarPedidoOnline(id) {
+  var motivo = prompt('Motivo del rechazo (opcional):') || '';
+  var r = await apiFetch('/api/pedidos-online/' + id + '/rechazar', { method: 'POST', body: JSON.stringify({ motivo: motivo }) });
+  if (r && r.ok) { notif('Pedido rechazado', 'ok'); loadPedidosOnline(); }
+  else { notif('❌ Error al rechazar', 'err'); }
+}
+
 // ══ PEDIDOS ══
 var _pedidos = [];
 var _proveedores = [];
@@ -1775,6 +1836,7 @@ function loadMas() {
   document.getElementById('masNombreEmp').textContent = usuario ? usuario.nombre : 'Usuario';
   document.getElementById('masRolEmp').textContent = usuario ? usuario.rol : '';
   var items = [
+    { ico:'🛍️', title:'Pedidos en línea', sub:'Apartados desde la tienda web', screen:'pedidosonline' },
     { ico:'🧾', title:'Ventas', sub:'Historial y devoluciones', screen:'ventas' },
     { ico:'👥', title:'Empleados', sub:'Gestión y asistencia', screen:'emps' },
     { ico:'🏷️', title:'Lotes y caducidades', sub:'Control de vencimientos', screen:'lotes' },
