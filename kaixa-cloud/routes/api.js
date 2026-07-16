@@ -976,7 +976,16 @@ router.post('/pedidos-online/:id/confirmar', async (req, res) => {
     const items = await client.query('SELECT * FROM pedido_online_items WHERE pedido_id=$1', [p.id]);
 
     // Verificar stock disponible de cada item antes de confirmar
+    // (las variantes llevan su propio stock, aparte del producto general)
     for (const it of items.rows) {
+      if (it.variante_id) {
+        const vStock = await client.query('SELECT stock FROM producto_variantes WHERE id=$1', [it.variante_id]);
+        const disp = vStock.rows.length ? vStock.rows[0].stock : 0;
+        if (disp < it.cantidad) {
+          throw Object.assign(new Error('Sin stock suficiente de "' + it.nombre_producto + ' · ' + (it.variante_texto||'') + '" (' + disp + ' disponible)'), { status: 400 });
+        }
+        continue;
+      }
       if (!it.producto_id) continue;
       const stock = await client.query(
         'SELECT COALESCE(SUM(cantidad),0) AS stock FROM stock_movimientos WHERE producto_id=$1 AND sucursal_id=$2',
@@ -1005,12 +1014,17 @@ router.post('/pedidos-online/:id/confirmar', async (req, res) => {
     );
 
     for (const it of items.rows) {
+      const nombreConVariante = it.variante_texto ? (it.nombre_producto + ' · ' + it.variante_texto) : it.nombre_producto;
       await client.query(
         `INSERT INTO venta_detalle (id, venta_id, producto_id, nombre_producto, cantidad, precio_unitario, subtotal)
          VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-        [uuid(), ventaId, it.producto_id, it.nombre_producto, it.cantidad, it.precio_unitario, it.cantidad * it.precio_unitario]
+        [uuid(), ventaId, it.producto_id, nombreConVariante, it.cantidad, it.precio_unitario, it.cantidad * it.precio_unitario]
       );
-      if (it.producto_id) {
+      if (it.variante_id) {
+        await client.query('UPDATE producto_variantes SET stock = stock - $1, actualizado_en = now() WHERE id=$2',
+          [it.cantidad, it.variante_id]);
+        if (it.producto_id) await client.query('UPDATE productos SET actualizado_en=now() WHERE id=$1', [it.producto_id]);
+      } else if (it.producto_id) {
         await client.query(
           `INSERT INTO stock_movimientos (id, negocio_id, sucursal_id, producto_id, caja_id, cantidad, motivo, venta_id)
            VALUES ($1,$2,$3,$4,$5,$6,'venta',$7)`,

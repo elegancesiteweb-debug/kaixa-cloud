@@ -1174,6 +1174,7 @@ function abrirModalProd(p) {
       '</div>' +
       '<div class="form-field"><label>Código de barras</label><input id="pCodigo" value="' + (p ? p.codigo_barras || '' : '') + '"></div>' +
       '<button class="btn-full primary" onclick="guardarProd(\'' + (p ? p.id : '') + '\')">' + (esNuevo ? 'Crear producto' : 'Guardar cambios') + '</button>' +
+      (p ? '<button class="btn-full sec" onclick="abrirVariantesMovil(\'' + p.id + '\',\'' + (p.nombre||'').replace(/'/g,"\\'") + '\')">🎨 Variantes</button>' : '') +
       (p ? '<button class="btn-full danger" onclick="eliminarProd(\'' + p.id + '\')">Eliminar producto</button>' : '') +
     '</div></div>';
   document.getElementById('modalContainer').innerHTML = html;
@@ -1201,6 +1202,92 @@ async function guardarProd(id) {
     allProds = [];
     loadInv();
   } else { notif('Error al guardar', 'err'); }
+}
+
+// ══ VARIANTES GENÉRICAS DE PRODUCTO (cualquier giro) ══
+var variantesMovilTemp = [];
+var variantesMovilProdId = null;
+async function abrirVariantesMovil(prodId, prodNombre) {
+  variantesMovilProdId = prodId;
+  variantesMovilTemp = [];
+  try {
+    var r = await apiFetch('/api/variantes/producto/' + prodId);
+    variantesMovilTemp = r && r.ok ? await r.json() : [];
+  } catch(e) { variantesMovilTemp = []; }
+  renderVariantesMovil(prodNombre);
+}
+
+function renderVariantesMovil(prodNombre) {
+  var total = variantesMovilTemp.reduce(function(s,v){ return s+(v.stock||0); }, 0);
+  var filas = variantesMovilTemp.map(function(v, i) {
+    var et1 = v.atributo1_valor ? v.atributo1_valor + (v.atributo1_nombre ? ' (' + v.atributo1_nombre + ')' : '') : '—';
+    var et2 = v.atributo2_valor ? v.atributo2_valor + (v.atributo2_nombre ? ' (' + v.atributo2_nombre + ')' : '') : '—';
+    return '<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);font-size:12px">' +
+      '<div style="flex:1"><strong>' + et1 + '</strong><br><span style="color:var(--text3)">' + et2 + '</span></div>' +
+      '<input type="number" min="0" value="' + (v.stock||0) + '" oninput="variantesMovilTemp[' + i + '].stock=parseInt(this.value)||0" style="width:56px;text-align:center;border:1px solid var(--border);border-radius:6px;padding:4px">' +
+      '<span style="color:var(--text3)">' + (v.precio_extra>0 ? '+$'+v.precio_extra : '') + '</span>' +
+      '<span class="modal-close" style="font-size:14px" onclick="variantesMovilTemp.splice(' + i + ',1);renderVariantesMovil(\'' + prodNombre.replace(/'/g,"\\'") + '\')">✕</span>' +
+    '</div>';
+  }).join('') || '<p style="color:var(--text3);font-size:12px;padding:8px 0">Sin variantes — agrega abajo (ej. Talla/Tamaño, Color/Sabor)</p>';
+
+  var html = '<div class="modal-overlay" id="modalVarGen">' +
+    '<div class="modal-sheet">' +
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">' +
+        '<h3 style="margin:0">🎨 Variantes — ' + prodNombre + '</h3>' +
+        '<span class="modal-close" onclick="document.getElementById(\'modalVarGen\').remove()">✕</span>' +
+      '</div>' +
+      '<div style="background:var(--s2);border-radius:10px;padding:10px;margin-bottom:12px">' +
+        '<div class="form-row">' +
+          '<div class="form-field"><label>Atributo 1</label><input id="vgAt1Nm" placeholder="Talla, Tamaño..."></div>' +
+          '<div class="form-field"><label>Valor</label><input id="vgAt1Val" placeholder="Grande, 500ml..."></div>' +
+        '</div>' +
+        '<div class="form-row">' +
+          '<div class="form-field"><label>Atributo 2 (opcional)</label><input id="vgAt2Nm" placeholder="Color, Material..."></div>' +
+          '<div class="form-field"><label>Valor</label><input id="vgAt2Val" placeholder="Rojo, Metal..."></div>' +
+        '</div>' +
+        '<div class="form-row">' +
+          '<div class="form-field"><label>Stock</label><input id="vgStock" type="number" value="0" min="0"></div>' +
+          '<div class="form-field"><label>+Precio</label><input id="vgExtra" type="number" value="0" min="0" step="5"></div>' +
+        '</div>' +
+        '<button class="btn-full sec" onclick="agregarVarianteMovil(\'' + prodNombre.replace(/'/g,"\\'") + '\')">+ Agregar variante</button>' +
+      '</div>' +
+      '<div id="vgTabla">' + filas + '</div>' +
+      '<div style="font-size:12px;color:var(--text3);margin:8px 0">Total en stock: <strong>' + total + '</strong> piezas</div>' +
+      '<button class="btn-full primary" onclick="guardarVariantesMovil()">💾 Guardar variantes</button>' +
+    '</div></div>';
+  document.getElementById('modalContainer').innerHTML = html;
+}
+
+function agregarVarianteMovil(prodNombre) {
+  var at1Nm = document.getElementById('vgAt1Nm').value.trim();
+  var at1Val = document.getElementById('vgAt1Val').value.trim();
+  var at2Nm = document.getElementById('vgAt2Nm').value.trim();
+  var at2Val = document.getElementById('vgAt2Val').value.trim();
+  if (!at1Val && !at2Val) { notif('Ingresa al menos un valor', 'err'); return; }
+  var dup = variantesMovilTemp.find(function(v) { return v.atributo1_valor===at1Val && v.atributo2_valor===at2Val; });
+  if (dup) { notif('Ya existe esa combinación', 'err'); return; }
+  variantesMovilTemp.push({
+    atributo1_nombre: at1Nm, atributo1_valor: at1Val,
+    atributo2_nombre: at2Nm, atributo2_valor: at2Val,
+    stock: parseInt(document.getElementById('vgStock').value) || 0,
+    precio_extra: parseFloat(document.getElementById('vgExtra').value) || 0,
+    sku: ''
+  });
+  renderVariantesMovil(prodNombre);
+}
+
+async function guardarVariantesMovil() {
+  if (!variantesMovilProdId) return;
+  var r = await apiFetch('/api/variantes/producto/' + variantesMovilProdId, {
+    method: 'POST', body: JSON.stringify({ variantes: variantesMovilTemp })
+  });
+  if (r && r.ok) {
+    var d = await r.json();
+    notif('✅ ' + (d.guardadas||0) + ' variantes guardadas', 'ok');
+    document.getElementById('modalVarGen').remove();
+    allProds = [];
+    loadInv();
+  } else { notif('Error al guardar variantes', 'err'); }
 }
 
 async function eliminarProd(id) {

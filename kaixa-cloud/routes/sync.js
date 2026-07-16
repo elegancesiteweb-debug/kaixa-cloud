@@ -7,6 +7,7 @@ const pool    = require('../db/pool');
 router.post('/push', async (req, res) => {
   const { negocio_id, sucursal_id, id: caja_id } = req.caja;
   const { productos = [], clientes = [], ventas = [], movimientos = [], lotes = [] } = req.body;
+  const variantes = req.body.variantes || [];
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -141,6 +142,30 @@ router.post('/push', async (req, res) => {
         }
       } catch(e) { console.warn('Kit push error:', e.message); }
     }
+
+    // Variantes de producto (genéricas, cualquier giro)
+    for (const v of variantes) {
+      try {
+        await client.query(`
+          INSERT INTO producto_variantes
+            (id, negocio_id, sucursal_id, producto_id, atributo1_nombre, atributo1_valor,
+             atributo2_nombre, atributo2_valor, sku, precio_extra, stock, stock_minimo, activo, actualizado_en)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13, now())
+          ON CONFLICT (id) DO UPDATE SET
+            atributo1_nombre=$5, atributo1_valor=$6, atributo2_nombre=$7, atributo2_valor=$8,
+            sku=$9, precio_extra=$10, stock=$11, stock_minimo=$12, activo=$13, actualizado_en=now()`,
+          [v.id, negocio_id, v.sucursal_id||sucursal_id, v.producto_uuid,
+           v.atributo1_nombre||'', v.atributo1_valor||'', v.atributo2_nombre||'', v.atributo2_valor||'',
+           v.sku||'', v.precio_extra||0, v.stock||0, v.stock_minimo||0, v.activo!==false]
+        );
+        if (v.producto_uuid) {
+          await client.query(
+            `UPDATE productos SET tiene_variantes=true WHERE id=$1`,
+            [v.producto_uuid]
+          );
+        }
+      } catch(e) { console.warn('Variante push error:', e.message); }
+    }
     await client.query('UPDATE cajas SET ultimo_sync = now() WHERE id = $1', [caja_id]);
     await client.query('COMMIT');
 
@@ -170,7 +195,7 @@ router.get('/pull', async (req, res) => {
   const { negocio_id, sucursal_id, id: caja_id } = req.caja;
   const since = req.query.since || '1970-01-01T00:00:00Z';
   try {
-    const [productos, clientes, ventas, movimientos, lotesPull, kitsPull] = await Promise.all([
+    const [productos, clientes, ventas, movimientos, lotesPull, kitsPull, variantesPull] = await Promise.all([
       pool.query(
         `SELECT p.id, p.negocio_id, p.sucursal_id, p.nombre, p.emoji, p.codigo_barras,
                 p.precio, p.costo, p.stock_minimo, p.categoria_id, p.giro, p.por_peso,
@@ -220,6 +245,12 @@ router.get('/pull', async (req, res) => {
          WHERE k.negocio_id=$1 AND k.sucursal_id=$2 AND k.actualizado_en > $3
          GROUP BY k.id ORDER BY k.actualizado_en`,
         [negocio_id, sucursal_id, since]
+      ).catch(() => ({ rows: [] })),
+      pool.query(
+        `SELECT * FROM producto_variantes
+         WHERE negocio_id=$1 AND sucursal_id=$2 AND actualizado_en > $3
+         ORDER BY actualizado_en`,
+        [negocio_id, sucursal_id, since]
       ).catch(() => ({ rows: [] }))
     ]);
 
@@ -231,7 +262,8 @@ router.get('/pull', async (req, res) => {
       ventas: ventas.rows,
       movimientos: movimientos.rows,
       lotes: lotesPull.rows,
-      kits: kitsPull.rows
+      kits: kitsPull.rows,
+      variantes: variantesPull.rows
     });
   } catch (e) {
     res.status(500).json({ error: e.message });

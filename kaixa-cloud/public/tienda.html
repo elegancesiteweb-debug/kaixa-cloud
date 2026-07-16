@@ -117,6 +117,14 @@
   </div>
 </div>
 
+<div class="overlay" id="ovVariante">
+  <div class="sheet" style="position:relative">
+    <button class="close" onclick="cerrar('ovVariante')">✕</button>
+    <h2 id="varSheetTtl">Elige una opción</h2>
+    <div id="varSheetBody"></div>
+  </div>
+</div>
+
 <div class="overlay" id="ovCarrito">
   <div class="sheet" style="position:relative">
     <button class="close" onclick="cerrar('ovCarrito')">✕</button>
@@ -280,16 +288,24 @@ function renderProductos(){
   box.innerHTML = '<div class="prods">' + lista.map(function(p){
     var img = (p.imagen_url && p.imagen_url.startsWith('data:'))
       ? '<img src="'+p.imagen_url+'">' : '<span>'+(p.emoji || '📦')+'</span>';
-    var enCarrito = cart[p.id];
+    var tieneVar = p.tiene_variantes && p.variantes && p.variantes.length;
+    var enCarrito = !tieneVar && cart[p.id];
+    var enCarritoCount = tieneVar ? Object.keys(cart).filter(function(k){ return cart[k].producto.id === p.id; }).reduce(function(s,k){ return s+cart[k].qty; }, 0) : 0;
+    var accion;
+    if (tieneVar) {
+      accion = '<button class="btn" onclick="abrirSelectorVariante(\''+p.id+'\')">' + (enCarritoCount ? enCarritoCount + ' en carrito · Agregar más' : 'Elegir opción') + '</button>';
+    } else if (enCarrito) {
+      accion = '<div class="qty"><button onclick="cambiarQty(\''+p.id+'\',-1)">−</button><b>'+enCarrito.qty+'</b><button onclick="cambiarQty(\''+p.id+'\',1)">+</button></div>';
+    } else {
+      accion = '<button class="btn" onclick="agregarCarrito(\''+p.id+'\')">Agregar</button>';
+    }
     return '<div class="p">' +
       '<div class="p-imgwrap">'+img+'</div>' +
       '<div class="p-body">' +
       '<div class="p-nm">'+p.nombre+'</div>' +
-      '<div class="p-pr">$'+Number(p.precio).toFixed(2)+'</div>' +
+      '<div class="p-pr">$'+Number(p.precio).toFixed(2)+(tieneVar?'+':'')+'</div>' +
       '<div class="p-st">Disponibles: '+p.stock+'</div>' +
-      (enCarrito
-        ? '<div class="qty"><button onclick="cambiarQty(\''+p.id+'\',-1)">−</button><b>'+enCarrito.qty+'</b><button onclick="cambiarQty(\''+p.id+'\',1)">+</button></div>'
-        : '<button class="btn" onclick="agregarCarrito(\''+p.id+'\')">Agregar</button>') +
+      accion +
       '</div></div>';
   }).join('') + '</div>';
 }
@@ -303,13 +319,64 @@ function agregarCarrito(id){
   notif('✅ ' + p.nombre + ' agregado');
 }
 
-function cambiarQty(id, delta){
-  var it = cart[id];
+function abrirSelectorVariante(prodId){
+  var p = productos.find(function(x){ return x.id === prodId; });
+  if (!p) return;
+  document.getElementById('varSheetTtl').textContent = p.nombre;
+  var disponibles = (p.variantes||[]).filter(function(v){ return v.stock > 0; });
+  var agotados = (p.variantes||[]).filter(function(v){ return v.stock <= 0; });
+  var body = document.getElementById('varSheetBody');
+  if (!disponibles.length) {
+    body.innerHTML = '<div class="empty"><div>⚠️</div>Todas las opciones están agotadas</div>';
+  } else {
+    body.innerHTML = disponibles.map(function(v){
+      var etiqueta = [v.atributo1_valor, v.atributo2_valor].filter(Boolean).join(' / ') || 'Opción';
+      var precio = Number(p.precio) + Number(v.precio_extra||0);
+      return '<div class="item-row" style="cursor:pointer" onclick="agregarCarritoVariante(\''+prodId+'\',\''+v.id+'\')">' +
+        '<div class="nm">'+etiqueta+'<br><span style="color:var(--text3);font-weight:400">Stock: '+v.stock+'</span></div>' +
+        '<div style="font-weight:800;min-width:60px;text-align:right">$'+precio.toFixed(2)+'</div>' +
+        '</div>';
+    }).join('');
+    if (agotados.length) {
+      body.innerHTML += '<p style="color:var(--text3);font-size:11px;margin-top:8px">Agotados: ' +
+        agotados.map(function(v){ return [v.atributo1_valor,v.atributo2_valor].filter(Boolean).join(' / '); }).join(', ') + '</p>';
+    }
+  }
+  document.getElementById('ovVariante').classList.add('show');
+}
+
+function agregarCarritoVariante(prodId, varianteId){
+  var p = productos.find(function(x){ return x.id === prodId; });
+  if (!p) return;
+  var v = (p.variantes||[]).find(function(x){ return x.id === varianteId; });
+  if (!v) return;
+  var key = prodId + '::' + varianteId;
+  var etiqueta = [v.atributo1_valor, v.atributo2_valor].filter(Boolean).join(' / ') || 'Opción';
+  if (cart[key]) {
+    if (cart[key].qty + 1 > v.stock) { notif('Solo hay ' + v.stock + ' disponibles'); cerrar('ovVariante'); return; }
+    cart[key].qty++;
+  } else {
+    cart[key] = {
+      producto: p, variante: v, qty: 1,
+      nombreMostrado: p.nombre + ' · ' + etiqueta,
+      precioMostrado: Number(p.precio) + Number(v.precio_extra||0)
+    };
+  }
+  cerrar('ovVariante');
+  renderProductos();
+  actualizarCartBar();
+  if (document.getElementById('ovCarrito').classList.contains('show')) renderCarrito();
+  notif('✅ ' + p.nombre + ' · ' + etiqueta + ' agregado');
+}
+
+function cambiarQty(key, delta){
+  var it = cart[key];
   if (!it) return;
+  var maxStock = it.variante ? it.variante.stock : it.producto.stock;
   it.qty += delta;
-  if (it.qty <= 0 || it.qty > it.producto.stock) {
-    if (it.qty > it.producto.stock) { notif('Solo hay ' + it.producto.stock + ' disponibles'); it.qty = it.producto.stock; }
-    if (it.qty <= 0) delete cart[id];
+  if (it.qty <= 0 || it.qty > maxStock) {
+    if (it.qty > maxStock) { notif('Solo hay ' + maxStock + ' disponibles'); it.qty = maxStock; }
+    if (it.qty <= 0) delete cart[key];
   }
   renderProductos();
   actualizarCartBar();
@@ -317,7 +384,7 @@ function cambiarQty(id, delta){
 }
 
 function totalCarrito(){
-  return Object.values(cart).reduce(function(s, it){ return s + it.producto.precio * it.qty; }, 0);
+  return Object.values(cart).reduce(function(s, it){ return s + (it.precioMostrado!=null?it.precioMostrado:it.producto.precio) * it.qty; }, 0);
 }
 function cantidadCarrito(){
   return Object.values(cart).reduce(function(s, it){ return s + it.qty; }, 0);
@@ -341,15 +408,18 @@ function abrirCarrito(){
 }
 function renderCarrito(){
   var list = document.getElementById('carritoList');
-  var items = Object.keys(cart).map(function(id){ return cart[id]; });
-  if (!items.length) {
+  var keys = Object.keys(cart);
+  if (!keys.length) {
     list.innerHTML = '<div class="empty"><div>🛒</div>Tu carrito está vacío</div>';
   } else {
-    list.innerHTML = items.map(function(it){
+    list.innerHTML = keys.map(function(key){
+      var it = cart[key];
+      var nombre = it.nombreMostrado || it.producto.nombre;
+      var precio = it.precioMostrado!=null ? it.precioMostrado : it.producto.precio;
       return '<div class="item-row">' +
-        '<div class="nm">'+it.producto.nombre+'<br><span style="color:var(--text3);font-weight:400">$'+Number(it.producto.precio).toFixed(2)+' c/u</span></div>' +
-        '<div class="qty"><button onclick="cambiarQty(\''+it.producto.id+'\',-1)">−</button><b>'+it.qty+'</b><button onclick="cambiarQty(\''+it.producto.id+'\',1)">+</button></div>' +
-        '<div style="font-weight:800;min-width:60px;text-align:right">$'+(it.producto.precio*it.qty).toFixed(2)+'</div>' +
+        '<div class="nm">'+nombre+'<br><span style="color:var(--text3);font-weight:400">$'+Number(precio).toFixed(2)+' c/u</span></div>' +
+        '<div class="qty"><button onclick="cambiarQty(\''+key+'\',-1)">−</button><b>'+it.qty+'</b><button onclick="cambiarQty(\''+key+'\',1)">+</button></div>' +
+        '<div style="font-weight:800;min-width:60px;text-align:right">$'+(precio*it.qty).toFixed(2)+'</div>' +
         '</div>';
     }).join('');
   }
@@ -369,7 +439,7 @@ async function enviarPedido(){
   var btn = document.getElementById('ckBtn');
   btn.disabled = true; btn.textContent = 'Enviando…';
   try{
-    var items = Object.values(cart).map(function(it){ return { producto_id: it.producto.id, cantidad: it.qty }; });
+    var items = Object.values(cart).map(function(it){ return { producto_id: it.producto.id, cantidad: it.qty, variante_id: it.variante ? it.variante.id : null }; });
     var r = await fetch('/api/tienda/' + slug + '/pedidos', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

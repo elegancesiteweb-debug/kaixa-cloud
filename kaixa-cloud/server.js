@@ -531,6 +531,7 @@ app.put('/api/empleados/:id', authCaja, async (req, res) => {
 app.use('/api/sync',      authCaja, require('./routes/sync'));
 app.use('/api/dashboard', authCaja, require('./routes/dashboard'));
 app.use('/api/push',      authCaja, pushRouter);
+app.use('/api',           authCaja, require('./routes/variantes').router);
 app.use('/api',           authCaja, require('./routes/api'));
 app.get('*', (req, res) => {
   const idx = path.join(__dirname, 'public', 'index.html');
@@ -556,6 +557,7 @@ io.on('connection', (socket) => {
 const PORT = process.env.PORT || 4500;
 aplicarEsquema().then(async () => {
   await crearTablasPush();
+  try { await require('./routes/variantes').ensureVariantesTable(); } catch(e) { console.error('⚠️ producto_variantes:', e.message); }
   server.listen(PORT, () => {
     console.log('🚀 Kaixa Cloud v2.0 en puerto', PORT);
     console.log('📱 PWA en /  |  🔧 Admin en /admin.html');

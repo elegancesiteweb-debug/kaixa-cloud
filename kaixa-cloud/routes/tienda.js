@@ -72,8 +72,18 @@ async function ensureTiendaTables() {
     CREATE INDEX IF NOT EXISTS idx_pedidos_online_sucursal ON pedidos_online(sucursal_id);
     CREATE INDEX IF NOT EXISTS idx_pedidos_online_negocio  ON pedidos_online(negocio_id);
   `);
+  await pool.query(`ALTER TABLE pedido_online_items ADD COLUMN IF NOT EXISTS variante_id UUID`);
+  await pool.query(`ALTER TABLE pedido_online_items ADD COLUMN IF NOT EXISTS variante_texto TEXT DEFAULT ''`);
   const sinSlug = await pool.query("SELECT id, nombre FROM negocios WHERE slug IS NULL OR slug=''");
   for (const n of sinSlug.rows) { await asignarSlug(n.id, n.nombre); }
+}
+
+function textoVariante(v) {
+  if (!v) return '';
+  const partes = [];
+  if (v.atributo1_valor) partes.push(v.atributo1_valor);
+  if (v.atributo2_valor) partes.push(v.atributo2_valor);
+  return partes.join('/');
 }
 
 // ── GET /api/tienda/:slug/info — datos del negocio + sucursales ──
@@ -105,15 +115,33 @@ router.get('/tienda/:slug/productos', async (req, res) => {
     if (!neg.rows.length) return res.status(404).json({ error: 'Tienda no encontrada' });
     const r = await pool.query(`
       SELECT p.id, p.nombre, p.emoji, p.imagen_url, p.precio, p.categoria_id, c.nombre AS categoria_nombre,
+             COALESCE(p.tiene_variantes,false) AS tiene_variantes,
              COALESCE(s.stock,0) AS stock
       FROM productos p
       LEFT JOIN stock_actual s ON s.producto_id = p.id AND s.sucursal_id = p.sucursal_id
       LEFT JOIN categorias c ON c.id = p.categoria_id
-      WHERE p.negocio_id=$1 AND p.sucursal_id=$2 AND p.activo=true AND COALESCE(s.stock,0) > 0
+      WHERE p.negocio_id=$1 AND p.sucursal_id=$2 AND p.activo=true
+        AND (COALESCE(p.tiene_variantes,false) = true OR COALESCE(s.stock,0) > 0)
       ORDER BY p.nombre`,
       [neg.rows[0].id, sucursal_id]
     );
-    res.json(r.rows);
+    const productos = r.rows;
+
+    // Adjuntar variantes activas de los productos que las tienen
+    const conVariantes = productos.filter(p => p.tiene_variantes);
+    if (conVariantes.length) {
+      const ids = conVariantes.map(p => p.id);
+      const vr = await pool.query(
+        `SELECT * FROM producto_variantes WHERE producto_id = ANY($1) AND activo=true
+         ORDER BY atributo1_valor, atributo2_valor`,
+        [ids]
+      );
+      const porProducto = {};
+      vr.rows.forEach(v => { (porProducto[v.producto_id] = porProducto[v.producto_id] || []).push(v); });
+      productos.forEach(p => { if (p.tiene_variantes) p.variantes = porProducto[p.id] || []; });
+    }
+
+    res.json(productos);
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -139,7 +167,8 @@ router.post('/tienda/:slug/pedidos', async (req, res) => {
 
     await client.query('BEGIN');
 
-    // Validar productos y calcular subtotal en el servidor (no confiar en precios del cliente)
+    // Validar productos (y variantes) y calcular subtotal en el servidor
+    // (no confiar en precios ni stock que mande el navegador)
     let subtotal = 0;
     const itemsValidados = [];
     for (const it of items) {
@@ -150,8 +179,26 @@ router.post('/tienda/:slug/pedidos', async (req, res) => {
       if (!prod.rows.length) continue;
       const cantidad = Math.max(1, parseInt(it.cantidad) || 1);
       const p = prod.rows[0];
-      subtotal += parseFloat(p.precio) * cantidad;
-      itemsValidados.push({ producto_id: p.id, nombre_producto: p.nombre, cantidad, precio_unitario: p.precio });
+
+      let varianteId = null, varianteTexto = '', precioUnit = parseFloat(p.precio);
+      if (it.variante_id) {
+        const vRes = await client.query(
+          'SELECT * FROM producto_variantes WHERE id=$1 AND producto_id=$2 AND activo=true',
+          [it.variante_id, p.id]
+        );
+        if (!vRes.rows.length) continue; // variante inválida — se ignora el item
+        const v = vRes.rows[0];
+        if (v.stock < cantidad) continue; // sin stock suficiente en esa variante — se ignora
+        varianteId = v.id;
+        varianteTexto = textoVariante(v);
+        precioUnit = parseFloat(p.precio) + parseFloat(v.precio_extra || 0);
+      }
+
+      subtotal += precioUnit * cantidad;
+      itemsValidados.push({
+        producto_id: p.id, nombre_producto: p.nombre, cantidad, precio_unitario: precioUnit,
+        variante_id: varianteId, variante_texto: varianteTexto
+      });
     }
     if (!itemsValidados.length) {
       throw Object.assign(new Error('Ningún producto del pedido está disponible'), { status: 400 });
@@ -167,9 +214,9 @@ router.post('/tienda/:slug/pedidos', async (req, res) => {
 
     for (const it of itemsValidados) {
       await client.query(
-        `INSERT INTO pedido_online_items (pedido_id, producto_id, nombre_producto, cantidad, precio_unitario)
-         VALUES ($1,$2,$3,$4,$5)`,
-        [pedidoId, it.producto_id, it.nombre_producto, it.cantidad, it.precio_unitario]
+        `INSERT INTO pedido_online_items (pedido_id, producto_id, nombre_producto, cantidad, precio_unitario, variante_id, variante_texto)
+         VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+        [pedidoId, it.producto_id, it.nombre_producto, it.cantidad, it.precio_unitario, it.variante_id, it.variante_texto]
       );
     }
 
