@@ -88,6 +88,33 @@ async function aplicarEsquema() {
     try { await pool.query('ALTER TABLE empleados ADD COLUMN IF NOT EXISTS ultima_salida TIMESTAMPTZ'); } catch(e5) {}
     console.log('✅ Tabla empleados lista');
   } catch(e) { console.error('⚠️ empleados:', e.message); }
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS kits (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        negocio_id UUID NOT NULL,
+        sucursal_id UUID,
+        nombre TEXT NOT NULL,
+        emoji TEXT DEFAULT '🎁',
+        descripcion TEXT DEFAULT '',
+        precio NUMERIC(12,2) DEFAULT 0,
+        activo BOOLEAN DEFAULT true,
+        imagen_url TEXT DEFAULT '',
+        actualizado_en TIMESTAMPTZ DEFAULT now()
+      )
+    `);
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS kit_items (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        kit_id UUID NOT NULL REFERENCES kits(id) ON DELETE CASCADE,
+        producto_id UUID,
+        nombre_producto TEXT DEFAULT '',
+        cantidad NUMERIC(10,3) DEFAULT 1,
+        precio_unitario NUMERIC(12,2) DEFAULT 0
+      )
+    `);
+    console.log('✅ Tablas kits listas');
+  } catch(e) { console.error('⚠️ kits:', e.message); }
 }
 const GIROS = {
   tienda:      { nombre:'Tienda / Abarrotes',      ico:'🛒', modulos:['pos','inventario','lotes','granel','bascula','monedero','servicios','proveedores','pedidos','ventas','reportes','corte','cfdi'] },
