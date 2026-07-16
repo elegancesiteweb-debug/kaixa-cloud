@@ -118,6 +118,29 @@ router.post('/push', async (req, res) => {
       }
     }
 
+    // Kits
+    for (const k of (req.body.kits || [])) {
+      try {
+        await client.query(`
+          INSERT INTO kits (id, negocio_id, sucursal_id, nombre, emoji, descripcion, precio, activo, actualizado_en)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,now())
+          ON CONFLICT (id) DO UPDATE SET
+            nombre=$4, emoji=$5, descripcion=$6, precio=$7, activo=$8, actualizado_en=now()`,
+          [k.id, negocio_id, k.sucursal_id||sucursal_id, k.nombre, k.emoji||'🎁',
+           k.descripcion||'', k.precio||0, k.activo!==false]
+        );
+        if (k.items && k.items.length > 0) {
+          await client.query('DELETE FROM kit_items WHERE kit_id=$1', [k.id]);
+          for (const item of k.items) {
+            await client.query(`
+              INSERT INTO kit_items (kit_id, producto_id, nombre_producto, cantidad, precio_unitario)
+              VALUES ($1,$2,$3,$4,$5)`,
+              [k.id, item.producto_id||null, item.nombre_producto||'', item.cantidad||1, item.precio_unitario||0]
+            );
+          }
+        }
+      } catch(e) { console.warn('Kit push error:', e.message); }
+    }
     await client.query('UPDATE cajas SET ultimo_sync = now() WHERE id = $1', [caja_id]);
     await client.query('COMMIT');
 
@@ -147,7 +170,7 @@ router.get('/pull', async (req, res) => {
   const { negocio_id, sucursal_id, id: caja_id } = req.caja;
   const since = req.query.since || '1970-01-01T00:00:00Z';
   try {
-    const [productos, clientes, ventas, movimientos, lotesPull] = await Promise.all([
+    const [productos, clientes, ventas, movimientos, lotesPull, kitsPull] = await Promise.all([
       pool.query(
         `SELECT p.id, p.negocio_id, p.sucursal_id, p.nombre, p.emoji, p.codigo_barras,
                 p.precio, p.costo, p.stock_minimo, p.categoria_id, p.giro, p.por_peso,
@@ -182,6 +205,21 @@ router.get('/pull', async (req, res) => {
       pool.query(
         `SELECT * FROM lotes WHERE negocio_id=$1 AND (sucursal_id=$2 OR sucursal_id IS NULL) AND actualizado_en > $3 ORDER BY actualizado_en`,
         [negocio_id, sucursal_id, since]
+      ).catch(() => ({ rows: [] })),
+      pool.query(
+        `SELECT k.*, 
+          COALESCE(json_agg(json_build_object(
+            'id', ki.id,
+            'producto_id', ki.producto_id,
+            'nombre_producto', ki.nombre_producto,
+            'cantidad', ki.cantidad,
+            'precio_unitario', ki.precio_unitario
+          )) FILTER (WHERE ki.id IS NOT NULL), '[]') AS items
+         FROM kits k
+         LEFT JOIN kit_items ki ON ki.kit_id = k.id
+         WHERE k.negocio_id=$1 AND k.sucursal_id=$2 AND k.actualizado_en > $3
+         GROUP BY k.id ORDER BY k.actualizado_en`,
+        [negocio_id, sucursal_id, since]
       ).catch(() => ({ rows: [] }))
     ]);
 
@@ -192,7 +230,8 @@ router.get('/pull', async (req, res) => {
       clientes: clientes.rows,
       ventas: ventas.rows,
       movimientos: movimientos.rows,
-      lotes: lotesPull.rows
+      lotes: lotesPull.rows,
+      kits: kitsPull.rows
     });
   } catch (e) {
     res.status(500).json({ error: e.message });
