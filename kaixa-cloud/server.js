@@ -25,6 +25,48 @@ async function aplicarEsquema() {
     await pool.query(sql);
     console.log('✅ Esquema principal verificado');
   } catch(e) { console.error('⚠️ Esquema:', e.message); }
+  // Corrige FKs hacia productos() sin regla de borrado — bloqueaban borrar un
+  // negocio en cuanto tenía ventas/lotes/pedidos reales (RESTRICT por defecto).
+  // SET NULL preserva el historial (ya guardan el nombre en texto aparte).
+  try {
+    await pool.query(`
+      ALTER TABLE venta_detalle DROP CONSTRAINT IF EXISTS venta_detalle_producto_id_fkey;
+      ALTER TABLE venta_detalle ADD CONSTRAINT venta_detalle_producto_id_fkey
+        FOREIGN KEY (producto_id) REFERENCES productos(id) ON DELETE SET NULL;
+      ALTER TABLE lotes DROP CONSTRAINT IF EXISTS lotes_producto_id_fkey;
+      ALTER TABLE lotes ADD CONSTRAINT lotes_producto_id_fkey
+        FOREIGN KEY (producto_id) REFERENCES productos(id) ON DELETE SET NULL;
+      ALTER TABLE pedido_items DROP CONSTRAINT IF EXISTS pedido_items_producto_id_fkey;
+      ALTER TABLE pedido_items ADD CONSTRAINT pedido_items_producto_id_fkey
+        FOREIGN KEY (producto_id) REFERENCES productos(id) ON DELETE SET NULL;
+    `);
+    console.log('✅ FKs de historial hacia productos corregidas (ON DELETE SET NULL)');
+  } catch(e) { console.error('⚠️ Migración FKs productos:', e.message); }
+  // Mismo arreglo para tablas que crean sus propias rutas de forma perezosa
+  // (pueden no existir todavía en un despliegue nuevo — no es un error si fallan)
+  try {
+    await pool.query(`
+      ALTER TABLE pedido_online_items DROP CONSTRAINT IF EXISTS pedido_online_items_producto_id_fkey;
+      ALTER TABLE pedido_online_items ADD CONSTRAINT pedido_online_items_producto_id_fkey
+        FOREIGN KEY (producto_id) REFERENCES productos(id) ON DELETE SET NULL;
+    `);
+  } catch(e) {}
+  try {
+    await pool.query(`
+      ALTER TABLE traspasos DROP CONSTRAINT IF EXISTS traspasos_producto_origen_id_fkey;
+      ALTER TABLE traspasos ADD CONSTRAINT traspasos_producto_origen_id_fkey
+        FOREIGN KEY (producto_origen_id) REFERENCES productos(id) ON DELETE SET NULL;
+      ALTER TABLE traspasos DROP CONSTRAINT IF EXISTS traspasos_producto_destino_id_fkey;
+      ALTER TABLE traspasos ADD CONSTRAINT traspasos_producto_destino_id_fkey
+        FOREIGN KEY (producto_destino_id) REFERENCES productos(id) ON DELETE SET NULL;
+      ALTER TABLE traspasos DROP CONSTRAINT IF EXISTS traspasos_lote_origen_id_fkey;
+      ALTER TABLE traspasos ADD CONSTRAINT traspasos_lote_origen_id_fkey
+        FOREIGN KEY (lote_origen_id) REFERENCES lotes(id) ON DELETE SET NULL;
+      ALTER TABLE traspasos DROP CONSTRAINT IF EXISTS traspasos_lote_destino_id_fkey;
+      ALTER TABLE traspasos ADD CONSTRAINT traspasos_lote_destino_id_fkey
+        FOREIGN KEY (lote_destino_id) REFERENCES lotes(id) ON DELETE SET NULL;
+    `);
+  } catch(e) {}
   try {
     await pool.query(`
       CREATE TABLE IF NOT EXISTS licencias (

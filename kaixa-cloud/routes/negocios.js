@@ -19,7 +19,15 @@ router.post('/negocios', async (req, res) => {
       `INSERT INTO negocios (nombre, giro_principal) VALUES ($1,$2) RETURNING *`,
       [nombre, giro_principal]
     );
-    res.json({ ok: true, negocio: r.rows[0] });
+    let negocio = r.rows[0];
+    // Asigna de una vez el slug de su tienda en línea
+    try {
+      const { ensureTiendaTables, asignarSlug } = require('./tienda');
+      await ensureTiendaTables();
+      const slug = await asignarSlug(negocio.id, negocio.nombre);
+      negocio = Object.assign({}, negocio, { slug });
+    } catch(e) {}
+    res.json({ ok: true, negocio });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
