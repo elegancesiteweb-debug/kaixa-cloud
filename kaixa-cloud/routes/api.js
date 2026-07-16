@@ -947,7 +947,8 @@ router.get('/pedidos-online', async (req, res) => {
       SELECT po.*,
         COALESCE(json_agg(json_build_object(
           'producto_id', poi.producto_id, 'nombre_producto', poi.nombre_producto,
-          'cantidad', poi.cantidad, 'precio_unitario', poi.precio_unitario
+          'cantidad', poi.cantidad, 'precio_unitario', poi.precio_unitario,
+          'variante_id', poi.variante_id, 'variante_texto', poi.variante_texto
         )) FILTER (WHERE poi.id IS NOT NULL), '[]') AS items
       FROM pedidos_online po
       LEFT JOIN pedido_online_items poi ON poi.pedido_id = po.id

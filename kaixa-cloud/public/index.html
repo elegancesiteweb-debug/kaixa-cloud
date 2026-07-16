@@ -1769,7 +1769,8 @@ function renderPedidosOnline() {
     var estCls = p.estado === 'pendiente' ? 'warn' : p.estado === 'confirmado' ? 'ok' : 'err';
     var estTxt = p.estado === 'pendiente' ? '⏳ Pendiente' : p.estado === 'confirmado' ? '✅ Confirmado' : '❌ Rechazado';
     var fecha = p.creado_en ? new Date(p.creado_en).toLocaleString('es-MX', {day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}) : '';
-    var items = (p.items||[]).map(function(i){ return i.cantidad+'x '+i.nombre_producto; }).join(' • ');
+    var tieneVar = (p.items||[]).some(function(i){ return i.variante_texto; });
+    var items = (p.items||[]).map(function(i){ return i.cantidad+'x '+i.nombre_producto+(i.variante_texto?' ('+i.variante_texto+')':''); }).join(' • ');
     var acciones = p.estado === 'pendiente'
       ? '<div style="display:flex;gap:8px;margin-top:8px">' +
           '<button class="btn-full primary" style="padding:8px;font-size:12px" onclick="confirmarPedidoOnline(\''+p.id+'\')">✅ Confirmar</button>' +
@@ -1783,14 +1784,45 @@ function renderPedidosOnline() {
       '<div class="card-row" style="align-items:flex-start">' +
         '<div class="card-ico">🛍️</div>' +
         '<div class="card-info">' +
-          '<div class="card-title">'+p.cliente_nombre+' · $'+Number(p.subtotal).toFixed(2)+'</div>' +
+          '<div class="card-title">'+p.cliente_nombre+' · $'+Number(p.subtotal).toFixed(2)+(tieneVar?' <span style="font-size:9px;font-weight:800;color:#a855f7;background:rgba(168,85,247,.1);padding:2px 6px;border-radius:5px">🎨 con variantes</span>':'')+'</div>' +
           '<div class="card-sub">'+items+'</div>' +
           '<div class="card-sub" style="margin-top:2px">'+p.folio+' · '+fecha+(p.cliente_telefono?' · 📞 '+p.cliente_telefono:'')+'</div>' +
         '</div>' +
         '<span class="tag '+estCls+'">'+estTxt+'</span>' +
-      '</div>' + acciones + waBtn +
+      '</div>' +
+      '<button class="btn-full sec" style="padding:7px;font-size:12px;margin-top:8px" onclick="verDetallePedidoOnline(\''+p.id+'\')">👁️ Ver detalle</button>' +
+      acciones + waBtn +
     '</div>';
   }).join('');
+}
+
+function verDetallePedidoOnline(id) {
+  var p = _pedidosOnline.find(function(x){ return x.id === id; });
+  if (!p) { notif('Pedido no encontrado', 'err'); return; }
+  var fecha = p.creado_en ? new Date(p.creado_en).toLocaleString('es-MX', {day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '';
+  var estTxt = p.estado === 'pendiente' ? '⏳ Pendiente' : p.estado === 'confirmado' ? '✅ Confirmado' : '❌ Rechazado';
+  var filas = (p.items||[]).map(function(i) {
+    var varBadge = i.variante_texto ? '<div style="font-size:11px;color:#a855f7;font-weight:700;margin-top:2px">🎨 '+i.variante_texto+'</div>' : '';
+    return '<div style="display:flex;justify-content:space-between;align-items:flex-start;padding:9px 0;border-bottom:1px solid var(--border)">' +
+      '<div><div style="font-size:13px;font-weight:700">'+i.cantidad+'x '+i.nombre_producto+'</div>'+varBadge+'</div>' +
+      '<div style="font-size:13px;font-weight:800;color:var(--text2)">$'+(Number(i.precio_unitario)*Number(i.cantidad)).toFixed(2)+'</div>' +
+      '</div>';
+  }).join('') || '<p style="color:var(--text3);font-size:12px">Sin productos</p>';
+
+  var html = '<div class="modal-overlay" id="modalPedidoOnlineDet">' +
+    '<div class="modal-sheet">' +
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">' +
+        '<h3 style="margin:0">📋 Pedido '+p.folio+'</h3>' +
+        '<span class="modal-close" onclick="document.getElementById(\'modalPedidoOnlineDet\').remove()">✕</span>' +
+      '</div>' +
+      '<div style="font-size:12px;color:var(--text2);margin-bottom:4px"><b>'+p.cliente_nombre+'</b>'+(p.cliente_telefono?' · 📞 '+p.cliente_telefono:'')+(p.cliente_email?' · ✉️ '+p.cliente_email:'')+'</div>' +
+      '<div style="font-size:11px;color:var(--text3);margin-bottom:8px">'+fecha+' · '+estTxt+'</div>' +
+      (p.notas ? '<div style="font-size:12px;color:var(--text2);background:var(--s2);border-radius:8px;padding:8px 10px;margin-bottom:8px"><b>Notas:</b> '+p.notas+'</div>' : '') +
+      filas +
+      '<div style="display:flex;justify-content:space-between;font-size:16px;font-weight:900;margin-top:12px"><span>Total</span><span>$'+Number(p.subtotal).toFixed(2)+'</span></div>' +
+      '<button class="btn-full sec" style="margin-top:14px" onclick="document.getElementById(\'modalPedidoOnlineDet\').remove()">Cerrar</button>' +
+    '</div></div>';
+  document.getElementById('modalContainer').innerHTML = html;
 }
 
 async function confirmarPedidoOnline(id) {
