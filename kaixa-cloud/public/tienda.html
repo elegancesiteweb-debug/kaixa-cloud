@@ -332,7 +332,11 @@ function abrirSelectorVariante(prodId){
     body.innerHTML = disponibles.map(function(v){
       var etiqueta = [v.atributo1_valor, v.atributo2_valor].filter(Boolean).join(' / ') || 'Opción';
       var precio = Number(p.precio) + Number(v.precio_extra||0);
+      var foto = v.imagen_url
+        ? '<img src="'+v.imagen_url+'" style="width:44px;height:44px;border-radius:8px;object-fit:cover;flex-shrink:0">'
+        : '';
       return '<div class="item-row" style="cursor:pointer" onclick="agregarCarritoVariante(\''+prodId+'\',\''+v.id+'\')">' +
+        foto +
         '<div class="nm">'+etiqueta+'<br><span style="color:var(--text3);font-weight:400">Stock: '+v.stock+'</span></div>' +
         '<div style="font-weight:800;min-width:60px;text-align:right">$'+precio.toFixed(2)+'</div>' +
         '</div>';
@@ -416,7 +420,10 @@ function renderCarrito(){
       var it = cart[key];
       var nombre = it.nombreMostrado || it.producto.nombre;
       var precio = it.precioMostrado!=null ? it.precioMostrado : it.producto.precio;
+      var fotoUrl = (it.variante && it.variante.imagen_url) || it.producto.imagen_url;
+      var foto = fotoUrl ? '<img src="'+fotoUrl+'" style="width:40px;height:40px;border-radius:8px;object-fit:cover;flex-shrink:0">' : '';
       return '<div class="item-row">' +
+        foto +
         '<div class="nm">'+nombre+'<br><span style="color:var(--text3);font-weight:400">$'+Number(precio).toFixed(2)+' c/u</span></div>' +
         '<div class="qty"><button onclick="cambiarQty(\''+key+'\',-1)">−</button><b>'+it.qty+'</b><button onclick="cambiarQty(\''+key+'\',1)">+</button></div>' +
         '<div style="font-weight:800;min-width:60px;text-align:right">$'+(precio*it.qty).toFixed(2)+'</div>' +

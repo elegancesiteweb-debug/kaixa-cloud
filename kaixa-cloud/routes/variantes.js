@@ -23,12 +23,14 @@ async function ensureVariantesTable() {
       precio_extra     NUMERIC(12,2) DEFAULT 0,
       stock            INTEGER DEFAULT 0,
       stock_minimo     INTEGER DEFAULT 0,
+      imagen_url       TEXT DEFAULT '',
       activo           BOOLEAN DEFAULT true,
       creado_en        TIMESTAMPTZ DEFAULT now(),
       actualizado_en   TIMESTAMPTZ DEFAULT now()
     );
     CREATE INDEX IF NOT EXISTS idx_variantes_producto ON producto_variantes(producto_id);
   `);
+  await pool.query(`ALTER TABLE producto_variantes ADD COLUMN IF NOT EXISTS imagen_url TEXT DEFAULT ''`);
   await pool.query(`ALTER TABLE productos ADD COLUMN IF NOT EXISTS tiene_variantes BOOLEAN DEFAULT false`);
 }
 
@@ -64,11 +66,11 @@ router.post('/variantes/producto/:id', async (req, res) => {
       await client.query(
         `INSERT INTO producto_variantes
            (id, negocio_id, sucursal_id, producto_id, atributo1_nombre, atributo1_valor,
-            atributo2_nombre, atributo2_valor, sku, precio_extra, stock, stock_minimo, activo)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,true)`,
+            atributo2_nombre, atributo2_valor, sku, precio_extra, stock, stock_minimo, imagen_url, activo)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,true)`,
         [uuid(), negocio_id, sucursal_id, req.params.id,
          v.atributo1_nombre||'', v.atributo1_valor||'', v.atributo2_nombre||'', v.atributo2_valor||'',
-         v.sku||'', parseFloat(v.precio_extra)||0, parseInt(v.stock)||0, parseInt(v.stock_minimo)||0]
+         v.sku||'', parseFloat(v.precio_extra)||0, parseInt(v.stock)||0, parseInt(v.stock_minimo)||0, v.imagen_url||'']
       );
     }
     await client.query('UPDATE productos SET tiene_variantes=$1, actualizado_en=now() WHERE id=$2',

@@ -1207,9 +1207,11 @@ async function guardarProd(id) {
 // ══ VARIANTES GENÉRICAS DE PRODUCTO (cualquier giro) ══
 var variantesMovilTemp = [];
 var variantesMovilProdId = null;
+var _vgFotoTemp = '';
 async function abrirVariantesMovil(prodId, prodNombre) {
   variantesMovilProdId = prodId;
   variantesMovilTemp = [];
+  _vgFotoTemp = '';
   try {
     var r = await apiFetch('/api/variantes/producto/' + prodId);
     variantesMovilTemp = r && r.ok ? await r.json() : [];
@@ -1222,13 +1224,21 @@ function renderVariantesMovil(prodNombre) {
   var filas = variantesMovilTemp.map(function(v, i) {
     var et1 = v.atributo1_valor ? v.atributo1_valor + (v.atributo1_nombre ? ' (' + v.atributo1_nombre + ')' : '') : '—';
     var et2 = v.atributo2_valor ? v.atributo2_valor + (v.atributo2_nombre ? ' (' + v.atributo2_nombre + ')' : '') : '—';
+    var foto = v.imagen_url
+      ? '<img src="' + v.imagen_url + '" style="width:36px;height:36px;border-radius:7px;object-fit:cover;flex-shrink:0">'
+      : '<div style="width:36px;height:36px;border-radius:7px;background:var(--s2);flex-shrink:0"></div>';
     return '<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);font-size:12px">' +
+      foto +
       '<div style="flex:1"><strong>' + et1 + '</strong><br><span style="color:var(--text3)">' + et2 + '</span></div>' +
       '<input type="number" min="0" value="' + (v.stock||0) + '" oninput="variantesMovilTemp[' + i + '].stock=parseInt(this.value)||0" style="width:56px;text-align:center;border:1px solid var(--border);border-radius:6px;padding:4px">' +
       '<span style="color:var(--text3)">' + (v.precio_extra>0 ? '+$'+v.precio_extra : '') + '</span>' +
       '<span class="modal-close" style="font-size:14px" onclick="variantesMovilTemp.splice(' + i + ',1);renderVariantesMovil(\'' + prodNombre.replace(/'/g,"\\'") + '\')">✕</span>' +
     '</div>';
   }).join('') || '<p style="color:var(--text3);font-size:12px;padding:8px 0">Sin variantes — agrega abajo (ej. Talla/Tamaño, Color/Sabor)</p>';
+
+  var fotoPreview = _vgFotoTemp
+    ? '<img src="' + _vgFotoTemp + '" style="width:100%;height:100%;object-fit:cover;border-radius:10px">'
+    : '📷';
 
   var html = '<div class="modal-overlay" id="modalVarGen">' +
     '<div class="modal-sheet">' +
@@ -1237,6 +1247,12 @@ function renderVariantesMovil(prodNombre) {
         '<span class="modal-close" onclick="document.getElementById(\'modalVarGen\').remove()">✕</span>' +
       '</div>' +
       '<div style="background:var(--s2);border-radius:10px;padding:10px;margin-bottom:12px">' +
+        '<div style="text-align:center;margin-bottom:10px">' +
+          '<div id="vgFotoPreview" onclick="document.getElementById(\'vgFotoInput\').click()" style="width:56px;height:56px;border-radius:10px;margin:0 auto 6px;overflow:hidden;background:var(--bg);display:flex;align-items:center;justify-content:center;font-size:22px;cursor:pointer;border:1.5px dashed var(--border)">' + fotoPreview + '</div>' +
+          '<label style="font-size:11px;color:var(--accent);font-weight:700;cursor:pointer" for="vgFotoInput">📷 Foto de esta variante (opcional)' +
+          '<input type="file" id="vgFotoInput" accept="image/*" style="display:none" onchange="onVgFotoFile(this,\'' + prodNombre.replace(/'/g,"\\'") + '\')">' +
+          '</label>' +
+        '</div>' +
         '<div class="form-row">' +
           '<div class="form-field"><label>Atributo 1</label><input id="vgAt1Nm" placeholder="Talla, Tamaño..."></div>' +
           '<div class="form-field"><label>Valor</label><input id="vgAt1Val" placeholder="Grande, 500ml..."></div>' +
@@ -1258,6 +1274,18 @@ function renderVariantesMovil(prodNombre) {
   document.getElementById('modalContainer').innerHTML = html;
 }
 
+async function onVgFotoFile(input, prodNombre) {
+  if (!input || !input.files || !input.files[0]) return;
+  notif('Comprimiendo foto...', 'ok');
+  try {
+    _vgFotoTemp = await comprimirImagen(input.files[0], 300, 300, 0.6);
+  } catch(err) {
+    notif('❌ No se pudo procesar la foto: ' + err.message, 'err');
+    return;
+  }
+  renderVariantesMovil(prodNombre);
+}
+
 function agregarVarianteMovil(prodNombre) {
   var at1Nm = document.getElementById('vgAt1Nm').value.trim();
   var at1Val = document.getElementById('vgAt1Val').value.trim();
@@ -1271,8 +1299,10 @@ function agregarVarianteMovil(prodNombre) {
     atributo2_nombre: at2Nm, atributo2_valor: at2Val,
     stock: parseInt(document.getElementById('vgStock').value) || 0,
     precio_extra: parseFloat(document.getElementById('vgExtra').value) || 0,
+    imagen_url: _vgFotoTemp || '',
     sku: ''
   });
+  _vgFotoTemp = '';
   renderVariantesMovil(prodNombre);
 }
 
