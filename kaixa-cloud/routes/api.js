@@ -249,6 +249,10 @@ router.post('/ventas', async (req, res) => {
            VALUES ($1,$2,$3,$4,$5,$6,'venta',$7)`,
           [uuid(), negocio_id, sucursal_id, itemId, caja_id, -itemQty, ventaId]
         );
+        // Tocar actualizado_en para que el pull incremental de la PC recoja
+        // el nuevo stock — antes se quedaba con el timestamp viejo y una
+        // venta hecha desde el celular nunca bajaba el stock en la PC.
+        await client.query('UPDATE productos SET actualizado_en=now() WHERE id=$1', [itemId]);
       }
     }
     await client.query('COMMIT');
@@ -493,6 +497,7 @@ router.put('/pedidos/:id/recibir', async (req, res) => {
           `INSERT INTO stock_movimientos (id, negocio_id, sucursal_id, producto_id, caja_id, cantidad, motivo) VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,'recepcion')`,
           [negocio_id, sucursal_id, item.producto_id, caja_id, item.cantidad]
         );
+        await pool.query('UPDATE productos SET actualizado_en=now() WHERE id=$1', [item.producto_id]);
       }
     }
     await pool.query("UPDATE pedidos SET estado='recibido', actualizado_en=NOW() WHERE id=$1", [req.params.id]);
@@ -901,21 +906,33 @@ router.get('/negocio/tienda', async (req, res) => {
   try {
     await ensureTiendaTables();
     const r = await pool.query(
-      'SELECT slug, tienda_imagen_url, tienda_descripcion FROM negocios WHERE id=$1',
+      `SELECT slug, tienda_imagen_url, tienda_descripcion, tienda_logo_url,
+              tienda_telefono, tienda_direccion, tienda_horario
+       FROM negocios WHERE id=$1`,
       [req.caja.negocio_id]
     );
     res.json(r.rows[0] || {});
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-// ── PUT /api/negocio/tienda — banner/descripción de la tienda pública ──
+// ── PUT /api/negocio/tienda — banner/logo/datos de la tienda pública ──
 router.put('/negocio/tienda', async (req, res) => {
   try {
     await ensureTiendaTables();
-    const { tienda_imagen_url = null, tienda_descripcion = null } = req.body;
+    const {
+      tienda_imagen_url = null, tienda_descripcion = null, tienda_logo_url = null,
+      tienda_telefono = null, tienda_direccion = null, tienda_horario = null
+    } = req.body;
     await pool.query(
-      'UPDATE negocios SET tienda_imagen_url=COALESCE($1, tienda_imagen_url), tienda_descripcion=COALESCE($2, tienda_descripcion) WHERE id=$3',
-      [tienda_imagen_url, tienda_descripcion, req.caja.negocio_id]
+      `UPDATE negocios SET
+         tienda_imagen_url=COALESCE($1, tienda_imagen_url),
+         tienda_descripcion=COALESCE($2, tienda_descripcion),
+         tienda_logo_url=COALESCE($3, tienda_logo_url),
+         tienda_telefono=COALESCE($4, tienda_telefono),
+         tienda_direccion=COALESCE($5, tienda_direccion),
+         tienda_horario=COALESCE($6, tienda_horario)
+       WHERE id=$7`,
+      [tienda_imagen_url, tienda_descripcion, tienda_logo_url, tienda_telefono, tienda_direccion, tienda_horario, req.caja.negocio_id]
     );
     res.json({ ok: true });
   } catch(e) { res.status(500).json({ error: e.message }); }
@@ -976,11 +993,15 @@ router.post('/pedidos-online/:id/confirmar', async (req, res) => {
     if (ultimo.rows[0]) { const m = ultimo.rows[0].folio.match(/(\d+)$/); if (m) num = parseInt(m[1]) + 1; }
     const folioVenta = 'WEB-' + Date.now().toString().slice(-8) + '-' + String(num).padStart(4,'0');
 
+    // caja_id se deja NULL a propósito: esta venta no la "empujó" ninguna caja
+    // local (nació directo en la nube al confirmar el pedido), así que no debe
+    // excluirse del pull de la caja que confirma — ver /api/sync/pull, que
+    // excluye ventas con caja_id igual al de quien pregunta.
     await client.query(
       `INSERT INTO ventas (id, negocio_id, sucursal_id, caja_id, folio, subtotal, descuento, iva, total,
          forma_pago, efectivo_recibido, cambio, cajero, giro, referencia_externa)
-       VALUES ($1,$2,$3,$4,$5,$6,0,0,$6,'pedido_online',$6,0,$7,'tienda',$8)`,
-      [ventaId, negocio_id, sucursal_id, cajaId, folioVenta, p.subtotal, req.body.cajero || 'Pedido en línea', p.folio]
+       VALUES ($1,$2,$3,NULL,$4,$5,0,0,$5,'pedido_online',$5,0,$6,'tienda',$7)`,
+      [ventaId, negocio_id, sucursal_id, folioVenta, p.subtotal, req.body.cajero || 'Pedido en línea', p.folio]
     );
 
     for (const it of items.rows) {
@@ -995,6 +1016,10 @@ router.post('/pedidos-online/:id/confirmar', async (req, res) => {
            VALUES ($1,$2,$3,$4,$5,$6,'venta',$7)`,
           [uuid(), negocio_id, sucursal_id, it.producto_id, cajaId, -it.cantidad, ventaId]
         );
+        // Tocar actualizado_en para que el pull incremental de la PC recoja
+        // el nuevo stock (antes se quedaba con el timestamp viejo y el
+        // producto nunca volvía a bajarse de precio/stock en la PC)
+        await client.query('UPDATE productos SET actualizado_en=now() WHERE id=$1', [it.producto_id]);
       }
     }
 

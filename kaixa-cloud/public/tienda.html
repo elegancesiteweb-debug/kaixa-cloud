@@ -5,25 +5,29 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <title>Tienda en línea</title>
 <style>
-  :root{ --acc:#8b5cf6; --acc2:#d946ef; --bg:#f7f6fb; --s1:#fff; --text:#1a1a2e; --text2:#6b6b80; --text3:#9c9cb0; --border:#eae8f5; }
+  :root{ --acc:#8b5cf6; --acc2:#d946ef; --bg:#f7f6fb; --s1:#fff; --text:#1a1a2e; --text2:#6b6b80; --text3:#9c9cb0; --border:#eae8f5; --maxw:520px; }
   *{box-sizing:border-box}
   body{margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--text);padding-bottom:84px}
-  .hero{position:relative;color:#fff;text-align:center;background:linear-gradient(135deg,var(--acc),#6d28d9);overflow:hidden}
-  .hero-bg{position:absolute;inset:0;background-size:cover;background-position:center;opacity:.55}
-  .hero-fade{position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.15) 0%,rgba(0,0,0,.55) 100%)}
-  .hero-inner{position:relative;padding:34px 18px 22px;max-width:520px;margin:0 auto}
+  .hero{position:relative;color:#fff;text-align:center;background:linear-gradient(135deg,var(--acc),#6d28d9);overflow:hidden;min-height:180px;display:flex;align-items:flex-end}
+  .hero-bg{position:absolute;inset:0;background-size:cover;background-position:center;opacity:.6}
+  .hero-fade{position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.1) 0%,rgba(0,0,0,.6) 100%)}
+  .hero-inner{position:relative;padding:20px 18px 22px;max-width:var(--maxw);margin:0 auto;width:100%;display:flex;align-items:center;gap:14px;text-align:left}
+  .hero-logo{width:64px;height:64px;border-radius:16px;background:#fff;flex-shrink:0;box-shadow:0 4px 14px rgba(0,0,0,.25);overflow:hidden;display:none;align-items:center;justify-content:center;font-size:26px}
+  .hero-logo img{width:100%;height:100%;object-fit:cover}
   .hero h1{margin:0;font-size:21px;font-weight:900;text-shadow:0 2px 8px rgba(0,0,0,.25)}
   .hero p{margin:6px 0 0;font-size:12.5px;opacity:.92;line-height:1.5}
-  .wrap{max-width:520px;margin:0 auto;padding:14px}
+  .infobar{max-width:var(--maxw);margin:0 auto;padding:10px 18px 0;display:flex;flex-wrap:wrap;gap:10px 18px;font-size:11.5px;color:var(--text2)}
+  .infobar span{display:flex;align-items:center;gap:5px}
+  .wrap{max-width:var(--maxw);margin:0 auto;padding:14px}
   .card{background:var(--s1);border-radius:14px;padding:14px;margin-bottom:12px;box-shadow:0 2px 10px rgba(0,0,0,.05)}
   select,input,textarea{width:100%;padding:11px 12px;border-radius:10px;border:1.5px solid var(--border);font-size:14px;background:#fff;color:var(--text);font-family:inherit}
   label{font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:6px}
   .field{margin-bottom:12px}
-  .catbar{display:flex;gap:8px;overflow-x:auto;padding:2px 14px 12px;max-width:520px;margin:0 auto}
+  .catbar{display:flex;gap:8px;overflow-x:auto;padding:2px 14px 12px;max-width:var(--maxw);margin:0 auto}
   .catbar::-webkit-scrollbar{display:none}
   .catchip{flex-shrink:0;padding:7px 14px;border-radius:20px;background:var(--s1);border:1.5px solid var(--border);font-size:12px;font-weight:700;color:var(--text2);cursor:pointer;white-space:nowrap}
   .catchip.active{background:var(--acc);border-color:var(--acc);color:#fff}
-  .prods{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .prods{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
   .p{background:var(--s1);border-radius:16px;overflow:hidden;box-shadow:0 3px 12px rgba(139,92,246,.08);text-align:center;transition:transform .15s}
   .p-imgwrap{width:100%;aspect-ratio:1/1;background:var(--bg);display:flex;align-items:center;justify-content:center;overflow:hidden}
   .p-imgwrap img{width:100%;height:100%;object-fit:cover}
@@ -39,9 +43,10 @@
   .qty button{width:28px;height:28px;border-radius:8px;border:1px solid var(--border);background:#fff;font-weight:900;cursor:pointer;font-size:14px}
   .cartbar{position:fixed;left:0;right:0;bottom:0;background:linear-gradient(135deg,var(--acc),var(--acc2));color:#fff;padding:14px 18px;display:none;align-items:center;justify-content:space-between;cursor:pointer;box-shadow:0 -4px 20px rgba(0,0,0,.2)}
   .cartbar.show{display:flex}
+  .cartbar-inner{max-width:var(--maxw);margin:0 auto;width:100%;display:flex;align-items:center;justify-content:space-between}
   .overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:200;display:none;align-items:flex-end;justify-content:center}
   .overlay.show{display:flex}
-  .sheet{background:#fff;border-radius:20px 20px 0 0;max-width:520px;width:100%;max-height:88vh;overflow-y:auto;padding:22px}
+  .sheet{background:#fff;border-radius:20px 20px 0 0;max-width:var(--maxw);width:100%;max-height:88vh;overflow-y:auto;padding:22px}
   .sheet h2{margin:0 0 14px;font-size:17px}
   .item-row{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)}
   .item-row .nm{flex:1;font-size:13px;font-weight:700}
@@ -51,6 +56,28 @@
   .totalrow{display:flex;justify-content:space-between;font-size:16px;font-weight:900;padding:12px 0;border-top:2px solid var(--border);margin-top:6px}
   .notif{position:fixed;top:14px;left:50%;transform:translateX(-50%);background:#1a1a2e;color:#fff;padding:10px 18px;border-radius:10px;font-size:13px;font-weight:600;z-index:999;opacity:0;transition:opacity .25s;pointer-events:none}
   .notif.show{opacity:1}
+
+  /* ── Responsive: tablet y escritorio ── */
+  @media (min-width:700px){
+    :root{ --maxw:680px; }
+    .hero{min-height:240px}
+    .hero-inner{padding:32px 24px 30px}
+    .hero-logo{width:84px;height:84px;border-radius:20px}
+    .hero h1{font-size:28px}
+    .hero p{font-size:14px}
+    .prods{grid-template-columns:repeat(3,1fr)}
+    .sheet{border-radius:20px;max-height:80vh;margin-bottom:5vh}
+    .overlay{align-items:center}
+  }
+  @media (min-width:1000px){
+    :root{ --maxw:960px; }
+    .hero{min-height:280px}
+    .prods{grid-template-columns:repeat(4,1fr)}
+  }
+  @media (min-width:1300px){
+    :root{ --maxw:1180px; }
+    .prods{grid-template-columns:repeat(5,1fr)}
+  }
 </style>
 </head>
 <body>
@@ -59,10 +86,14 @@
   <div class="hero-bg" id="heroBg" style="display:none"></div>
   <div class="hero-fade" id="heroFade" style="display:none"></div>
   <div class="hero-inner">
-    <h1 id="negNombre">Cargando…</h1>
-    <p id="negDesc">🛍️ Haz tu pedido en línea — pagas al recoger en tienda</p>
+    <div class="hero-logo" id="heroLogo">🏪</div>
+    <div>
+      <h1 id="negNombre">Cargando…</h1>
+      <p id="negDesc">🛍️ Haz tu pedido en línea — pagas al recoger en tienda</p>
+    </div>
   </div>
 </div>
+<div class="infobar" id="infoBar" style="display:none"></div>
 
 <div class="wrap">
   <div class="card" id="sucCard" style="display:none">
@@ -80,8 +111,10 @@
 </div>
 
 <div class="cartbar" id="cartBar" onclick="abrirCarrito()">
-  <span id="cartTxt">0 productos</span>
-  <span id="cartTotal" style="font-weight:900">$0.00</span>
+  <div class="cartbar-inner">
+    <span id="cartTxt">0 productos</span>
+    <span id="cartTotal" style="font-weight:900">$0.00</span>
+  </div>
 </div>
 
 <div class="overlay" id="ovCarrito">
@@ -156,6 +189,20 @@ async function init(){
       bg.style.backgroundImage = 'url(' + negocio.tienda_imagen_url + ')';
       bg.style.display = 'block';
       document.getElementById('heroFade').style.display = 'block';
+    }
+    if (negocio.tienda_logo_url) {
+      var logo = document.getElementById('heroLogo');
+      logo.innerHTML = '<img src="' + negocio.tienda_logo_url + '">';
+      logo.style.display = 'flex';
+    }
+    var infoBits = [];
+    if (negocio.tienda_telefono) infoBits.push('<span>📞 ' + negocio.tienda_telefono + '</span>');
+    if (negocio.tienda_direccion) infoBits.push('<span>📍 ' + negocio.tienda_direccion + '</span>');
+    if (negocio.tienda_horario) infoBits.push('<span>🕒 ' + negocio.tienda_horario + '</span>');
+    if (infoBits.length) {
+      var infoBar = document.getElementById('infoBar');
+      infoBar.innerHTML = infoBits.join('');
+      infoBar.style.display = 'flex';
     }
 
     if (!sucursales.length) {
