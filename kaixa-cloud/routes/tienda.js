@@ -38,6 +38,8 @@ async function asignarSlug(negocioId, nombre) {
 
 async function ensureTiendaTables() {
   await pool.query(`ALTER TABLE negocios ADD COLUMN IF NOT EXISTS slug TEXT`);
+  await pool.query(`ALTER TABLE negocios ADD COLUMN IF NOT EXISTS tienda_imagen_url TEXT DEFAULT ''`);
+  await pool.query(`ALTER TABLE negocios ADD COLUMN IF NOT EXISTS tienda_descripcion TEXT DEFAULT ''`);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS pedidos_online (
       id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -75,7 +77,7 @@ router.get('/tienda/:slug/info', async (req, res) => {
   try {
     await ensureTiendaTables();
     const neg = await pool.query(
-      'SELECT id, nombre, giro_principal FROM negocios WHERE slug=$1 AND activo=true',
+      'SELECT id, nombre, giro_principal, tienda_imagen_url, tienda_descripcion FROM negocios WHERE slug=$1 AND activo=true',
       [req.params.slug]
     );
     if (!neg.rows.length) return res.status(404).json({ error: 'Tienda no encontrada' });

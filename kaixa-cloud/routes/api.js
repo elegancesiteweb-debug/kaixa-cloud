@@ -896,6 +896,31 @@ router.post('/traspasos', async (req, res) => {
 // ══════════════════════════════════════════════════════════════
 const { ensureTiendaTables } = require('./tienda');
 
+// ── GET /api/negocio/tienda — datos actuales de la tienda pública (para editar) ──
+router.get('/negocio/tienda', async (req, res) => {
+  try {
+    await ensureTiendaTables();
+    const r = await pool.query(
+      'SELECT slug, tienda_imagen_url, tienda_descripcion FROM negocios WHERE id=$1',
+      [req.caja.negocio_id]
+    );
+    res.json(r.rows[0] || {});
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── PUT /api/negocio/tienda — banner/descripción de la tienda pública ──
+router.put('/negocio/tienda', async (req, res) => {
+  try {
+    await ensureTiendaTables();
+    const { tienda_imagen_url = null, tienda_descripcion = null } = req.body;
+    await pool.query(
+      'UPDATE negocios SET tienda_imagen_url=COALESCE($1, tienda_imagen_url), tienda_descripcion=COALESCE($2, tienda_descripcion) WHERE id=$3',
+      [tienda_imagen_url, tienda_descripcion, req.caja.negocio_id]
+    );
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 // ── GET /api/pedidos-online — historial de esta sucursal ──
 router.get('/pedidos-online', async (req, res) => {
   try {

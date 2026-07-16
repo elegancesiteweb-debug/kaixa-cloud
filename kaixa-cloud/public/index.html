@@ -1650,6 +1650,7 @@ async function guardarTraspaso() {
 
 // ══ PEDIDOS EN LÍNEA (apartados desde la tienda web) ══
 var _pedidosOnline = [];
+var _negocioNombreActual = 'la tienda';
 
 async function loadPedidosOnline() {
   var cont = document.getElementById('pedidosOnlineList');
@@ -1658,8 +1659,20 @@ async function loadPedidosOnline() {
     if (!r || !r.ok) { cont.innerHTML = '<div class="empty"><div class="ico">🛍️</div><p>Sin pedidos</p></div>'; return; }
     _pedidosOnline = await r.json();
     if (!Array.isArray(_pedidosOnline)) _pedidosOnline = [];
+    try {
+      var rInfo = await apiFetch('/api/caja-info');
+      if (rInfo && rInfo.ok) { var infoD = await rInfo.json(); if (infoD.negocio_nombre) _negocioNombreActual = infoD.negocio_nombre; }
+    } catch(e) {}
     renderPedidosOnline();
   } catch(e) {}
+}
+
+function avisarWhatsAppPedido(nombre, telefono, folio) {
+  if (!telefono) { notif('⚠️ Este pedido no tiene teléfono', 'err'); return; }
+  var tel = telefono.replace(/[^0-9]/g, '');
+  if (tel.length === 10) tel = '52' + tel;
+  var msg = 'Hola ' + nombre + ', tu pedido ' + folio + ' en ' + _negocioNombreActual + ' ya está listo. Puedes pasar a recogerlo cuando gustes 🙌';
+  window.open('https://wa.me/' + tel + '?text=' + encodeURIComponent(msg), '_blank');
 }
 
 function renderPedidosOnline() {
@@ -1676,6 +1689,9 @@ function renderPedidosOnline() {
           '<button class="btn-full danger" style="padding:8px;font-size:12px" onclick="rechazarPedidoOnline(\''+p.id+'\')">❌ Rechazar</button>' +
         '</div>'
       : '';
+    var waBtn = p.cliente_telefono
+      ? '<button class="btn-full" style="padding:7px;font-size:12px;color:#25d366;background:rgba(37,211,102,.08);border:1.5px solid #25d366" onclick="avisarWhatsAppPedido(\''+p.cliente_nombre.replace(/'/g,"\\'")+'\',\''+p.cliente_telefono+'\',\''+p.folio+'\')">📲 Avisar por WhatsApp</button>'
+      : '';
     return '<div class="card" style="margin:0 16px 10px">' +
       '<div class="card-row" style="align-items:flex-start">' +
         '<div class="card-ico">🛍️</div>' +
@@ -1685,7 +1701,7 @@ function renderPedidosOnline() {
           '<div class="card-sub" style="margin-top:2px">'+p.folio+' · '+fecha+(p.cliente_telefono?' · 📞 '+p.cliente_telefono:'')+'</div>' +
         '</div>' +
         '<span class="tag '+estCls+'">'+estTxt+'</span>' +
-      '</div>' + acciones +
+      '</div>' + acciones + waBtn +
     '</div>';
   }).join('');
 }
@@ -1705,6 +1721,58 @@ async function rechazarPedidoOnline(id) {
   var r = await apiFetch('/api/pedidos-online/' + id + '/rechazar', { method: 'POST', body: JSON.stringify({ motivo: motivo }) });
   if (r && r.ok) { notif('Pedido rechazado', 'ok'); loadPedidosOnline(); }
   else { notif('❌ Error al rechazar', 'err'); }
+}
+
+// ── Imagen y descripción de la tienda en línea ─────────────────────────────
+var _tiendaImgBase64Movil = null;
+
+async function abrirTiendaConfig() {
+  var html = '<div class="modal-overlay" id="modalTiendaConfig">' +
+    '<div class="modal-sheet">' +
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">' +
+        '<h3 style="margin:0">🖼️ Mi tienda en línea</h3>' +
+        '<span class="modal-close" onclick="document.getElementById(\'modalTiendaConfig\').remove()">✕</span>' +
+      '</div>' +
+      '<p style="font-size:12px;color:var(--text3);margin-bottom:14px">Esta imagen y descripción aparecen arriba en tu tienda pública.</p>' +
+      '<div id="tiendaImgPreviewMovil" onclick="document.getElementById(\'tiendaImgInputMovil\').click()" style="width:100%;aspect-ratio:16/7;border-radius:10px;border:1.5px dashed var(--border);background:var(--s2);display:flex;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;color:var(--text3);font-size:12px;margin-bottom:14px">Toca para elegir una imagen</div>' +
+      '<input type="file" id="tiendaImgInputMovil" accept="image/*" style="display:none" onchange="onTiendaImgFileMovil(this)">' +
+      '<div class="form-field"><label>Descripción corta</label><textarea id="tiendaDescInputMovil" rows="2" placeholder="Ej: Ropa y accesorios al mejor precio"></textarea></div>' +
+      '<button class="btn-full primary" onclick="guardarTiendaConfigMovil()">💾 Guardar</button>' +
+    '</div></div>';
+  document.getElementById('modalContainer').innerHTML = html;
+  _tiendaImgBase64Movil = null;
+  try {
+    var r = await apiFetch('/api/negocio/tienda');
+    if (r && r.ok) {
+      var d = await r.json();
+      if (d.tienda_descripcion) document.getElementById('tiendaDescInputMovil').value = d.tienda_descripcion;
+      if (d.tienda_imagen_url) {
+        document.getElementById('tiendaImgPreviewMovil').innerHTML = '<img src="'+d.tienda_imagen_url+'" style="width:100%;height:100%;object-fit:cover">';
+      }
+    }
+  } catch(e) {}
+}
+
+async function onTiendaImgFileMovil(input) {
+  if (!input.files || !input.files[0]) return;
+  try {
+    _tiendaImgBase64Movil = await comprimirImagen(input.files[0], 900, 500, 0.75);
+    document.getElementById('tiendaImgPreviewMovil').innerHTML = '<img src="'+_tiendaImgBase64Movil+'" style="width:100%;height:100%;object-fit:cover">';
+  } catch(err) {
+    notif('❌ No se pudo procesar la imagen: ' + err.message, 'err');
+  }
+}
+
+async function guardarTiendaConfigMovil() {
+  var body = { tienda_descripcion: document.getElementById('tiendaDescInputMovil').value.trim() };
+  if (_tiendaImgBase64Movil) body.tienda_imagen_url = _tiendaImgBase64Movil;
+  var r = await apiFetch('/api/negocio/tienda', { method: 'PUT', body: JSON.stringify(body) });
+  if (r && r.ok) {
+    document.getElementById('modalContainer').innerHTML = '';
+    notif('✅ Tienda actualizada', 'ok');
+  } else {
+    notif('❌ Error al guardar', 'err');
+  }
 }
 
 // ══ PEDIDOS ══
@@ -1837,6 +1905,7 @@ function loadMas() {
   document.getElementById('masRolEmp').textContent = usuario ? usuario.rol : '';
   var items = [
     { ico:'🛍️', title:'Pedidos en línea', sub:'Apartados desde la tienda web', screen:'pedidosonline' },
+    { ico:'🖼️', title:'Mi tienda en línea', sub:'Imagen y descripción públicas', accion:'abrirTiendaConfig' },
     { ico:'🧾', title:'Ventas', sub:'Historial y devoluciones', screen:'ventas' },
     { ico:'👥', title:'Empleados', sub:'Gestión y asistencia', screen:'emps' },
     { ico:'🏷️', title:'Lotes y caducidades', sub:'Control de vencimientos', screen:'lotes' },
@@ -1848,7 +1917,8 @@ function loadMas() {
     items.push({ ico:'🔀', title:'Traspasos entre sucursales', sub:'Mover productos o lotes', screen:'traspasos' });
   }
   document.getElementById('masMenu').innerHTML = items.map(function(it) {
-    return '<div class="card" onclick="navTo(\'' + it.screen + '\')" style="cursor:pointer;margin-bottom:8px">' +
+    var click = it.accion ? (it.accion + '()') : ("navTo('" + it.screen + "')");
+    return '<div class="card" onclick="' + click + '" style="cursor:pointer;margin-bottom:8px">' +
       '<div class="card-row"><div class="card-ico">' + it.ico + '</div>' +
       '<div class="card-info"><div class="card-title">' + it.title + '</div><div class="card-sub">' + it.sub + '</div></div>' +
       '<div style="color:var(--text3)">›</div></div></div>';
