@@ -31,6 +31,22 @@ router.get('/negocios', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── DELETE /api/admin/negocios/:id — borrar negocio (y todo lo suyo en cascada) ─
+// Solo para limpieza manual desde el panel del vendedor. Rechaza si el negocio
+// tiene una licencia vinculada activa, para no borrar por accidente el negocio
+// real de un cliente.
+router.delete('/negocios/:id', async (req, res) => {
+  try {
+    const lic = await pool.query('SELECT id, clave FROM licencias WHERE negocio_id=$1', [req.params.id]);
+    if (lic.rows.length) {
+      return res.status(409).json({ error: 'Este negocio tiene una licencia vinculada (' + lic.rows[0].clave + ') — desvincúlala primero si de verdad quieres borrarlo' });
+    }
+    const r = await pool.query('DELETE FROM negocios WHERE id=$1 RETURNING id, nombre', [req.params.id]);
+    if (!r.rows.length) return res.status(404).json({ error: 'Negocio no encontrado' });
+    res.json({ ok: true, borrado: r.rows[0] });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ── POST /api/admin/sucursales — crear sucursal de un negocio ──
 router.post('/sucursales', async (req, res) => {
   try {

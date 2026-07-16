@@ -373,20 +373,12 @@ app.post('/api/lic/canjear', async (req, res) => {
     let negocioId = lic.negocio_id;
     console.log('🔍 Canjear licencia:', clave, '— negocio_id actual:', negocioId || 'NULL');
     if (!negocioId) {
-      console.log('⚠️ Licencia sin negocio_id — buscando negocio existente con datos...');
-      // Buscar si ya existe un negocio con productos/ventas para esta licencia
-      // antes de crear uno nuevo
-      const negExistente = await pool.query(
-        `SELECT n.id FROM negocios n 
-         WHERE n.id IN (SELECT negocio_id FROM productos GROUP BY negocio_id)
-         OR n.id IN (SELECT negocio_id FROM ventas GROUP BY negocio_id)
-         ORDER BY n.creado_en DESC LIMIT 1`
-      );
-      // Solo crear negocio nuevo si realmente no existe ninguno
-      const neg = await pool.query('INSERT INTO negocios (nombre, giro_principal) VALUES ($1,$2) RETURNING id', [lic.negocio_nombre || lic.cliente_nombre || 'Mi negocio', lic.giro || 'tienda']);
-      negocioId = neg.rows[0].id;
-      await pool.query('INSERT INTO sucursales (negocio_id, nombre) VALUES ($1,$2)', [negocioId, lic.negocio_nombre || 'Principal']);
-      await pool.query('UPDATE licencias SET negocio_id=$1 WHERE id=$2', [negocioId, lic.id]);
+      // No auto-crear un negocio nuevo: esta licencia todavía no fue vinculada
+      // desde el panel de admin (PUT /api/lic/licencias/:id/vincular). Crear uno
+      // aquí a ciegas duplicaba el negocio real del cliente cada vez que activaba
+      // desde un dispositivo nuevo.
+      console.warn('⚠️ Licencia', clave, 'sin negocio_id — falta vincularla desde el panel de admin');
+      return res.json({ ok: false, mensaje: 'Tu licencia todavía no está activada. Contacta a tu proveedor para completar la activación.' });
     }
     const sucs = await pool.query('SELECT id, nombre FROM sucursales WHERE negocio_id=$1 AND activo=true ORDER BY nombre', [negocioId]);
     await pool.query('UPDATE licencias SET ultima_verificacion=NOW() WHERE clave=$1', [clave]);
