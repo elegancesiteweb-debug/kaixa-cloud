@@ -79,14 +79,10 @@ router.put('/productos/:id/imagen', async (req, res) => {
     const { imagen_url } = req.body;
     console.log('PUT imagen:', req.params.id, 'body keys:', Object.keys(req.body||{}), 'img len:', imagen_url?.length||0, 'content-type:', req.headers['content-type']);
     if (!imagen_url) return res.status(400).json({ error: 'imagen_url requerida' });
-    const result = await pool.query(
+    await pool.query(
       'UPDATE productos SET imagen_url=$1, actualizado_en=now() WHERE id=$2 AND negocio_id=$3',
       [imagen_url, req.params.id, req.caja.negocio_id]
     );
-    console.log('PUT imagen resultado: rowCount=', result.rowCount, 'negocio_id=', req.caja.negocio_id);
-    // Verificar que se guardó
-    const check = await pool.query('SELECT length(imagen_url) as len FROM productos WHERE id=$1', [req.params.id]);
-    console.log('PUT imagen verificacion: len=', check.rows[0]?.len);
     res.json({ ok: true });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
@@ -623,5 +619,108 @@ router.post('/productos/:uuid/copiar-sucursal', async (req, res) => {
     res.json({ ok: true, nuevo_id });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
+
+// ── KITS / COMBOS ───────────────────────────────────────────
+// GET /api/kits
+router.get('/kits', async (req, res) => {
+  try {
+    const { negocio_id, sucursal_id } = req.caja;
+    const r = await pool.query(
+      `SELECT k.*, 
+        json_agg(json_build_object(
+          'id', ki.id,
+          'producto_id', ki.producto_id,
+          'nombre_producto', ki.nombre_producto,
+          'cantidad', ki.cantidad,
+          'precio_unitario', ki.precio_unitario
+        ) ORDER BY ki.id) FILTER (WHERE ki.id IS NOT NULL) AS items
+       FROM kits k
+       LEFT JOIN kit_items ki ON ki.kit_id = k.id
+       WHERE k.negocio_id=$1 AND k.sucursal_id=$2 AND k.activo=true
+       GROUP BY k.id ORDER BY k.nombre`,
+      [negocio_id, sucursal_id]
+    );
+    res.json(r.rows);
+  } catch(e) {
+    // Si la tabla no existe aún, retornar array vacío
+    if (e.message.includes('does not exist')) return res.json([]);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/kits
+router.post('/kits', async (req, res) => {
+  try {
+    const { negocio_id, sucursal_id } = req.caja;
+    const { nombre, emoji='🎁', descripcion='', precio, items=[], id } = req.body;
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS kits (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        negocio_id UUID NOT NULL, sucursal_id UUID,
+        nombre TEXT NOT NULL, emoji TEXT DEFAULT '🎁',
+        descripcion TEXT DEFAULT '', precio NUMERIC(12,2) DEFAULT 0,
+        activo BOOLEAN DEFAULT true, imagen_url TEXT DEFAULT '',
+        actualizado_en TIMESTAMPTZ DEFAULT now()
+      )`);
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS kit_items (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        kit_id UUID NOT NULL, producto_id UUID,
+        nombre_producto TEXT DEFAULT '', cantidad NUMERIC(10,3) DEFAULT 1,
+        precio_unitario NUMERIC(12,2) DEFAULT 0
+      )`);
+    const kitId = id || (await pool.query('SELECT gen_random_uuid() AS id')).rows[0].id;
+    await pool.query(
+      `INSERT INTO kits (id, negocio_id, sucursal_id, nombre, emoji, descripcion, precio, actualizado_en)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,now())
+       ON CONFLICT (id) DO UPDATE SET nombre=$4,emoji=$5,descripcion=$6,precio=$7,activo=true,actualizado_en=now()`,
+      [kitId, negocio_id, sucursal_id, nombre, emoji, descripcion, precio]
+    );
+    // Reemplazar items
+    await pool.query('DELETE FROM kit_items WHERE kit_id=$1', [kitId]);
+    for (const item of items) {
+      await pool.query(
+        `INSERT INTO kit_items (kit_id, producto_id, nombre_producto, cantidad, precio_unitario)
+         VALUES ($1,$2,$3,$4,$5)`,
+        [kitId, item.producto_id||null, item.nombre_producto||'', item.cantidad||1, item.precio_unitario||0]
+      );
+    }
+    const kit = (await pool.query('SELECT * FROM kits WHERE id=$1', [kitId])).rows[0];
+    res.json(kit);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// PUT /api/kits/:id
+router.put('/kits/:id', async (req, res) => {
+  try {
+    const { negocio_id } = req.caja;
+    const { nombre, emoji, descripcion, precio, items=[] } = req.body;
+    await pool.query(
+      `UPDATE kits SET nombre=$1,emoji=$2,descripcion=$3,precio=$4,actualizado_en=now()
+       WHERE id=$5 AND negocio_id=$6`,
+      [nombre, emoji||'🎁', descripcion||'', precio, req.params.id, negocio_id]
+    );
+    await pool.query('DELETE FROM kit_items WHERE kit_id=$1', [req.params.id]);
+    for (const item of items) {
+      await pool.query(
+        `INSERT INTO kit_items (kit_id, producto_id, nombre_producto, cantidad, precio_unitario)
+         VALUES ($1,$2,$3,$4,$5)`,
+        [req.params.id, item.producto_id||null, item.nombre_producto||'', item.cantidad||1, item.precio_unitario||0]
+      );
+    }
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// DELETE /api/kits/:id  
+router.delete('/kits/:id', async (req, res) => {
+  try {
+    const { negocio_id } = req.caja;
+    await pool.query('UPDATE kits SET activo=false,actualizado_en=now() WHERE id=$1 AND negocio_id=$2',
+      [req.params.id, negocio_id]);
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 
 module.exports = router;
