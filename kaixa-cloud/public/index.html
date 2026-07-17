@@ -1242,8 +1242,15 @@ function abrirModalProd(p) {
 }
 
 // ══ ESCÁNER DE CÓDIGO DE BARRAS (cámara) ══
+// Prioriza la Barcode Detection API nativa del teléfono (usa el motor del
+// sistema — en Android es Google ML Kit — mucho más preciso leyendo
+// códigos de barras 1D reales que un decodificador en JS puro). Si el
+// navegador no la soporta (algunas versiones de iOS/Safari), usa
+// html5-qrcode como respaldo.
 var _html5QrLoaded = false;
 var _qrScanner = null;
+var _scanStream = null;
+var _scanRAF = null;
 
 function _cargarHtml5Qr() {
   return new Promise(function(resolve, reject) {
@@ -1256,75 +1263,129 @@ function _cargarHtml5Qr() {
   });
 }
 
+async function _tieneBarcodeDetectorNativo() {
+  if (!('BarcodeDetector' in window)) return false;
+  try {
+    var formatos = await BarcodeDetector.getSupportedFormats();
+    return !!(formatos && formatos.length);
+  } catch(e) { return false; }
+}
+
 function _traducirErrorCamara(err) {
   var nombre = (err && (err.name || err.code || '')) + '';
   var msg = (err && err.message) || (typeof err === 'string' ? err : '');
   if (!window.isSecureContext) return 'Esta página no está en HTTPS — el navegador bloquea la cámara por seguridad.';
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return 'Este navegador no soporta acceso a cámara (¿lo abriste dentro de otra app, como Facebook o Instagram? Ábrelo en Safari o Chrome directamente).';
-  if (nombre === 'NotAllowedError' || nombre === 'PermissionDeniedError') return 'Permiso de cámara denegado. Ve a Ajustes del teléfono → Safari (o Chrome) → Cámara, y permite el acceso para este sitio.';
+  if (nombre === 'NotAllowedError' || nombre === 'PermissionDeniedError') return 'Permiso de cámara denegado. Ve a Ajustes del teléfono → busca esta app (o Safari/Chrome) → Cámara, y permite el acceso.';
   if (nombre === 'NotFoundError' || nombre === 'DevicesNotFoundError') return 'No se encontró ninguna cámara en este dispositivo.';
   if (nombre === 'NotReadableError' || nombre === 'TrackStartError') return 'La cámara está siendo usada por otra app. Cierra otras apps que la estén usando e intenta de nuevo.';
   if (nombre === 'OverconstrainedError' || nombre === 'ConstraintNotSatisfiedError') return 'La cámara trasera no está disponible con esa configuración.';
   return 'Error de cámara' + (nombre ? ' (' + nombre + ')' : '') + (msg ? ': ' + msg : '') + '.';
 }
 
-function abrirEscanerCodigo(inputId) {
+function _mostrarErrorEscaner(texto) {
+  var errEl = document.getElementById('scanCodigoError');
+  var hintEl = document.getElementById('scanCodigoHint');
+  if (errEl) { errEl.textContent = '⚠️ ' + texto; errEl.style.display = 'block'; }
+  if (hintEl) hintEl.style.display = 'none';
+}
+
+async function abrirEscanerCodigo(inputId) {
+  window._scanTargetInput = inputId;
   notif('⏳ Abriendo cámara...', 'ok');
-  _cargarHtml5Qr().then(function() {
-    var ov = document.createElement('div');
-    ov.className = 'modal-overlay';
-    ov.id = 'scanOverlay';
-    ov.style.zIndex = '999';
-    ov.innerHTML =
-      '<div class="modal-sheet" style="padding:0;overflow:hidden;max-width:420px">' +
-        '<div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px">' +
-          '<h3 style="margin:0">📷 Escanea el código</h3>' +
-          '<span class="modal-close" onclick="cerrarEscanerCodigo()">✕</span>' +
-        '</div>' +
-        '<div id="scanCodigoReader" style="width:100%"></div>' +
-        '<div id="scanCodigoError" style="display:none;margin:0 16px 12px;padding:10px 12px;border-radius:10px;background:rgba(239,68,68,.08);color:var(--danger);font-size:12.5px;line-height:1.5"></div>' +
-        '<p id="scanCodigoHint" style="text-align:center;font-size:12px;color:var(--text3);padding:10px 16px 16px">Apunta la cámara al código de barras</p>' +
-      '</div>';
-    document.body.appendChild(ov);
 
-    window._scanTargetInput = inputId;
+  var usarNativo = await _tieneBarcodeDetectorNativo();
 
-    function mostrarErrorEnModal(texto) {
-      var errEl = document.getElementById('scanCodigoError');
-      var hintEl = document.getElementById('scanCodigoHint');
-      if (errEl) { errEl.textContent = '⚠️ ' + texto; errEl.style.display = 'block'; }
-      if (hintEl) hintEl.style.display = 'none';
-    }
+  var ov = document.createElement('div');
+  ov.className = 'modal-overlay';
+  ov.id = 'scanOverlay';
+  ov.style.zIndex = '999';
+  ov.innerHTML =
+    '<div class="modal-sheet" style="padding:0;overflow:hidden;max-width:420px">' +
+      '<div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px">' +
+        '<h3 style="margin:0">📷 Escanea el código</h3>' +
+        '<span class="modal-close" onclick="cerrarEscanerCodigo()">✕</span>' +
+      '</div>' +
+      (usarNativo
+        ? '<div style="position:relative;width:100%;background:#000"><video id="scanVideoNativo" playsinline autoplay muted style="width:100%;display:block;max-height:60vh;object-fit:cover"></video></div>'
+        : '<div id="scanCodigoReader" style="width:100%"></div>') +
+      '<div id="scanCodigoError" style="display:none;margin:12px 16px 0;padding:10px 12px;border-radius:10px;background:rgba(239,68,68,.08);color:var(--danger);font-size:12.5px;line-height:1.5"></div>' +
+      '<p id="scanCodigoHint" style="text-align:center;font-size:12px;color:var(--text3);padding:10px 16px 16px">Apunta la cámara al código de barras, a unos 10-15cm de distancia</p>' +
+    '</div>';
+  document.body.appendChild(ov);
 
-    if (!window.isSecureContext || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      mostrarErrorEnModal(_traducirErrorCamara(null));
-      return;
-    }
+  if (!window.isSecureContext || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    _mostrarErrorEscaner(_traducirErrorCamara(null));
+    return;
+  }
 
+  if (usarNativo) {
     try {
-      _qrScanner = new Html5Qrcode('scanCodigoReader');
-      _qrScanner.start(
-        { facingMode: 'environment' },
-        { fps: 10, qrbox: { width: 260, height: 150 } },
-        function(decodedText) {
-          var inp = document.getElementById(window._scanTargetInput);
-          if (inp) inp.value = decodedText;
-          notif('✅ Código escaneado: ' + decodedText, 'ok');
-          cerrarEscanerCodigo();
-        },
-        function() { /* frame sin código detectado — ignorar */ }
-      ).catch(function(err) {
-        console.error('Escáner — start() falló:', err);
-        mostrarErrorEnModal(_traducirErrorCamara(err));
-      });
-    } catch(e) {
-      console.error('Escáner — excepción al iniciar:', e);
-      mostrarErrorEnModal(_traducirErrorCamara(e));
+      _scanStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+      var video = document.getElementById('scanVideoNativo');
+      if (!video) { cerrarEscanerCodigo(); return; }
+      video.srcObject = _scanStream;
+      await video.play().catch(function(){});
+      var detector = new BarcodeDetector();
+      var detectado = false;
+      var loop = function() {
+        if (detectado || !document.getElementById('scanVideoNativo')) return;
+        detector.detect(video).then(function(codigos) {
+          if (detectado) return;
+          if (codigos.length > 0) {
+            detectado = true;
+            var valor = codigos[0].rawValue;
+            var inp = document.getElementById(window._scanTargetInput);
+            if (inp) inp.value = valor;
+            notif('✅ Código escaneado: ' + valor, 'ok');
+            cerrarEscanerCodigo();
+            return;
+          }
+          _scanRAF = requestAnimationFrame(loop);
+        }).catch(function() {
+          if (!detectado) _scanRAF = requestAnimationFrame(loop);
+        });
+      };
+      loop();
+    } catch(err) {
+      console.error('Escáner nativo — error:', err);
+      _mostrarErrorEscaner(_traducirErrorCamara(err));
     }
-  }).catch(function(e) { notif('❌ ' + e.message, 'err'); });
+    return;
+  }
+
+  // Respaldo: html5-qrcode (cuando el navegador no tiene BarcodeDetector nativo)
+  try {
+    await _cargarHtml5Qr();
+  } catch(e) { _mostrarErrorEscaner(e.message); return; }
+  try {
+    _qrScanner = new Html5Qrcode('scanCodigoReader');
+    _qrScanner.start(
+      { facingMode: 'environment' },
+      { fps: 10, qrbox: { width: 260, height: 150 } },
+      function(decodedText) {
+        var inp = document.getElementById(window._scanTargetInput);
+        if (inp) inp.value = decodedText;
+        notif('✅ Código escaneado: ' + decodedText, 'ok');
+        cerrarEscanerCodigo();
+      },
+      function() { /* frame sin código detectado — ignorar */ }
+    ).catch(function(err) {
+      console.error('Escáner — start() falló:', err);
+      _mostrarErrorEscaner(_traducirErrorCamara(err));
+    });
+  } catch(e) {
+    console.error('Escáner — excepción al iniciar:', e);
+    _mostrarErrorEscaner(_traducirErrorCamara(e));
+  }
 }
 
 function cerrarEscanerCodigo() {
+  if (_scanRAF) { cancelAnimationFrame(_scanRAF); _scanRAF = null; }
+  if (_scanStream) {
+    try { _scanStream.getTracks().forEach(function(t){ t.stop(); }); } catch(e) {}
+    _scanStream = null;
+  }
   if (_qrScanner) {
     try {
       _qrScanner.stop().then(function(){ try{ _qrScanner.clear(); }catch(e){} _qrScanner = null; }).catch(function(){ _qrScanner = null; });
