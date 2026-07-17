@@ -37,6 +37,10 @@ async function ensureCotizacionesTables() {
     );
     CREATE INDEX IF NOT EXISTS idx_cotizaciones_negocio ON cotizaciones(negocio_id);
   `);
+  // Copia de la imagen del producto al momento de cotizar — igual que
+  // nombre_producto, es un snapshot: si luego cambia/borra la foto del
+  // producto, la cotización ya emitida conserva la que tenía.
+  await pool.query(`ALTER TABLE cotizacion_items ADD COLUMN IF NOT EXISTS imagen_url TEXT DEFAULT ''`);
   // Sin ON DELETE SET NULL, borrar un negocio con productos referenciados
   // por cotizaciones fallaba (FK violation) — mismo arreglo que ya se hace
   // para venta_detalle/lotes/pedido_items en server.js.
@@ -79,9 +83,9 @@ router.post('/cotizaciones', async (req, res) => {
 
     for (const it of items) {
       await pool.query(
-        `INSERT INTO cotizacion_items (cotizacion_id, producto_id, nombre_producto, cantidad, precio_unitario)
-         VALUES ($1,$2,$3,$4,$5)`,
-        [cotId, it.producto_id || null, it.nombre || it.nombre_producto || '', it.cantidad || 1, it.precio_unitario || 0]
+        `INSERT INTO cotizacion_items (cotizacion_id, producto_id, nombre_producto, cantidad, precio_unitario, imagen_url)
+         VALUES ($1,$2,$3,$4,$5,$6)`,
+        [cotId, it.producto_id || null, it.nombre || it.nombre_producto || '', it.cantidad || 1, it.precio_unitario || 0, it.imagen_url || '']
       );
     }
     res.json({ ok: true, id: cotId, folio, subtotal, total });
@@ -96,7 +100,7 @@ router.get('/cotizaciones', async (req, res) => {
       `SELECT c.*,
         COALESCE(json_agg(json_build_object(
           'producto_id', ci.producto_id, 'nombre_producto', ci.nombre_producto,
-          'cantidad', ci.cantidad, 'precio_unitario', ci.precio_unitario
+          'cantidad', ci.cantidad, 'precio_unitario', ci.precio_unitario, 'imagen_url', ci.imagen_url
         )) FILTER (WHERE ci.id IS NOT NULL), '[]') AS items
        FROM cotizaciones c
        LEFT JOIN cotizacion_items ci ON ci.cotizacion_id = c.id

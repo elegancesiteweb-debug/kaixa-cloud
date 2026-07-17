@@ -46,6 +46,7 @@ async function ensureTiendaTables() {
   await pool.query(`ALTER TABLE negocios ADD COLUMN IF NOT EXISTS tienda_horario TEXT DEFAULT ''`);
   await pool.query(`ALTER TABLE negocios ADD COLUMN IF NOT EXISTS tienda_mostrar_kits BOOLEAN DEFAULT false`);
   await pool.query(`ALTER TABLE negocios ADD COLUMN IF NOT EXISTS domicilio_habilitado BOOLEAN DEFAULT false`);
+  await pool.query(`ALTER TABLE negocios ADD COLUMN IF NOT EXISTS cotizacion_mostrar_fotos BOOLEAN DEFAULT false`);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS pedidos_online (
       id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
