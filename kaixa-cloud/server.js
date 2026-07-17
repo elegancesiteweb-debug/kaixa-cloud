@@ -77,6 +77,11 @@ async function aplicarEsquema() {
     console.log('✅ empleados.foto listo');
   } catch(e) { console.error('⚠️ Migración empleados.foto:', e.message); }
   try {
+    await pool.query(`ALTER TABLE clientes ADD COLUMN IF NOT EXISTS fecha_proximo_pago DATE`);
+    await pool.query(`ALTER TABLE clientes ADD COLUMN IF NOT EXISTS frecuencia_pago TEXT DEFAULT 'mensual'`);
+    console.log('✅ clientes.fecha_proximo_pago / frecuencia_pago listo');
+  } catch(e) { console.error('⚠️ Migración clientes fiado:', e.message); }
+  try {
     await pool.query(`
       CREATE TABLE IF NOT EXISTS licencias (
         id                SERIAL PRIMARY KEY,

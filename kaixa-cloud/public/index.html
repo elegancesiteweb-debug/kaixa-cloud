@@ -395,6 +395,7 @@ var imgCache = {}; // caché de imágenes por producto_id
 var allClis = [];
 var formaPago = 'efectivo';
 var montoIngresado = '';
+var cobroCliente = null;
 
 function headers() { return { 'Content-Type': 'application/json', 'x-caja-token': TOKEN }; }
 
@@ -993,6 +994,7 @@ function abrirCobro() {
   window._cartSnapshot = cart.slice(); // Guardar copia antes de cobrar
   formaPago = 'efectivo';
   montoIngresado = '';
+  cobroCliente = null;
   var html = '<div class="cobro-sheet" id="cobroSheet">' +
     '<div class="cobro-bg" onclick="cerrarCobro()"></div>' +
     '<div class="cobro-panel">' +
@@ -1005,6 +1007,10 @@ function abrirCobro() {
         '<button class="pago-btn" onclick="selFP(\'tarjeta\',this)">💳 Tarjeta</button>' +
         '<button class="pago-btn" onclick="selFP(\'transferencia\',this)">📲 Transferencia</button>' +
         '<button class="pago-btn" onclick="selFP(\'credito\',this)">📌 Crédito</button>' +
+      '</div>' +
+      '<div id="cobroClienteBox" style="display:none;margin-bottom:12px;padding:10px 12px;background:var(--bg2,#f5f5f7);border-radius:12px;align-items:center;justify-content:space-between;gap:8px">' +
+        '<div style="font-size:13px"><span style="color:var(--text3)">Cliente: </span><span id="cobroClienteNombre" style="font-weight:700"></span></div>' +
+        '<button class="btn-full sec" style="width:auto;padding:6px 12px;font-size:12px" onclick="abrirSelectorClienteCredito()">Cambiar</button>' +
       '</div>' +
       '<div id="numPadWrap">' +
         '<div class="monto-display" style="background:#fff;border:1.5px solid var(--border2)">' +
@@ -1033,6 +1039,72 @@ function selFP(fp, btn) {
   btn.classList.add('active');
   var npw = document.getElementById('numPadWrap');
   if (npw) npw.style.display = fp === 'efectivo' ? 'block' : 'none';
+  var ccb = document.getElementById('cobroClienteBox');
+  if (fp === 'credito') {
+    abrirSelectorClienteCredito();
+  } else if (ccb) {
+    ccb.style.display = 'none';
+  }
+}
+
+function actualizarCobroClienteBox() {
+  var ccb = document.getElementById('cobroClienteBox');
+  if (!ccb) return;
+  if (formaPago === 'credito' && cobroCliente) {
+    ccb.style.display = 'flex';
+    document.getElementById('cobroClienteNombre').textContent = cobroCliente.nombre;
+  } else {
+    ccb.style.display = 'none';
+  }
+}
+
+async function abrirSelectorClienteCredito() {
+  if (!allClis.length) { try { await loadCli(); } catch(e) {} }
+  var html = '<div class="modal-overlay" id="modalSelCli" style="z-index:999">' +
+    '<div class="modal-sheet">' +
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">' +
+        '<h3 style="margin:0">👤 ¿A qué cliente?</h3>' +
+        '<span class="modal-close" onclick="cerrarSelectorClienteCredito(true)">✕</span>' +
+      '</div>' +
+      '<div class="search-bar" style="margin-bottom:12px"><span>🔍</span><input id="selCliBuscar" placeholder="Buscar cliente..." oninput="filtrarSelectorCliente()" autofocus></div>' +
+      '<div id="selCliList"></div>' +
+    '</div></div>';
+  document.getElementById('modalContainer').insertAdjacentHTML('beforeend', html);
+  renderSelectorCliente(allClis);
+}
+
+function filtrarSelectorCliente() {
+  var q = (document.getElementById('selCliBuscar').value || '').toLowerCase();
+  renderSelectorCliente(allClis.filter(function(c) { return c.nombre.toLowerCase().includes(q) || (c.telefono||'').includes(q); }));
+}
+
+function renderSelectorCliente(clis) {
+  var cont = document.getElementById('selCliList');
+  if (!cont) return;
+  if (!clis.length) { cont.innerHTML = '<div class="empty"><div class="ico">👥</div><p>Sin clientes — créalo primero en la pestaña Clientes</p></div>'; return; }
+  cont.innerHTML = clis.map(function(c) {
+    return '<div class="cli-card" onclick="elegirClienteCredito(\'' + c.id + '\')">' +
+      '<div style="flex:1;min-width:0"><div class="cli-name">' + c.nombre + '</div>' +
+      '<div class="cli-tel">' + (c.telefono||'Sin teléfono') + '</div></div>' +
+      '</div>';
+  }).join('');
+}
+
+function elegirClienteCredito(id) {
+  var c = allClis.find(function(x){ return String(x.id) === String(id); });
+  if (!c) return;
+  cobroCliente = c;
+  cerrarSelectorClienteCredito(false);
+  actualizarCobroClienteBox();
+}
+
+function cerrarSelectorClienteCredito(esCancelacion) {
+  var m = document.getElementById('modalSelCli');
+  if (m) m.remove();
+  if (esCancelacion && formaPago === 'credito' && !cobroCliente) {
+    // Sin cliente elegido no tiene sentido dejar Crédito seleccionado
+    selFP('efectivo', document.querySelector('.pago-btn'));
+  }
 }
 
 function numPad(val) {
@@ -1049,6 +1121,7 @@ async function confirmarVenta() {
   var total = window._cobroTotal;
   var monto = formaPago === 'efectivo' ? parseFloat(montoIngresado || '0') / 100 : total;
   if (formaPago === 'efectivo' && monto < total) { notif('El monto es menor al total', 'err'); return; }
+  if (formaPago === 'credito' && !cobroCliente) { notif('Elige a qué cliente se le da el crédito', 'err'); abrirSelectorClienteCredito(); return; }
   var itemsParaVenta = (window._cartSnapshot && window._cartSnapshot.length) ? window._cartSnapshot : cart.slice();
   var venta = {
     items: itemsParaVenta.map(function(c) {
@@ -1059,6 +1132,7 @@ async function confirmarVenta() {
     }),
     total: parseFloat(total)||0, subtotal: parseFloat(total)||0, forma_pago: formaPago, monto_recibido: parseFloat(monto)||0, cambio: Math.max(0, monto - total),
     giro: giro, usuario_id: usuario ? usuario.id : null, cajero: usuario ? usuario.nombre : 'App Móvil',
+    cliente_id: cobroCliente ? cobroCliente.id : null,
   };
   try {
     var r = await apiFetch('/api/ventas', { method: 'POST', body: JSON.stringify(venta) });

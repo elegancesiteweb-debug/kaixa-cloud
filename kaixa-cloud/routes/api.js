@@ -143,7 +143,8 @@ router.get('/clientes', async (req, res) => {
   try {
     const { negocio_id } = req.caja;
     const { q } = req.query;
-    let sql = `SELECT id, negocio_id, nombre, telefono, email, rfc, giro, puntos, saldo, foto, activo, creado_en, actualizado_en
+    let sql = `SELECT id, negocio_id, nombre, telefono, email, rfc, giro, puntos, saldo, foto, activo,
+               fecha_proximo_pago, frecuencia_pago, creado_en, actualizado_en
                FROM clientes WHERE negocio_id=$1 AND activo=true`;
     const params = [negocio_id];
     if (q) { params.push('%'+q+'%'); sql += ` AND nombre ILIKE $${params.length}`; }
@@ -188,6 +189,14 @@ router.put('/clientes/:id', async (req, res) => {
     if (c.foto !== undefined) {
       updateFields.push(c.foto);
       updateSql += `, foto=$${updateFields.length}`;
+    }
+    if (c.fecha_proximo_pago !== undefined) {
+      updateFields.push(c.fecha_proximo_pago || null);
+      updateSql += `, fecha_proximo_pago=$${updateFields.length}`;
+    }
+    if (c.frecuencia_pago !== undefined) {
+      updateFields.push(c.frecuencia_pago || 'mensual');
+      updateSql += `, frecuencia_pago=$${updateFields.length}`;
     }
     updateFields.push(req.params.id, req.caja.negocio_id);
     updateSql += `, actualizado_en=now() WHERE id=$${updateFields.length-1} AND negocio_id=$${updateFields.length}`;
