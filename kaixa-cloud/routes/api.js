@@ -5,6 +5,14 @@ const pool    = require('../db/pool');
 const crypto  = require('crypto');
 function uuid() { return crypto.randomUUID(); }
 
+let _clientesFiadoColOk = false;
+async function ensureClientesFiadoColumns() {
+  if (_clientesFiadoColOk) return;
+  await pool.query(`ALTER TABLE clientes ADD COLUMN IF NOT EXISTS fecha_proximo_pago DATE`);
+  await pool.query(`ALTER TABLE clientes ADD COLUMN IF NOT EXISTS frecuencia_pago TEXT DEFAULT 'mensual'`);
+  _clientesFiadoColOk = true;
+}
+
 // ── GET /api/productos ─────────────────────────────────────────
 router.get('/productos', async (req, res) => {
   try {
@@ -141,6 +149,7 @@ router.delete('/productos/:id', async (req, res) => {
 // ── GET /api/clientes ──────────────────────────────────────────
 router.get('/clientes', async (req, res) => {
   try {
+    await ensureClientesFiadoColumns();
     const { negocio_id } = req.caja;
     const { q } = req.query;
     let sql = `SELECT id, negocio_id, nombre, telefono, email, rfc, giro, puntos, saldo, foto, activo,
@@ -183,6 +192,7 @@ router.post('/clientes', async (req, res) => {
 // ── PUT /api/clientes/:id ──────────────────────────────────────
 router.put('/clientes/:id', async (req, res) => {
   try {
+    await ensureClientesFiadoColumns();
     const c = req.body;
     const updateFields = [c.nombre, c.telefono||'', c.email||'', c.rfc||'', c.puntos||0, c.saldo||0];
     let updateSql = `UPDATE clientes SET nombre=$1, telefono=$2, email=$3, rfc=$4, puntos=$5, saldo=$6`;
