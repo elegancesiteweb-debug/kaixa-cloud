@@ -82,6 +82,10 @@ async function aplicarEsquema() {
     console.log('✅ clientes.fecha_proximo_pago / frecuencia_pago listo');
   } catch(e) { console.error('⚠️ Migración clientes fiado:', e.message); }
   try {
+    await pool.query(`ALTER TABLE ventas ADD COLUMN IF NOT EXISTS fecha_pago DATE`);
+    console.log('✅ ventas.fecha_pago listo');
+  } catch(e) { console.error('⚠️ Migración ventas.fecha_pago:', e.message); }
+  try {
     await pool.query(`
       CREATE TABLE IF NOT EXISTS licencias (
         id                SERIAL PRIMARY KEY,

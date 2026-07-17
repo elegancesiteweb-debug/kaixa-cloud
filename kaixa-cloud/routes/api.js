@@ -13,6 +13,13 @@ async function ensureClientesFiadoColumns() {
   _clientesFiadoColOk = true;
 }
 
+let _ventasFechaPagoColOk = false;
+async function ensureVentasFechaPagoColumn() {
+  if (_ventasFechaPagoColOk) return;
+  await pool.query(`ALTER TABLE ventas ADD COLUMN IF NOT EXISTS fecha_pago DATE`);
+  _ventasFechaPagoColOk = true;
+}
+
 // ── GET /api/productos ─────────────────────────────────────────
 router.get('/productos', async (req, res) => {
   try {
@@ -223,6 +230,7 @@ router.post('/ventas', async (req, res) => {
   if (!v.items || !v.items.length) return res.status(400).json({ error: 'La venta debe tener productos' });
   const client = await pool.connect();
   try {
+    await ensureVentasFechaPagoColumn();
     await client.query('BEGIN');
     const ventaId = uuid();
     const ultimo = await client.query(
@@ -245,12 +253,12 @@ router.post('/ventas', async (req, res) => {
     const total = base + iva > 0 ? base + iva : parseFloat(v.total||0);
     await client.query(
       `INSERT INTO ventas (id, negocio_id, sucursal_id, caja_id, folio, cliente_id, subtotal, descuento,
-        iva, total, forma_pago, efectivo_recibido, cambio, cajero, giro, referencia_externa)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
+        iva, total, forma_pago, efectivo_recibido, cambio, cajero, giro, referencia_externa, fecha_pago)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
       [ventaId, negocio_id, sucursal_id, caja_id, folio, v.cliente_id||null, subtotal, descuento,
        iva, total, v.forma_pago||'efectivo', v.efectivo_recibido||total,
        Math.max(0,(v.efectivo_recibido||total)-total), v.cajero||'', giroReal,
-       v.referencia_externa||null]
+       v.referencia_externa||null, v.fecha_pago||null]
     );
     for (const item of v.items) {
       // Los kits no son un producto real — no llevan producto_id propio,
@@ -303,6 +311,7 @@ router.post('/ventas', async (req, res) => {
 // ── GET /api/ventas ────────────────────────────────────────────
 router.get('/ventas', async (req, res) => {
   try {
+    await ensureVentasFechaPagoColumn();
     const { negocio_id } = req.caja;
     const r = await pool.query(
       `SELECT v.*, s.nombre AS sucursal_nombre, c.nombre AS caja_nombre
@@ -324,6 +333,18 @@ router.get('/ventas/:id', async (req, res) => {
     if (!v.rows.length) return res.status(404).json({ error: 'No encontrada' });
     const items = await pool.query('SELECT * FROM venta_detalle WHERE venta_id=$1', [req.params.id]);
     res.json({ ...v.rows[0], items: items.rows });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── PUT /api/ventas/:id/fecha-pago ─────────────────────────────
+// Fecha de vencimiento de UNA venta fiada en particular (no del cliente).
+router.put('/ventas/:id/fecha-pago', async (req, res) => {
+  try {
+    await ensureVentasFechaPagoColumn();
+    await pool.query('UPDATE ventas SET fecha_pago=$1 WHERE id=$2 AND negocio_id=$3',
+      [req.body.fecha_pago || null, req.params.id, req.caja.negocio_id]);
+    broadcast(req, 'venta:editada', { id: req.params.id });
+    res.json({ ok: true });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 

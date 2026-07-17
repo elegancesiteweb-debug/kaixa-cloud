@@ -3,6 +3,20 @@ const express = require('express');
 const router  = express.Router();
 const pool    = require('../db/pool');
 
+let _ventasFechaPagoColOk = false;
+async function ensureVentasFechaPagoColumn() {
+  if (_ventasFechaPagoColOk) return;
+  await pool.query(`ALTER TABLE ventas ADD COLUMN IF NOT EXISTS fecha_pago DATE`);
+  _ventasFechaPagoColOk = true;
+}
+let _clientesFiadoColOk = false;
+async function ensureClientesFiadoColumns() {
+  if (_clientesFiadoColOk) return;
+  await pool.query(`ALTER TABLE clientes ADD COLUMN IF NOT EXISTS fecha_proximo_pago DATE`);
+  await pool.query(`ALTER TABLE clientes ADD COLUMN IF NOT EXISTS frecuencia_pago TEXT DEFAULT 'mensual'`);
+  _clientesFiadoColOk = true;
+}
+
 // ── POST /api/sync/push ──────────────────────────────────────
 router.post('/push', async (req, res) => {
   const { negocio_id, sucursal_id, id: caja_id } = req.caja;
@@ -12,6 +26,8 @@ router.post('/push', async (req, res) => {
   const pedidos = req.body.pedidos || [];
   const client = await pool.connect();
   try {
+    await ensureVentasFechaPagoColumn();
+    await ensureClientesFiadoColumns();
     await client.query('BEGIN');
 
     // Proveedores (van primero: los productos pueden referenciarlos por uuid)
@@ -86,14 +102,16 @@ router.post('/push', async (req, res) => {
       await client.query(
         `INSERT INTO ventas
           (id, negocio_id, sucursal_id, caja_id, folio, cliente_id, subtotal, descuento, iva, total,
-           forma_pago, efectivo_recibido, cambio, cajero, giro, estado, referencia_externa, creado_en)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
-         ON CONFLICT (id) DO NOTHING`,
+           forma_pago, efectivo_recibido, cambio, cajero, giro, estado, referencia_externa, creado_en, fecha_pago)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
+         ON CONFLICT (id) DO UPDATE SET
+           cliente_id = COALESCE(EXCLUDED.cliente_id, ventas.cliente_id),
+           fecha_pago = COALESCE(EXCLUDED.fecha_pago, ventas.fecha_pago)`,
         [v.uuid, negocio_id, sucursal_id, caja_id,
          v.folio + '-' + caja_id.substring(0,4), v.cliente_uuid||null,
          v.subtotal||0, v.descuento||0, v.iva||0, v.total||0, v.forma_pago||'efectivo',
          v.efectivo_recibido||0, v.cambio||0, v.cajero||'', v.giro||'tienda',
-         v.estado||'completada', v.referencia_externa||null, v.creado_en||new Date()]
+         v.estado||'completada', v.referencia_externa||null, v.creado_en||new Date(), v.fecha_pago||null]
       );
       for (const item of (v.items||[])) {
         await client.query(
@@ -255,6 +273,8 @@ router.get('/pull', async (req, res) => {
   const { negocio_id, sucursal_id, id: caja_id } = req.caja;
   const since = req.query.since || '1970-01-01T00:00:00Z';
   try {
+    await ensureVentasFechaPagoColumn();
+    await ensureClientesFiadoColumns();
     const [productos, clientes, ventas, movimientos, lotesPull, kitsPull, variantesPull, proveedoresPull, pedidosPull] = await Promise.all([
       pool.query(
         `SELECT p.id, p.negocio_id, p.sucursal_id, p.nombre, p.emoji, p.codigo_barras,
