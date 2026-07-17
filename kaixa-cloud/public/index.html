@@ -65,6 +65,9 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:var(--ff);backgroun
 .subscreen{display:none}
 .subscreen.active{display:block}
 .page-pad{padding:16px}
+.subtab-bar{display:flex;padding:0 16px;border-bottom:1px solid var(--border);gap:4px;overflow-x:auto}
+.subtab{padding:10px 12px;font-size:12px;font-weight:700;color:var(--text3);cursor:pointer;border-bottom:2.5px solid transparent;white-space:nowrap}
+.subtab.on{color:var(--accent);border-bottom-color:var(--accent)}
 .kpi-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px}
 .kpi-card{background:#fff;border-radius:16px;padding:14px;box-shadow:0 2px 12px rgba(139,92,246,.08)}
 .kpi-ico{font-size:22px;margin-bottom:6px}
@@ -347,8 +350,21 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:var(--ff);backgroun
     <div class="subscreen" id="sub-emps"><div id="empsList"></div></div>
     <div class="subscreen" id="sub-lotes"><div id="lotesList"></div></div>
     <div class="subscreen" id="sub-traspasos"><div id="traspasosList"></div></div>
-    <div class="subscreen" id="sub-pedidosonline"><div id="pedidosOnlineList"></div></div>
-    <div class="subscreen" id="sub-carritos"><div id="carritosAbandonadosList"></div></div>
+    <div class="subscreen" id="sub-ventasonline">
+      <div class="subtab-bar">
+        <div class="subtab on" id="subtabVO-pedidos" onclick="irTabVentasOnlineMovil('pedidos')">📦 Pedidos</div>
+        <div class="subtab" id="subtabVO-carritos" onclick="irTabVentasOnlineMovil('carritos')">🛒 Carritos</div>
+        <div class="subtab" id="subtabVO-cotizaciones" onclick="irTabVentasOnlineMovil('cotizaciones')">📝 Cotizaciones</div>
+      </div>
+      <div id="bodyVOMovil-pedidos"><div id="pedidosOnlineList"></div></div>
+      <div id="bodyVOMovil-carritos" style="display:none"><div id="carritosAbandonadosList"></div></div>
+      <div id="bodyVOMovil-cotizaciones" style="display:none">
+        <div class="page-pad" style="padding-bottom:0">
+          <button class="btn-primary" onclick="abrirNuevaCotizacionMovil()">+ Nueva cotización</button>
+        </div>
+        <div id="cotizacionesListMovil"></div>
+      </div>
+    </div>
     <div class="subscreen" id="sub-cfdi">
       <div class="page-pad">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
@@ -556,8 +572,7 @@ var screenCfg = {
   emps:     { title: 'Empleados', btn: '⊕', load: loadEmps },
   lotes:    { title: 'Lotes', btn: '⊕', load: loadLotes },
   traspasos: { title: 'Traspasos', btn: '⊕', load: loadTraspasos },
-  pedidosonline: { title: 'Pedidos en línea', btn: null, load: loadPedidosOnline },
-  carritos: { title: 'Carritos abandonados', btn: null, load: loadCarritosAbandonados },
+  ventasonline: { title: 'Ventas en línea', btn: null, load: function(){ irTabVentasOnlineMovil(_tabVOMovilActual); } },
   cfdi:     { title: 'Facturación CFDI', btn: null, load: loadFacturas },
   kits:     { title: 'Kits y combos', btn: null, load: loadKits },
   sugeridos: { title: 'Pedidos sugeridos', btn: null, load: loadSugeridos },
@@ -580,7 +595,7 @@ function navTo(screen) {
   var btn1 = document.getElementById('topBtn1');
   if (cfg.btn) { btn1.textContent = cfg.btn; btn1.style.display = ''; }
   else { btn1.style.display = 'none'; }
-  var navMap = { dash:'dash', pos:'pos', inv:'inv', ventas:'mas', clientes:'clientes', emps:'mas', lotes:'mas', traspasos:'mas', pedidosonline:'mas', carritos:'mas', cfdi:'mas', kits:'mas', sugeridos:'mas', pedidos:'mas', corte:'mas', mas:'mas' };
+  var navMap = { dash:'dash', pos:'pos', inv:'inv', ventas:'mas', clientes:'clientes', emps:'mas', lotes:'mas', traspasos:'mas', ventasonline:'mas', cfdi:'mas', kits:'mas', sugeridos:'mas', pedidos:'mas', corte:'mas', mas:'mas' };
   document.querySelectorAll('.nav-item').forEach(function(n) { n.classList.remove('active'); });
   var navId = navMap[screen] || screen;
   var navEl = document.getElementById('nav-' + navId);
@@ -2331,6 +2346,19 @@ async function rechazarPedidoOnline(id) {
   else { notif('❌ Error al rechazar', 'err'); }
 }
 
+// ══ VENTAS EN LÍNEA (sub-tabs: pedidos / carritos / cotizaciones) ══
+var _tabVOMovilActual = 'pedidos';
+function irTabVentasOnlineMovil(tab) {
+  _tabVOMovilActual = tab;
+  ['pedidos','carritos','cotizaciones'].forEach(function(t) {
+    document.getElementById('subtabVO-'+t).classList.toggle('on', t === tab);
+    document.getElementById('bodyVOMovil-'+t).style.display = t === tab ? 'block' : 'none';
+  });
+  if (tab === 'pedidos') loadPedidosOnline();
+  else if (tab === 'carritos') loadCarritosAbandonados();
+  else loadCotizacionesMovil();
+}
+
 // ══ CARRITOS ABANDONADOS ══
 var _carritosAbandonados = [];
 async function loadCarritosAbandonados() {
@@ -2385,6 +2413,285 @@ function contactarCarritoAbandonado(id, nombre, telefono) {
 function descartarCarritoAbandonado(id) {
   apiFetch('/api/carritos-abandonados/' + id, { method: 'PUT', body: JSON.stringify({ estado: 'descartado' }) })
     .then(function(r){ if (r && r.ok) { notif('Carrito descartado', 'ok'); loadCarritosAbandonados(); } });
+}
+
+// ══ COTIZACIONES ══
+var _cotItemsMovil = [];
+var _cotBuscarTimerMovil = null;
+var _cotizacionesMovil = [];
+
+function abrirNuevaCotizacionMovil() {
+  _cotItemsMovil = [];
+  var html = '<div class="modal-overlay" id="modalNuevaCot"><div class="modal-sheet">' +
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">' +
+      '<h3 style="margin:0">📝 Nueva cotización</h3>' +
+      '<span class="modal-close" onclick="document.getElementById(\'modalNuevaCot\').remove()">✕</span>' +
+    '</div>' +
+    '<div class="field"><label>Cliente</label><input id="cotNombreM" placeholder="Nombre del cliente"></div>' +
+    '<div class="field"><label>Teléfono</label><input id="cotTelefonoM" placeholder="10 dígitos"></div>' +
+    '<div class="field"><label>Email (opcional)</label><input id="cotEmailM" type="email"></div>' +
+    '<div class="field"><label>Válida hasta (opcional)</label><input id="cotValidaHastaM" type="date"></div>' +
+    '<div class="field"><label>Notas (opcional)</label><textarea id="cotNotasM" rows="2"></textarea></div>' +
+    '<div class="field" style="position:relative">' +
+      '<label>Agregar producto</label>' +
+      '<input id="cotBuscarProdM" placeholder="Buscar producto..." oninput="buscarProductoCotizacionMovil(this.value)">' +
+      '<div id="cotBuscarResultadosM" style="position:absolute;z-index:20;top:100%;left:0;right:0;background:var(--s1,#fff);border:1px solid var(--border);border-radius:8px;max-height:200px;overflow-y:auto;display:none;box-shadow:0 8px 24px rgba(0,0,0,.15)"></div>' +
+    '</div>' +
+    '<div id="cotItemsM" style="max-height:180px;overflow-y:auto;background:var(--s2);border-radius:8px;padding:8px;margin-bottom:10px"></div>' +
+    '<div class="field"><label>Descuento (opcional, $)</label><input id="cotDescuentoM" type="number" placeholder="0" oninput="recalcTotalCotizacionMovil()"></div>' +
+    '<div style="display:flex;justify-content:flex-end;margin-bottom:12px;font-size:16px;font-weight:900">Total: <span id="cotTotalM" style="color:var(--accent);margin-left:8px">$0.00</span></div>' +
+    '<button class="btn-full primary" onclick="crearCotizacionMovil()">✅ Crear cotización</button>' +
+  '</div></div>';
+  document.getElementById('modalContainer').innerHTML = html;
+  renderCotItemsMovil();
+}
+
+function buscarProductoCotizacionMovil(q) {
+  clearTimeout(_cotBuscarTimerMovil);
+  var cont = document.getElementById('cotBuscarResultadosM');
+  if (!q || q.length < 2) { cont.style.display = 'none'; return; }
+  _cotBuscarTimerMovil = setTimeout(async function() {
+    try {
+      var r = await apiFetch('/api/productos?q=' + encodeURIComponent(q));
+      var prods = r && r.ok ? await r.json() : [];
+      if (!Array.isArray(prods) || !prods.length) { cont.innerHTML = '<div style="padding:10px;font-size:12px;color:var(--text3)">Sin resultados</div>'; cont.style.display='block'; return; }
+      cont.innerHTML = prods.slice(0,8).map(function(p) {
+        return '<div style="padding:10px 12px;cursor:pointer;border-bottom:1px solid var(--border);display:flex;justify-content:space-between" onmousedown="agregarItemCotizacionMovil(\''+p.id+'\',\''+p.nombre.replace(/'/g,"\\'")+'\','+p.precio+')">' +
+          '<span style="font-size:13px">'+p.nombre+'</span>' +
+          '<span style="font-size:12px;color:var(--text3)">$'+Number(p.precio).toFixed(2)+' · stock '+p.stock+'</span>' +
+        '</div>';
+      }).join('');
+      cont.style.display = 'block';
+    } catch(e) { cont.style.display = 'none'; }
+  }, 300);
+}
+
+function agregarItemCotizacionMovil(id, nombre, precio) {
+  var existente = _cotItemsMovil.find(function(i){ return i.producto_id === id; });
+  if (existente) existente.cantidad++;
+  else _cotItemsMovil.push({ producto_id: id, nombre: nombre, precio_unitario: precio, cantidad: 1 });
+  document.getElementById('cotBuscarProdM').value = '';
+  document.getElementById('cotBuscarResultadosM').style.display = 'none';
+  renderCotItemsMovil();
+}
+
+function cambiarCantidadCotItemMovil(idx, delta) {
+  _cotItemsMovil[idx].cantidad = Math.max(1, _cotItemsMovil[idx].cantidad + delta);
+  renderCotItemsMovil();
+}
+
+function quitarCotItemMovil(idx) {
+  _cotItemsMovil.splice(idx, 1);
+  renderCotItemsMovil();
+}
+
+function renderCotItemsMovil() {
+  var cont = document.getElementById('cotItemsM');
+  if (!cont) return;
+  if (!_cotItemsMovil.length) {
+    cont.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:8px;text-align:center">Sin productos agregados</div>';
+  } else {
+    cont.innerHTML = _cotItemsMovil.map(function(it, idx) {
+      return '<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 4px;border-bottom:1px solid var(--border)">' +
+        '<div style="flex:1;min-width:0"><div style="font-size:12.5px;font-weight:700">'+it.nombre+'</div>' +
+        '<div style="font-size:11px;color:var(--text3)">$'+Number(it.precio_unitario).toFixed(2)+' c/u</div></div>' +
+        '<div style="display:flex;align-items:center;gap:6px">' +
+          '<button onclick="cambiarCantidadCotItemMovil('+idx+',-1)" style="width:26px;height:26px;border-radius:6px;border:1px solid var(--border);background:#fff">−</button>' +
+          '<span style="font-size:12px;font-weight:700;min-width:16px;text-align:center">'+it.cantidad+'</span>' +
+          '<button onclick="cambiarCantidadCotItemMovil('+idx+',1)" style="width:26px;height:26px;border-radius:6px;border:1px solid var(--border);background:#fff">+</button>' +
+          '<button onclick="quitarCotItemMovil('+idx+')" style="color:var(--danger);background:none;border:none;font-size:15px;margin-left:4px">✕</button>' +
+        '</div></div>';
+    }).join('');
+  }
+  recalcTotalCotizacionMovil();
+}
+
+function recalcTotalCotizacionMovil() {
+  var subtotal = _cotItemsMovil.reduce(function(s,i){ return s + i.precio_unitario * i.cantidad; }, 0);
+  var descuento = parseFloat(document.getElementById('cotDescuentoM').value) || 0;
+  var total = Math.max(subtotal - descuento, 0);
+  document.getElementById('cotTotalM').textContent = '$' + total.toFixed(2);
+}
+
+async function crearCotizacionMovil() {
+  if (!_cotItemsMovil.length) { notif('Agrega al menos un producto', 'err'); return; }
+  try {
+    var r = await apiFetch('/api/cotizaciones', {
+      method: 'POST',
+      body: JSON.stringify({
+        cliente_nombre: document.getElementById('cotNombreM').value.trim(),
+        cliente_telefono: document.getElementById('cotTelefonoM').value.trim(),
+        cliente_email: document.getElementById('cotEmailM').value.trim(),
+        notas: document.getElementById('cotNotasM').value.trim(),
+        valida_hasta: document.getElementById('cotValidaHastaM').value || null,
+        descuento: parseFloat(document.getElementById('cotDescuentoM').value) || 0,
+        items: _cotItemsMovil,
+        cajero: usuario ? usuario.nombre : 'Admin'
+      })
+    });
+    var d = r ? await r.json().catch(function(){return {};}) : {};
+    if (!r || !r.ok) { notif('❌ ' + (d.error||'Error al crear la cotización'), 'err'); return; }
+    notif('✅ Cotización ' + d.folio + ' creada', 'ok');
+    document.getElementById('modalNuevaCot').remove();
+    loadCotizacionesMovil();
+  } catch(e) { notif('❌ Error de conexión', 'err'); }
+}
+
+async function loadCotizacionesMovil() {
+  var cont = document.getElementById('cotizacionesListMovil');
+  try {
+    var r = await apiFetch('/api/cotizaciones');
+    if (!r || !r.ok) { cont.innerHTML = '<div class="empty"><div class="ico">📝</div><p>Sin cotizaciones todavía</p></div>'; return; }
+    _cotizacionesMovil = await r.json();
+    if (!Array.isArray(_cotizacionesMovil)) _cotizacionesMovil = [];
+    renderCotizacionesMovil();
+  } catch(e) {}
+}
+
+function renderCotizacionesMovil() {
+  var cont = document.getElementById('cotizacionesListMovil');
+  if (!_cotizacionesMovil.length) { cont.innerHTML = '<div class="empty"><div class="ico">📝</div><p>Sin cotizaciones todavía</p></div>'; return; }
+  var estColores = { pendiente:'warn', enviada:'ok', confirmada:'ok', cancelada:'err' };
+  var estTxts = { pendiente:'⏳ Pendiente', enviada:'📤 Enviada', confirmada:'✅ Confirmada', cancelada:'❌ Cancelada' };
+  cont.innerHTML = _cotizacionesMovil.map(function(c) {
+    var fecha = c.creado_en ? new Date(c.creado_en).toLocaleString('es-MX', {day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}) : '';
+    var items = (c.items||[]).map(function(i){ return i.cantidad+'x '+i.nombre_producto; }).join(' • ');
+    return '<div class="card" style="margin:0 16px 10px" onclick="verDetalleCotizacionMovil(\''+c.id+'\')">' +
+      '<div class="card-row" style="align-items:flex-start">' +
+        '<div class="card-ico">📝</div>' +
+        '<div class="card-info">' +
+          '<div class="card-title">'+(c.cliente_nombre||'Sin nombre')+' · $'+Number(c.total).toFixed(2)+'</div>' +
+          '<div class="card-sub">'+items+'</div>' +
+          '<div class="card-sub" style="margin-top:2px">'+c.folio+' · '+fecha+'</div>' +
+        '</div>' +
+        '<span class="tag '+estColores[c.estado]+'">'+estTxts[c.estado]+'</span>' +
+      '</div></div>';
+  }).join('');
+}
+
+function verDetalleCotizacionMovil(id) {
+  var c = _cotizacionesMovil.find(function(x){ return x.id === id; });
+  if (!c) { notif('Cotización no encontrada', 'err'); return; }
+  var fecha = c.creado_en ? new Date(c.creado_en).toLocaleString('es-MX', {day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '';
+  var filas = (c.items||[]).map(function(i) {
+    return '<div style="display:flex;justify-content:space-between;align-items:flex-start;padding:9px 0;border-bottom:1px solid var(--border)">' +
+      '<div style="font-size:13px;font-weight:700">'+i.cantidad+'x '+i.nombre_producto+'</div>' +
+      '<div style="font-size:13px;font-weight:800;color:var(--text2)">$'+(Number(i.precio_unitario)*Number(i.cantidad)).toFixed(2)+'</div>' +
+    '</div>';
+  }).join('') || '<p style="color:var(--text3);font-size:12px">Sin productos</p>';
+
+  var acciones = c.estado !== 'confirmada' && c.estado !== 'cancelada'
+    ? '<div style="display:flex;gap:8px;margin-top:10px">' +
+        '<button class="btn-full primary" style="padding:8px;font-size:12px" onclick="abrirConfirmarCotizacionMovil()">✅ Confirmar venta</button>' +
+        '<button class="btn-full danger" style="padding:8px;font-size:12px" onclick="cambiarEstadoCotizacionMovil(\''+c.id+'\',\'cancelada\')">❌ Cancelar</button>' +
+      '</div>' +
+      '<div id="cotConfirmarBoxM" style="display:none;margin-top:10px;padding:10px;background:var(--s2);border-radius:9px">' +
+        '<div style="font-size:11px;color:var(--text2);font-weight:700;margin-bottom:6px">Forma de pago</div>' +
+        '<div style="display:flex;gap:6px;flex-wrap:wrap">' +
+          ['efectivo','tarjeta','transferencia'].map(function(fp) {
+            var lbl = fp==='efectivo'?'💵 Efectivo':fp==='tarjeta'?'💳 Tarjeta':'📲 Transferencia';
+            return '<button class="btn-full sec" style="width:auto;padding:7px 10px;font-size:11px" onclick="confirmarCotizacionMovil(\''+c.id+'\',\''+fp+'\')">'+lbl+'</button>';
+          }).join('') +
+        '</div>' +
+      '</div>'
+    : '';
+
+  var html = '<div class="modal-overlay" id="modalDetCot"><div class="modal-sheet">' +
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">' +
+      '<h3 style="margin:0">📝 Cotización '+c.folio+'</h3>' +
+      '<span class="modal-close" onclick="document.getElementById(\'modalDetCot\').remove()">✕</span>' +
+    '</div>' +
+    '<div style="font-size:12px;color:var(--text2);margin-bottom:4px"><b>'+(c.cliente_nombre||'Sin nombre')+'</b>'+(c.cliente_telefono?' · 📞 '+c.cliente_telefono:'')+(c.cliente_email?' · ✉️ '+c.cliente_email:'')+'</div>' +
+    '<div style="font-size:11px;color:var(--text3);margin-bottom:8px">'+fecha+(c.valida_hasta?' · Válida hasta '+c.valida_hasta.substring(0,10):'')+'</div>' +
+    (c.notas ? '<div style="font-size:12px;color:var(--text2);background:var(--s2);border-radius:8px;padding:8px 10px;margin-bottom:8px"><b>Notas:</b> '+c.notas+'</div>' : '') +
+    filas +
+    (parseFloat(c.descuento)>0 ? '<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--danger);margin-top:8px"><span>Descuento</span><span>-$'+Number(c.descuento).toFixed(2)+'</span></div>' : '') +
+    '<div style="display:flex;justify-content:space-between;font-size:16px;font-weight:900;margin-top:8px"><span>Total</span><span>$'+Number(c.total).toFixed(2)+'</span></div>' +
+    '<div style="display:flex;gap:8px;margin-top:12px">' +
+      '<button class="btn-full sec" style="padding:8px;font-size:12px" onclick="imprimirCotizacionMovil(\''+c.id+'\')">🖨️ Imprimir / PDF</button>' +
+      (c.cliente_telefono ? '<button class="btn-full" style="padding:8px;font-size:12px;color:#25d366;background:rgba(37,211,102,.08);border:1.5px solid #25d366" onclick="enviarCotizacionWhatsAppMovil(\''+c.id+'\')">📲 WhatsApp</button>' : '') +
+    '</div>' +
+    acciones +
+    '<button class="btn-full sec" style="margin-top:12px" onclick="document.getElementById(\'modalDetCot\').remove()">Cerrar</button>' +
+  '</div></div>';
+  document.getElementById('modalContainer').innerHTML = html;
+}
+
+function abrirConfirmarCotizacionMovil() {
+  var box = document.getElementById('cotConfirmarBoxM');
+  if (box) box.style.display = 'block';
+}
+
+async function cambiarEstadoCotizacionMovil(id, estado) {
+  if (estado === 'cancelada' && !confirm('¿Cancelar esta cotización?')) return;
+  var r = await apiFetch('/api/cotizaciones/' + id + '/estado', { method: 'PUT', body: JSON.stringify({ estado: estado }) });
+  if (r && r.ok) {
+    notif('Cotización actualizada', 'ok');
+    var m = document.getElementById('modalDetCot'); if (m) m.remove();
+    loadCotizacionesMovil();
+  }
+}
+
+async function confirmarCotizacionMovil(id, formaPago) {
+  try {
+    var r = await apiFetch('/api/cotizaciones/' + id + '/confirmar', {
+      method: 'POST',
+      body: JSON.stringify({ forma_pago: formaPago, cajero: usuario ? usuario.nombre : 'Admin' })
+    });
+    var d = r ? await r.json().catch(function(){return {};}) : {};
+    if (r && r.ok) {
+      notif('✅ Venta registrada — ' + d.folio_venta, 'ok');
+      var m = document.getElementById('modalDetCot'); if (m) m.remove();
+      loadCotizacionesMovil();
+    } else {
+      notif('❌ ' + (d.error||'Error al confirmar'), 'err');
+    }
+  } catch(e) { notif('❌ Error de conexión', 'err'); }
+}
+
+function enviarCotizacionWhatsAppMovil(id) {
+  var c = _cotizacionesMovil.find(function(x){ return x.id === id; });
+  if (!c || !c.cliente_telefono) return;
+  var tel = c.cliente_telefono.replace(/[^0-9]/g, '');
+  if (tel.length === 10) tel = '52' + tel;
+  var items = (c.items||[]).map(function(i){ return '• '+i.cantidad+'x '+i.nombre_producto+' — $'+(i.precio_unitario*i.cantidad).toFixed(2); }).join('\n');
+  var msg = '📝 Cotización '+c.folio+'\n\n'+items+'\n\n💰 Total: $'+Number(c.total).toFixed(2)
+    + (c.valida_hasta ? '\n📅 Válida hasta: '+c.valida_hasta.substring(0,10) : '')
+    + '\n\n¿Deseas confirmar tu compra? Contáctanos para agendarla 🙌';
+  window.open('https://wa.me/' + tel + '?text=' + encodeURIComponent(msg), '_blank');
+  cambiarEstadoCotizacionMovil(id, 'enviada');
+}
+
+function imprimirCotizacionMovil(id) {
+  var c = _cotizacionesMovil.find(function(x){ return x.id === id; });
+  if (!c) return;
+  var negocioNombre = _negocioNombreActual || 'Kaixa Pos';
+  var filas = (c.items||[]).map(function(i) {
+    return '<div class="row"><span>'+i.cantidad+'x '+i.nombre_producto+'</span><span>$'+(i.precio_unitario*i.cantidad).toFixed(2)+'</span></div>';
+  }).join('');
+  var html = '<!DOCTYPE html><html><head><meta charset="UTF-8">' +
+    '<style>body{font-family:Arial,sans-serif;font-size:13px;margin:0;padding:28px;max-width:480px}' +
+    '.center{text-align:center}.bold{font-weight:bold}.big{font-size:20px}' +
+    'hr{border:none;border-top:1px solid #ddd;margin:14px 0}' +
+    '.row{display:flex;justify-content:space-between;margin:6px 0}' +
+    '</style></head><body>' +
+    '<div class="center bold big">📝 COTIZACIÓN</div>' +
+    '<div class="center bold" style="margin-top:4px">'+negocioNombre+'</div>' +
+    '<hr>' +
+    '<div class="row"><span>Folio:</span><span class="bold">'+c.folio+'</span></div>' +
+    '<div class="row"><span>Fecha:</span><span>'+new Date(c.creado_en).toLocaleDateString('es-MX')+'</span></div>' +
+    (c.cliente_nombre ? '<div class="row"><span>Cliente:</span><span>'+c.cliente_nombre+'</span></div>' : '') +
+    (c.valida_hasta ? '<div class="row"><span>Válida hasta:</span><span>'+c.valida_hasta.substring(0,10)+'</span></div>' : '') +
+    '<hr>' + filas +
+    (parseFloat(c.descuento)>0 ? '<div class="row"><span>Descuento</span><span>-$'+Number(c.descuento).toFixed(2)+'</span></div>' : '') +
+    '<hr><div class="row bold big"><span>Total</span><span>$'+Number(c.total).toFixed(2)+'</span></div>' +
+    (c.notas ? '<hr><div style="font-size:11px;color:#666">'+c.notas+'</div>' : '') +
+    '</body></html>';
+  var win = window.open('', '_blank');
+  win.document.write(html);
+  win.document.close();
+  win.focus();
+  setTimeout(function(){ win.print(); }, 400);
 }
 
 // ══ FACTURACIÓN CFDI (FacturAPI) ══
@@ -2796,8 +3103,7 @@ function loadMas() {
   document.getElementById('masNombreEmp').textContent = usuario ? usuario.nombre : 'Usuario';
   document.getElementById('masRolEmp').textContent = usuario ? usuario.rol : '';
   var items = [
-    { ico:'🛍️', title:'Pedidos en línea', sub:'Apartados desde la tienda web', screen:'pedidosonline' },
-    { ico:'🛒', title:'Carritos abandonados', sub:'Clientes que no terminaron su pedido', screen:'carritos' },
+    { ico:'🛍️', title:'Ventas en línea', sub:'Pedidos, carritos abandonados y cotizaciones', screen:'ventasonline' },
     { ico:'🧾', title:'Facturación CFDI', sub:'Timbrar facturas de tus ventas', screen:'cfdi' },
     { ico:'💳', title:'Pagos con tarjeta', sub:'Configura Mercado Pago', accion:'abrirPagosConfig' },
     { ico:'🎁', title:'Kits y combos', sub:'Ver y vender paquetes armados', screen:'kits' },
