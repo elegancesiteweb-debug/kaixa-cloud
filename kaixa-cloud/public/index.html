@@ -1946,6 +1946,7 @@ async function abrirTiendaConfig() {
       '<div class="form-field"><label>Teléfono</label><input id="tiendaTelInputMovil" placeholder="33 1234 5678"></div>' +
       '<div class="form-field"><label>Dirección</label><input id="tiendaDirInputMovil" placeholder="Calle, número, colonia"></div>' +
       '<div class="form-field"><label>Horario</label><input id="tiendaHorInputMovil" placeholder="Lun-Sáb 9am-8pm"></div>' +
+      '<div class="card" style="margin-bottom:14px"><label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="tiendaMostrarKitsMovil" style="width:18px;height:18px"><span style="font-size:13px;font-weight:700">🎁 Mostrar kits y combos en la tienda en línea</span></label></div>' +
       '<button class="btn-full primary" onclick="guardarTiendaConfigMovil()">💾 Guardar</button>' +
     '</div></div>';
   document.getElementById('modalContainer').innerHTML = html;
@@ -1959,6 +1960,7 @@ async function abrirTiendaConfig() {
       if (d.tienda_telefono) document.getElementById('tiendaTelInputMovil').value = d.tienda_telefono;
       if (d.tienda_direccion) document.getElementById('tiendaDirInputMovil').value = d.tienda_direccion;
       if (d.tienda_horario) document.getElementById('tiendaHorInputMovil').value = d.tienda_horario;
+      document.getElementById('tiendaMostrarKitsMovil').checked = !!d.tienda_mostrar_kits;
       if (d.tienda_imagen_url) {
         document.getElementById('tiendaImgPreviewMovil').innerHTML = '<img src="'+d.tienda_imagen_url+'" style="width:100%;height:100%;object-fit:cover">';
       }
@@ -1994,7 +1996,8 @@ async function guardarTiendaConfigMovil() {
     tienda_descripcion: document.getElementById('tiendaDescInputMovil').value.trim(),
     tienda_telefono: document.getElementById('tiendaTelInputMovil').value.trim(),
     tienda_direccion: document.getElementById('tiendaDirInputMovil').value.trim(),
-    tienda_horario: document.getElementById('tiendaHorInputMovil').value.trim()
+    tienda_horario: document.getElementById('tiendaHorInputMovil').value.trim(),
+    tienda_mostrar_kits: document.getElementById('tiendaMostrarKitsMovil').checked
   };
   if (_tiendaImgBase64Movil) body.tienda_imagen_url = _tiendaImgBase64Movil;
   if (_tiendaLogoBase64Movil) body.tienda_logo_url = _tiendaLogoBase64Movil;

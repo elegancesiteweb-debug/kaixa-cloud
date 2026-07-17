@@ -44,6 +44,7 @@ async function ensureTiendaTables() {
   await pool.query(`ALTER TABLE negocios ADD COLUMN IF NOT EXISTS tienda_telefono TEXT DEFAULT ''`);
   await pool.query(`ALTER TABLE negocios ADD COLUMN IF NOT EXISTS tienda_direccion TEXT DEFAULT ''`);
   await pool.query(`ALTER TABLE negocios ADD COLUMN IF NOT EXISTS tienda_horario TEXT DEFAULT ''`);
+  await pool.query(`ALTER TABLE negocios ADD COLUMN IF NOT EXISTS tienda_mostrar_kits BOOLEAN DEFAULT false`);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS pedidos_online (
       id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -74,6 +75,8 @@ async function ensureTiendaTables() {
   `);
   await pool.query(`ALTER TABLE pedido_online_items ADD COLUMN IF NOT EXISTS variante_id UUID`);
   await pool.query(`ALTER TABLE pedido_online_items ADD COLUMN IF NOT EXISTS variante_texto TEXT DEFAULT ''`);
+  await pool.query(`ALTER TABLE pedido_online_items ADD COLUMN IF NOT EXISTS kit_id UUID`);
+  await pool.query(`ALTER TABLE pedido_online_items ADD COLUMN IF NOT EXISTS componentes JSONB DEFAULT '[]'`);
   const sinSlug = await pool.query("SELECT id, nombre FROM negocios WHERE slug IS NULL OR slug=''");
   for (const n of sinSlug.rows) { await asignarSlug(n.id, n.nombre); }
 }
@@ -92,7 +95,8 @@ router.get('/tienda/:slug/info', async (req, res) => {
     await ensureTiendaTables();
     const neg = await pool.query(
       `SELECT id, nombre, giro_principal, tienda_imagen_url, tienda_descripcion,
-              tienda_logo_url, tienda_telefono, tienda_direccion, tienda_horario
+              tienda_logo_url, tienda_telefono, tienda_direccion, tienda_horario,
+              COALESCE(tienda_mostrar_kits,false) AS tienda_mostrar_kits
        FROM negocios WHERE slug=$1 AND activo=true`,
       [req.params.slug]
     );
@@ -145,6 +149,50 @@ router.get('/tienda/:slug/productos', async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── GET /api/tienda/:slug/kits?sucursal_id=X — kits activos con fotos de sus productos ──
+router.get('/tienda/:slug/kits', async (req, res) => {
+  try {
+    await ensureTiendaTables();
+    const { sucursal_id } = req.query;
+    if (!sucursal_id) return res.status(400).json({ error: 'Falta sucursal_id' });
+    const neg = await pool.query(
+      'SELECT id, COALESCE(tienda_mostrar_kits,false) AS mostrar FROM negocios WHERE slug=$1 AND activo=true',
+      [req.params.slug]
+    );
+    if (!neg.rows.length) return res.status(404).json({ error: 'Tienda no encontrada' });
+    if (!neg.rows[0].mostrar) return res.json([]);
+
+    const r = await pool.query(`
+      SELECT k.id, k.nombre, k.emoji, k.descripcion, k.precio, k.imagen_url,
+        COALESCE(json_agg(json_build_object(
+          'producto_id', ki.producto_id, 'nombre_producto', ki.nombre_producto,
+          'cantidad', ki.cantidad, 'imagen_url', p.imagen_url,
+          'stock', COALESCE(s.stock, 0)
+        ) ORDER BY ki.id) FILTER (WHERE ki.id IS NOT NULL), '[]') AS items
+      FROM kits k
+      LEFT JOIN kit_items ki ON ki.kit_id = k.id
+      LEFT JOIN productos p ON p.id = ki.producto_id
+      LEFT JOIN stock_actual s ON s.producto_id = ki.producto_id AND s.sucursal_id = $2
+      WHERE k.negocio_id=$1 AND k.sucursal_id=$2 AND k.activo=true
+      GROUP BY k.id ORDER BY k.nombre`,
+      [neg.rows[0].id, sucursal_id]
+    );
+
+    const kits = r.rows.map(function(k) {
+      const items = (k.items || []).filter(i => i.producto_id);
+      const stockKit = items.length
+        ? Math.min.apply(null, items.map(i => Math.floor((parseFloat(i.stock)||0) / (parseFloat(i.cantidad)||1))))
+        : 0;
+      return Object.assign({}, k, { items, stock: stockKit });
+    }).filter(k => k.stock > 0);
+
+    res.json(kits);
+  } catch(e) {
+    if (e.message.includes('does not exist')) return res.json([]);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ── POST /api/tienda/:slug/pedidos — apartar un pedido (paga en tienda) ──
 router.post('/tienda/:slug/pedidos', async (req, res) => {
   const client = await pool.connect();
@@ -172,12 +220,40 @@ router.post('/tienda/:slug/pedidos', async (req, res) => {
     let subtotal = 0;
     const itemsValidados = [];
     for (const it of items) {
+      const cantidad = Math.max(1, parseInt(it.cantidad) || 1);
+
+      if (it.kit_id) {
+        const kitRes = await client.query(
+          'SELECT id, nombre, emoji, precio FROM kits WHERE id=$1 AND negocio_id=$2 AND sucursal_id=$3 AND activo=true',
+          [it.kit_id, negocioId, sucursal_id]
+        );
+        if (!kitRes.rows.length) continue;
+        const kit = kitRes.rows[0];
+        const compRes = await client.query(
+          `SELECT ki.producto_id, ki.cantidad, COALESCE(s.stock,0) AS stock
+           FROM kit_items ki LEFT JOIN stock_actual s ON s.producto_id = ki.producto_id AND s.sucursal_id = $2
+           WHERE ki.kit_id = $1`,
+          [kit.id, sucursal_id]
+        );
+        const componentes = compRes.rows.filter(c => c.producto_id);
+        if (!componentes.length) continue;
+        const stockKit = Math.min(...componentes.map(c => Math.floor((parseFloat(c.stock)||0) / (parseFloat(c.cantidad)||1))));
+        if (stockKit < cantidad) continue; // sin stock suficiente para armar el kit — se ignora
+
+        subtotal += parseFloat(kit.precio) * cantidad;
+        itemsValidados.push({
+          producto_id: null, nombre_producto: (kit.emoji||'🎁') + ' ' + kit.nombre, cantidad,
+          precio_unitario: parseFloat(kit.precio), variante_id: null, variante_texto: '',
+          kit_id: kit.id, componentes: componentes.map(c => ({ producto_id: c.producto_id, cantidad: c.cantidad }))
+        });
+        continue;
+      }
+
       const prod = await client.query(
         'SELECT id, nombre, precio FROM productos WHERE id=$1 AND negocio_id=$2 AND sucursal_id=$3 AND activo=true',
         [it.producto_id, negocioId, sucursal_id]
       );
       if (!prod.rows.length) continue;
-      const cantidad = Math.max(1, parseInt(it.cantidad) || 1);
       const p = prod.rows[0];
 
       let varianteId = null, varianteTexto = '', precioUnit = parseFloat(p.precio);
@@ -197,7 +273,7 @@ router.post('/tienda/:slug/pedidos', async (req, res) => {
       subtotal += precioUnit * cantidad;
       itemsValidados.push({
         producto_id: p.id, nombre_producto: p.nombre, cantidad, precio_unitario: precioUnit,
-        variante_id: varianteId, variante_texto: varianteTexto
+        variante_id: varianteId, variante_texto: varianteTexto, kit_id: null, componentes: []
       });
     }
     if (!itemsValidados.length) {
@@ -214,9 +290,10 @@ router.post('/tienda/:slug/pedidos', async (req, res) => {
 
     for (const it of itemsValidados) {
       await client.query(
-        `INSERT INTO pedido_online_items (pedido_id, producto_id, nombre_producto, cantidad, precio_unitario, variante_id, variante_texto)
-         VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-        [pedidoId, it.producto_id, it.nombre_producto, it.cantidad, it.precio_unitario, it.variante_id, it.variante_texto]
+        `INSERT INTO pedido_online_items (pedido_id, producto_id, nombre_producto, cantidad, precio_unitario, variante_id, variante_texto, kit_id, componentes)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+        [pedidoId, it.producto_id, it.nombre_producto, it.cantidad, it.precio_unitario, it.variante_id, it.variante_texto,
+         it.kit_id || null, JSON.stringify(it.componentes || [])]
       );
     }
 

@@ -57,6 +57,23 @@
   .notif{position:fixed;top:14px;left:50%;transform:translateX(-50%);background:#1a1a2e;color:#fff;padding:10px 18px;border-radius:10px;font-size:13px;font-weight:600;z-index:999;opacity:0;transition:opacity .25s;pointer-events:none}
   .notif.show{opacity:1}
 
+  /* ── Kits y combos ── */
+  .kits-title{max-width:var(--maxw);margin:18px auto 10px;padding:0 14px;font-size:15px;font-weight:900;display:flex;align-items:center;gap:6px}
+  .kits{display:flex;flex-direction:column;gap:12px}
+  .kit{background:var(--s1);border-radius:16px;overflow:hidden;box-shadow:0 3px 12px rgba(139,92,246,.08);display:flex;flex-direction:column}
+  .kit-carousel{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;aspect-ratio:16/9;background:var(--bg)}
+  .kit-carousel::-webkit-scrollbar{display:none}
+  .kit-carousel .slide{flex:0 0 100%;scroll-snap-align:start;display:flex;align-items:center;justify-content:center;overflow:hidden}
+  .kit-carousel .slide img{width:100%;height:100%;object-fit:cover}
+  .kit-carousel .slide span{font-size:44px}
+  .kit-dots{display:flex;justify-content:center;gap:5px;padding:6px 0 0}
+  .kit-dots span{width:5px;height:5px;border-radius:50%;background:var(--border)}
+  .kit-body{padding:12px 14px 14px}
+  .kit-nm{font-size:14px;font-weight:800;margin-bottom:2px}
+  .kit-desc{font-size:11.5px;color:var(--text2);margin-bottom:6px}
+  .kit-includes{font-size:11px;color:var(--text3);margin-bottom:8px}
+  .kit-pr{font-size:16px;font-weight:900;color:var(--acc);margin-bottom:8px}
+
   /* ── Responsive: tablet y escritorio ── */
   @media (min-width:700px){
     :root{ --maxw:680px; }
@@ -66,6 +83,8 @@
     .hero h1{font-size:28px}
     .hero p{font-size:14px}
     .prods{grid-template-columns:repeat(3,1fr)}
+    .kits{flex-direction:row;flex-wrap:wrap}
+    .kit{flex:0 0 calc(50% - 6px)}
     .sheet{border-radius:20px;max-height:80vh;margin-bottom:5vh}
     .overlay{align-items:center}
   }
@@ -73,6 +92,7 @@
     :root{ --maxw:960px; }
     .hero{min-height:280px}
     .prods{grid-template-columns:repeat(4,1fr)}
+    .kit{flex:0 0 calc(33.333% - 8px)}
   }
   @media (min-width:1300px){
     :root{ --maxw:1180px; }
@@ -108,6 +128,11 @@
 
 <div class="wrap" style="padding-top:0">
   <div id="prodsBox"></div>
+</div>
+
+<div id="kitsSection" style="display:none">
+  <div class="kits-title">🎁 Kits y combos</div>
+  <div class="wrap" style="padding-top:0"><div class="kits" id="kitsBox"></div></div>
 </div>
 
 <div class="cartbar" id="cartBar" onclick="abrirCarrito()">
@@ -169,6 +194,8 @@ var negocio = null;
 var sucursales = [];
 var sucursalId = null;
 var productos = [];
+var kits = [];
+var mostrarKits = false;
 var cart = {}; // { producto_id: {producto, qty} }
 var catActiva = 'Todos';
 
@@ -187,6 +214,7 @@ async function init(){
     var d = await r.json();
     negocio = d.negocio;
     sucursales = d.sucursales || [];
+    mostrarKits = !!negocio.tienda_mostrar_kits;
     document.getElementById('negNombre').textContent = negocio.nombre;
     document.title = negocio.nombre + ' — Pedidos en línea';
     if (negocio.tienda_descripcion) {
@@ -252,6 +280,63 @@ async function cargarProductos(){
   }catch(e){
     box.innerHTML = '<div class="empty"><div>⚠️</div>No se pudo cargar el catálogo</div>';
   }
+  if (mostrarKits) await cargarKits();
+}
+
+async function cargarKits(){
+  try{
+    var r = await fetch('/api/tienda/' + slug + '/kits?sucursal_id=' + sucursalId);
+    kits = r.ok ? await r.json() : [];
+  }catch(e){ kits = []; }
+  var section = document.getElementById('kitsSection');
+  if (!kits.length) { section.style.display = 'none'; return; }
+  section.style.display = 'block';
+  renderKits();
+}
+
+function renderKits(){
+  var box = document.getElementById('kitsBox');
+  box.innerHTML = kits.map(function(k){
+    var fotos = (k.items||[]).filter(function(i){ return i.imagen_url && i.imagen_url.startsWith('data:'); });
+    var slides, dots = '';
+    if (fotos.length) {
+      slides = fotos.map(function(i){ return '<div class="slide"><img src="'+i.imagen_url+'" alt=""></div>'; }).join('');
+      if (fotos.length > 1) dots = '<div class="kit-dots">' + fotos.map(function(){ return '<span></span>'; }).join('') + '</div>';
+    } else {
+      slides = '<div class="slide"><span>'+(k.emoji||'🎁')+'</span></div>';
+    }
+    var incluye = (k.items||[]).map(function(i){ return i.cantidad+'x '+i.nombre_producto; }).join(' • ');
+    var key = 'kit_' + k.id;
+    var enCarrito = cart[key];
+    var accion = enCarrito
+      ? '<div class="qty"><button onclick="cambiarQty(\''+key+'\',-1)">−</button><b>'+enCarrito.qty+'</b><button onclick="cambiarQty(\''+key+'\',1)">+</button></div>'
+      : '<button class="btn" onclick="agregarKitCarrito(\''+k.id+'\')">Agregar</button>';
+    return '<div class="kit">' +
+      '<div class="kit-carousel">'+slides+'</div>' + dots +
+      '<div class="kit-body">' +
+        '<div class="kit-nm">'+(k.emoji||'🎁')+' '+k.nombre+'</div>' +
+        (k.descripcion ? '<div class="kit-desc">'+k.descripcion+'</div>' : '') +
+        '<div class="kit-includes">Incluye: '+incluye+'</div>' +
+        '<div class="kit-pr">$'+Number(k.precio).toFixed(2)+'</div>' +
+        accion +
+      '</div></div>';
+  }).join('');
+}
+
+function agregarKitCarrito(kitId){
+  var k = kits.find(function(x){ return x.id === kitId; });
+  if (!k) return;
+  var key = 'kit_' + kitId;
+  if (cart[key]) {
+    if (cart[key].qty + 1 > k.stock) { notif('Solo hay ' + k.stock + ' disponibles'); return; }
+    cart[key].qty++;
+  } else {
+    cart[key] = { kit: k, qty: 1, nombreMostrado: (k.emoji||'🎁') + ' ' + k.nombre, precioMostrado: Number(k.precio) };
+  }
+  renderKits();
+  actualizarCartBar();
+  if (document.getElementById('ovCarrito').classList.contains('show')) renderCarrito();
+  notif('✅ ' + k.nombre + ' agregado');
 }
 
 function renderCategorias(){
@@ -290,7 +375,7 @@ function renderProductos(){
       ? '<img src="'+p.imagen_url+'">' : '<span>'+(p.emoji || '📦')+'</span>';
     var tieneVar = p.tiene_variantes && p.variantes && p.variantes.length;
     var enCarrito = !tieneVar && cart[p.id];
-    var enCarritoCount = tieneVar ? Object.keys(cart).filter(function(k){ return cart[k].producto.id === p.id; }).reduce(function(s,k){ return s+cart[k].qty; }, 0) : 0;
+    var enCarritoCount = tieneVar ? Object.keys(cart).filter(function(k){ return cart[k].producto && cart[k].producto.id === p.id; }).reduce(function(s,k){ return s+cart[k].qty; }, 0) : 0;
     var accion;
     if (tieneVar) {
       accion = '<button class="btn" onclick="abrirSelectorVariante(\''+p.id+'\')">' + (enCarritoCount ? enCarritoCount + ' en carrito · Agregar más' : 'Elegir opción') + '</button>';
@@ -376,13 +461,14 @@ function agregarCarritoVariante(prodId, varianteId){
 function cambiarQty(key, delta){
   var it = cart[key];
   if (!it) return;
-  var maxStock = it.variante ? it.variante.stock : it.producto.stock;
+  var maxStock = it.variante ? it.variante.stock : (it.kit ? it.kit.stock : it.producto.stock);
   it.qty += delta;
   if (it.qty <= 0 || it.qty > maxStock) {
     if (it.qty > maxStock) { notif('Solo hay ' + maxStock + ' disponibles'); it.qty = maxStock; }
     if (it.qty <= 0) delete cart[key];
   }
   renderProductos();
+  if (mostrarKits) renderKits();
   actualizarCartBar();
   if (document.getElementById('ovCarrito').classList.contains('show')) renderCarrito();
 }
@@ -420,7 +506,7 @@ function renderCarrito(){
       var it = cart[key];
       var nombre = it.nombreMostrado || it.producto.nombre;
       var precio = it.precioMostrado!=null ? it.precioMostrado : it.producto.precio;
-      var fotoUrl = (it.variante && it.variante.imagen_url) || it.producto.imagen_url;
+      var fotoUrl = (it.variante && it.variante.imagen_url) || (it.producto && it.producto.imagen_url) || (it.kit && it.kit.imagen_url);
       var foto = fotoUrl ? '<img src="'+fotoUrl+'" style="width:40px;height:40px;border-radius:8px;object-fit:cover;flex-shrink:0">' : '';
       return '<div class="item-row">' +
         foto +
@@ -446,7 +532,11 @@ async function enviarPedido(){
   var btn = document.getElementById('ckBtn');
   btn.disabled = true; btn.textContent = 'Enviando…';
   try{
-    var items = Object.values(cart).map(function(it){ return { producto_id: it.producto.id, cantidad: it.qty, variante_id: it.variante ? it.variante.id : null }; });
+    var items = Object.values(cart).map(function(it){
+      return it.kit
+        ? { kit_id: it.kit.id, cantidad: it.qty }
+        : { producto_id: it.producto.id, cantidad: it.qty, variante_id: it.variante ? it.variante.id : null };
+    });
     var r = await fetch('/api/tienda/' + slug + '/pedidos', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
