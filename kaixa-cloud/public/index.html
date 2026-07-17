@@ -1429,7 +1429,7 @@ async function verDetalleVenta(id) {
         '<span class="modal-close" onclick="document.getElementById(\'modalVenta\').remove()">✕</span>' +
       '</div>' +
       '<div style="font-size:12px;color:var(--text3);margin-bottom:12px">' + (v.creado_en ? new Date(v.creado_en).toLocaleString('es-MX',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : '') + ' · ' + (v.cajero_nombre||v.usuario_nombre||'—') + '</div>' +
-      (items.length ? items.map(function(it){ return '<div style="display:flex;justify-content:space-between;font-size:13px;padding:8px 0;border-bottom:1px solid var(--border)"><span>' + it.nombre + ' x' + it.cantidad + '</span><span style="font-weight:700;font-family:var(--fm)">' + fmt(it.subtotal||it.precio_unitario*it.cantidad) + '</span></div>'; }).join('') : '<p style="color:var(--text3);font-size:12px">Sin detalle disponible</p>') +
+      (items.length ? items.map(function(it){ return '<div style="display:flex;justify-content:space-between;font-size:13px;padding:8px 0;border-bottom:1px solid var(--border)"><span>' + (it.nombre_producto||it.nombre||'Producto') + ' x' + it.cantidad + '</span><span style="font-weight:700;font-family:var(--fm)">' + fmt(it.subtotal||it.precio_unitario*it.cantidad) + '</span></div>'; }).join('') : '<p style="color:var(--text3);font-size:12px">Sin detalle disponible</p>') +
       '<div style="display:flex;justify-content:space-between;font-size:16px;font-weight:900;margin-top:12px;color:var(--accent)"><span>TOTAL</span><span style="font-family:var(--fm)">' + fmt(v.total) + '</span></div>' +
       '<div style="display:flex;gap:8px;margin-top:14px">' +
         '<button class="btn-full sec" onclick="cancelarVenta(\'' + v.id + '\')">✕ Cancelar</button>' +
