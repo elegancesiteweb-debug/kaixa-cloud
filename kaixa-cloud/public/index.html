@@ -335,6 +335,7 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:var(--ff);backgroun
     <div class="subscreen" id="sub-traspasos"><div id="traspasosList"></div></div>
     <div class="subscreen" id="sub-pedidosonline"><div id="pedidosOnlineList"></div></div>
     <div class="subscreen" id="sub-kits"><div id="kitsList"></div></div>
+    <div class="subscreen" id="sub-sugeridos"><div id="sugeridosList"></div></div>
     <div class="subscreen" id="sub-pedidos"><div id="pedidosList"></div></div>
     <div class="subscreen" id="sub-corte"><div id="corteContent"></div></div>
     <div class="subscreen" id="sub-proveedores"><div id="proveedoresList"></div></div>
@@ -518,6 +519,7 @@ var screenCfg = {
   traspasos: { title: 'Traspasos', btn: '⊕', load: loadTraspasos },
   pedidosonline: { title: 'Pedidos en línea', btn: null, load: loadPedidosOnline },
   kits:     { title: 'Kits y combos', btn: null, load: loadKits },
+  sugeridos: { title: 'Pedidos sugeridos', btn: null, load: loadSugeridos },
   pedidos:  { title: 'Pedidos', btn: '⊕', load: loadPedidos },
   corte:    { title: 'Corte de caja', btn: null, load: loadCorte },
   mas:      { title: 'Más', btn: null, load: loadMas },
@@ -537,7 +539,7 @@ function navTo(screen) {
   var btn1 = document.getElementById('topBtn1');
   if (cfg.btn) { btn1.textContent = cfg.btn; btn1.style.display = ''; }
   else { btn1.style.display = 'none'; }
-  var navMap = { dash:'dash', pos:'pos', inv:'inv', ventas:'mas', clientes:'clientes', emps:'mas', lotes:'mas', traspasos:'mas', pedidosonline:'mas', kits:'mas', pedidos:'mas', corte:'mas', mas:'mas' };
+  var navMap = { dash:'dash', pos:'pos', inv:'inv', ventas:'mas', clientes:'clientes', emps:'mas', lotes:'mas', traspasos:'mas', pedidosonline:'mas', kits:'mas', sugeridos:'mas', pedidos:'mas', corte:'mas', mas:'mas' };
   document.querySelectorAll('.nav-item').forEach(function(n) { n.classList.remove('active'); });
   var navId = navMap[screen] || screen;
   var navEl = document.getElementById('nav-' + navId);
@@ -2062,12 +2064,14 @@ async function recibirPedido(id) {
 }
 
 function abrirNuevoPedido() {
+  if (!_proveedores.length) { notif('Primero registra un proveedor', 'err'); return; }
+  var optsProv = _proveedores.map(function(p){return '<option value="'+p.id+'">'+p.nombre+'</option>';}).join('');
   var optsProds = allProds.map(function(p){return '<option value="'+p.id+'" data-costo="'+(p.costo||0)+'">'+p.nombre+'</option>';}).join('');
   var html = '<div class="modal-overlay" id="modalNuevoPedido"><div class="modal-sheet">' +
     '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">' +
       '<h3 style="margin:0">➕ Nuevo pedido</h3>' +
       '<span class="modal-close" onclick="document.getElementById(\'modalNuevoPedido\').remove()">✕</span></div>' +
-    '<div class="form-field"><label>Proveedor</label><input id="pedProvNom" placeholder="Nombre del proveedor"></div>' +
+    '<div class="form-field"><label>Proveedor</label><select id="pedProvSel">' + optsProv + '</select></div>' +
     '<div id="pedItemsWrap"></div>' +
     '<div class="form-field"><select id="pedProdSel">' + optsProds + '</select></div>' +
     '<div class="form-row">' +
@@ -2098,10 +2102,98 @@ function agregarItemPedidoLocal() {
 
 async function guardarNuevoPedido() {
   if (!window._pedItemsLocal.length) { notif('Agrega al menos un producto','err'); return; }
-  var provNom = (document.getElementById('pedProvNom')||{}).value||'';
-  var r = await apiFetch('/api/pedidos',{method:'POST',body:JSON.stringify({proveedor_nombre:provNom,items:window._pedItemsLocal})});
+  var provSel = document.getElementById('pedProvSel');
+  var provId = provSel ? provSel.value : '';
+  var provNom = provSel ? provSel.options[provSel.selectedIndex].text : '';
+  if (!provId) { notif('Selecciona un proveedor', 'err'); return; }
+  var r = await apiFetch('/api/pedidos',{method:'POST',body:JSON.stringify({proveedor_id:provId,proveedor_nombre:provNom,items:window._pedItemsLocal})});
   if(r&&r.ok){notif('✅ Pedido creado','ok');document.getElementById('modalContainer').innerHTML='';loadPedidos();}
   else{notif('Error al crear pedido','err');}
+}
+
+// ══ PEDIDOS SUGERIDOS POR PROVEEDOR ══
+var _sugeridosPorProv = {};
+async function loadSugeridos() {
+  var cont = document.getElementById('sugeridosList');
+  cont.innerHTML = '<div class="empty"><div class="ico">⏳</div><p>Cargando...</p></div>';
+  try {
+    var r = await apiFetch('/api/pedidos/sugeridos');
+    var prods = r && r.ok ? await r.json() : [];
+    if (!Array.isArray(prods)) prods = [];
+    _sugeridosPorProv = {};
+    var sinProveedor = [];
+    prods.forEach(function(p) {
+      if (p.proveedor_id) {
+        if (!_sugeridosPorProv[p.proveedor_id]) _sugeridosPorProv[p.proveedor_id] = { nombre: p.proveedor_nombre || 'Proveedor', productos: [] };
+        _sugeridosPorProv[p.proveedor_id].productos.push(p);
+      } else {
+        sinProveedor.push(p);
+      }
+    });
+    renderSugeridos(sinProveedor);
+  } catch(e) { cont.innerHTML = '<div class="empty"><div class="ico">⚠️</div><p>Error cargando sugerencias</p></div>'; }
+}
+
+function renderSugeridos(sinProveedor) {
+  var cont = document.getElementById('sugeridosList');
+  var provIds = Object.keys(_sugeridosPorProv);
+  if (!provIds.length && !sinProveedor.length) {
+    cont.innerHTML = '<div class="empty"><div class="ico">✅</div><p>Sin productos con stock bajo</p></div>';
+    return;
+  }
+  var html = provIds.map(function(provId) {
+    var g = _sugeridosPorProv[provId];
+    var filas = g.productos.map(function(p) {
+      var urgente = p.stock <= 0;
+      var cantDef = Math.max(10, (p.stock_minimo||5)*3);
+      return '<div style="padding:10px 0;border-bottom:1px solid var(--border)">' +
+        '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">' +
+          '<input type="checkbox" class="sug-check" data-prod="'+p.id+'" data-prov="'+provId+'" data-nombre="'+(p.nombre||'').replace(/"/g,'')+'" data-costo="'+(p.costo||0)+'" checked style="width:16px;height:16px">' +
+          '<div style="flex:1"><div style="font-size:13px;font-weight:700">'+p.nombre+'</div>' +
+          '<div style="font-size:11px;color:var(--text3)">Stock: '+p.stock+' | Mínimo: '+(p.stock_minimo||5)+'</div></div>' +
+          '<span class="tag '+(urgente?'err':'warn')+'">'+(urgente?'Agotado':'Bajo')+'</span>' +
+        '</div>' +
+        '<div style="display:flex;gap:8px;padding-left:24px">' +
+          '<input type="number" class="sug-cant" data-prod="'+p.id+'" value="'+cantDef+'" min="1" style="flex:1;padding:6px;font-size:12px;text-align:center" placeholder="Cantidad">' +
+          '<input type="number" class="sug-costo" data-prod="'+p.id+'" value="'+(p.costo||'')+'" min="0" step="0.01" style="flex:1;padding:6px;font-size:12px;text-align:center" placeholder="Costo unit.">' +
+        '</div>' +
+      '</div>';
+    }).join('');
+    return '<div class="card" style="margin:0 16px 12px">' +
+      '<div style="font-size:14px;font-weight:800;margin-bottom:4px">🏭 '+g.nombre+'</div>' +
+      filas +
+      '<button class="btn-full primary" style="margin-top:10px" onclick="crearPedidoDesdeSugeridos(\''+provId+'\')">Crear pedido a este proveedor</button>' +
+    '</div>';
+  }).join('');
+  if (sinProveedor.length) {
+    html += '<div class="card" style="margin:0 16px 12px;background:rgba(245,158,11,.08)">' +
+      '<div style="font-size:13px;font-weight:700;color:#f59e0b;margin-bottom:8px">⚠️ Sin proveedor asignado ('+sinProveedor.length+')</div>' +
+      sinProveedor.slice(0,5).map(function(p){ return '<div style="font-size:12px;padding:5px 0"><b>'+p.nombre+'</b> — Stock: '+p.stock+'</div>'; }).join('') +
+      (sinProveedor.length>5 ? '<div style="font-size:11px;color:var(--text3);margin-top:4px">...y '+(sinProveedor.length-5)+' más</div>' : '') +
+    '</div>';
+  }
+  cont.innerHTML = html;
+}
+
+async function crearPedidoDesdeSugeridos(provId) {
+  var checks = document.querySelectorAll('.sug-check[data-prov="'+provId+'"]:checked');
+  if (!checks.length) { notif('Selecciona al menos un producto', 'err'); return; }
+  var items = [];
+  checks.forEach(function(ch) {
+    var prodId = ch.dataset.prod;
+    var cantEl = document.querySelector('.sug-cant[data-prod="'+prodId+'"]');
+    var costoEl = document.querySelector('.sug-costo[data-prod="'+prodId+'"]');
+    var cant = parseInt((cantEl && cantEl.value) || 1) || 1;
+    var costo = parseFloat((costoEl && costoEl.value) || ch.dataset.costo || 0) || 0;
+    items.push({ producto_id: prodId, nombre_producto: ch.dataset.nombre, cantidad: cant, costo_unitario: costo });
+  });
+  var g = _sugeridosPorProv[provId];
+  var r = await apiFetch('/api/pedidos', { method: 'POST', body: JSON.stringify({
+    proveedor_id: provId, proveedor_nombre: g ? g.nombre : '', items: items,
+    notas: 'Pedido sugerido por stock bajo'
+  }) });
+  if (r && r.ok) { notif('✅ Pedido creado', 'ok'); loadSugeridos(); }
+  else { notif('Error al crear pedido', 'err'); }
 }
 
 // ══ CORTE ══
@@ -2141,6 +2233,7 @@ function loadMas() {
   var items = [
     { ico:'🛍️', title:'Pedidos en línea', sub:'Apartados desde la tienda web', screen:'pedidosonline' },
     { ico:'🎁', title:'Kits y combos', sub:'Ver y vender paquetes armados', screen:'kits' },
+    { ico:'💡', title:'Pedidos sugeridos', sub:'Productos con stock bajo por proveedor', screen:'sugeridos' },
     { ico:'🖼️', title:'Mi tienda en línea', sub:'Imagen y descripción públicas', accion:'abrirTiendaConfig' },
     { ico:'🧾', title:'Ventas', sub:'Historial y devoluciones', screen:'ventas' },
     { ico:'👥', title:'Empleados', sub:'Gestión y asistencia', screen:'emps' },
@@ -2207,20 +2300,30 @@ function abrirModalProveedor(p) {
     '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">' +
       '<h3 style="margin:0">' + (esNuevo?'➕ Nuevo proveedor':'✏️ Editar proveedor') + '</h3>' +
       '<span class="modal-close" onclick="document.getElementById(\'modalProv\').remove()">✕</span></div>' +
+    '<input type="hidden" id="prvId" value="' + (p?p.id:'') + '">' +
     '<div class="form-field"><label>Nombre</label><input id="prvNombre" value="' + (p?p.nombre:'') + '"></div>' +
     '<div class="form-field"><label>Teléfono</label><input id="prvTel" type="tel" value="' + (p?p.telefono||'':'') + '"></div>' +
     '<div class="form-field"><label>Email</label><input id="prvEmail" type="email" value="' + (p?p.email||'':'') + '"></div>' +
     '<button class="btn-full primary" onclick="guardarProveedor()">Guardar</button>' +
+    (esNuevo ? '' : '<button class="btn-full danger" style="margin-top:8px" onclick="eliminarProveedor(\'' + p.id + '\')">Eliminar proveedor</button>') +
     '</div></div>';
   document.getElementById('modalContainer').innerHTML = html;
 }
 
 async function guardarProveedor() {
+  var id = document.getElementById('prvId').value;
   var data = { nombre: document.getElementById('prvNombre').value, telefono: document.getElementById('prvTel').value, email: document.getElementById('prvEmail').value };
   if (!data.nombre) { notif('El nombre es requerido','err'); return; }
-  var r = await apiFetch('/api/proveedores',{method:'POST',body:JSON.stringify(data)});
+  var r = await apiFetch('/api/proveedores' + (id ? '/' + id : ''), { method: id ? 'PUT' : 'POST', body: JSON.stringify(data) });
   if(r&&r.ok){notif('✅ Proveedor guardado','ok');document.getElementById('modalContainer').innerHTML='';loadProveedores();}
   else{notif('Error al guardar','err');}
+}
+
+async function eliminarProveedor(id) {
+  if (!confirm('¿Eliminar este proveedor?')) return;
+  var r = await apiFetch('/api/proveedores/' + id, { method: 'DELETE' });
+  if (r && r.ok) { notif('✅ Proveedor eliminado', 'ok'); document.getElementById('modalContainer').innerHTML = ''; loadProveedores(); }
+  else { notif('Error al eliminar', 'err'); }
 }
 
 var _origTopBtn1 = topBtn1Action;

@@ -8,9 +8,24 @@ router.post('/push', async (req, res) => {
   const { negocio_id, sucursal_id, id: caja_id } = req.caja;
   const { productos = [], clientes = [], ventas = [], movimientos = [], lotes = [] } = req.body;
   const variantes = req.body.variantes || [];
+  const proveedores = req.body.proveedores || [];
+  const pedidos = req.body.pedidos || [];
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+
+    // Proveedores (van primero: los productos pueden referenciarlos por uuid)
+    for (const pv of proveedores) {
+      try {
+        const activoPv = (pv.activo === false || pv.activo === 0) ? false : true;
+        await client.query(
+          `INSERT INTO proveedores (id, negocio_id, nombre, telefono, email, activo)
+           VALUES ($1,$2,$3,$4,$5,$6)
+           ON CONFLICT (id) DO UPDATE SET nombre=$3, telefono=$4, email=$5, activo=$6`,
+          [pv.uuid, negocio_id, pv.nombre, pv.telefono||'', pv.email||'', activoPv]
+        );
+      } catch(e) { console.warn('Proveedor push error:', e.message); }
+    }
 
     // Productos
     for (const p of productos) {
@@ -19,16 +34,16 @@ router.post('/push', async (req, res) => {
       await client.query(
         `INSERT INTO productos
           (id, negocio_id, sucursal_id, nombre, emoji, imagen_url, codigo_barras, precio, costo,
-           stock_minimo, categoria_id, giro, por_peso, unidad_peso, tiene_prescripcion, activo, actualizado_en)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16, now())
+           stock_minimo, categoria_id, giro, por_peso, unidad_peso, tiene_prescripcion, activo, proveedor_id, actualizado_en)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17, now())
          ON CONFLICT (id) DO UPDATE SET
            sucursal_id=COALESCE(productos.sucursal_id, $3),
            nombre=$4, emoji=$5, imagen_url=COALESCE(NULLIF($6,''), productos.imagen_url), codigo_barras=$7, precio=$8, costo=$9,
            stock_minimo=$10, categoria_id=$11, giro=$12, por_peso=$13, unidad_peso=$14,
-           tiene_prescripcion=$15, activo=$16, actualizado_en=now()`,
+           tiene_prescripcion=$15, activo=$16, proveedor_id=COALESCE($17, productos.proveedor_id), actualizado_en=now()`,
         [p.uuid, negocio_id, prodSucursalId, p.nombre, p.emoji||'📦', p.imagen_url||'', p.codigo_barras||'',
          p.precio||0, p.costo||0, p.stock_minimo||5, p.categoria_id||null, p.giro||'tienda',
-         !!p.por_peso, p.unidad_peso||'kg', !!p.tiene_prescripcion, activoProd]
+         !!p.por_peso, p.unidad_peso||'kg', !!p.tiene_prescripcion, activoProd, p.proveedor_uuid||null]
       );
       // Ajuste de stock si viene stock
       if (p.stock !== undefined && p.stock !== null) {
@@ -167,6 +182,46 @@ router.post('/push', async (req, res) => {
         }
       } catch(e) { console.warn('Variante push error:', e.message); }
     }
+
+    // Pedidos a proveedores
+    for (const p of pedidos) {
+      try {
+        await client.query(`
+          INSERT INTO pedidos (id, negocio_id, sucursal_id, proveedor_id, proveedor_nombre, estado, total, notas, creado_en, actualizado_en)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9, now())
+          ON CONFLICT (id) DO UPDATE SET
+            estado=$6, total=$7, notas=$8, actualizado_en=now()`,
+          [p.id, negocio_id, p.sucursal_id||sucursal_id, p.proveedor_id||null, p.proveedor_nombre||'',
+           p.estado||'pendiente', p.total||0, p.notas||'', p.creado_en||new Date()]
+        );
+        if (p.items && p.items.length > 0) {
+          await client.query('DELETE FROM pedido_items WHERE pedido_id=$1', [p.id]);
+          for (const item of p.items) {
+            await client.query(`
+              INSERT INTO pedido_items (pedido_id, producto_id, nombre_producto, cantidad, costo_unitario, subtotal)
+              VALUES ($1,$2,$3,$4,$5,$6)`,
+              [p.id, item.producto_id||null, item.nombre_producto||'', item.cantidad||1, item.costo_unitario||0,
+               (item.cantidad||1)*(item.costo_unitario||0)]
+            );
+          }
+        }
+        // Si el pedido se marcó como recibido en la PC, aplicar el mismo
+        // aumento de stock aquí para que la nube/móvil queden en el mismo
+        // numero — la PC ya lo aplicó localmente, esto solo refleja el cambio.
+        if (p.estado === 'recibido' && p.aplicar_recepcion) {
+          const items = await client.query('SELECT * FROM pedido_items WHERE pedido_id=$1', [p.id]);
+          for (const item of items.rows) {
+            if (!item.producto_id) continue;
+            await client.query(
+              `INSERT INTO stock_movimientos (id, negocio_id, sucursal_id, producto_id, caja_id, cantidad, motivo)
+               VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,'recepcion')`,
+              [negocio_id, p.sucursal_id||sucursal_id, item.producto_id, caja_id, item.cantidad]
+            );
+            await client.query('UPDATE productos SET actualizado_en=now() WHERE id=$1', [item.producto_id]);
+          }
+        }
+      } catch(e) { console.warn('Pedido push error:', e.message); }
+    }
     await client.query('UPDATE cajas SET ultimo_sync = now() WHERE id = $1', [caja_id]);
     await client.query('COMMIT');
 
@@ -180,7 +235,8 @@ router.post('/push', async (req, res) => {
     }
     res.json({ ok: true, recibidos: {
       productos: productos.length, clientes: clientes.length,
-      ventas: ventas.length, movimientos: movimientos.length, lotes: lotes.length
+      ventas: ventas.length, movimientos: movimientos.length, lotes: lotes.length,
+      proveedores: proveedores.length, pedidos: pedidos.length
     }});
   } catch (e) {
     await client.query('ROLLBACK');
@@ -196,12 +252,12 @@ router.get('/pull', async (req, res) => {
   const { negocio_id, sucursal_id, id: caja_id } = req.caja;
   const since = req.query.since || '1970-01-01T00:00:00Z';
   try {
-    const [productos, clientes, ventas, movimientos, lotesPull, kitsPull, variantesPull] = await Promise.all([
+    const [productos, clientes, ventas, movimientos, lotesPull, kitsPull, variantesPull, proveedoresPull, pedidosPull] = await Promise.all([
       pool.query(
         `SELECT p.id, p.negocio_id, p.sucursal_id, p.nombre, p.emoji, p.codigo_barras,
                 p.precio, p.costo, p.stock_minimo, p.categoria_id, p.giro, p.por_peso,
                 p.unidad_peso, p.tiene_prescripcion, p.activo, p.creado_en, p.actualizado_en,
-                p.imagen_url,
+                p.imagen_url, p.proveedor_id,
                 COALESCE(s.stock,0) AS stock_actual
          FROM productos p
          LEFT JOIN stock_actual s ON s.producto_id = p.id AND s.sucursal_id = $2
@@ -252,6 +308,22 @@ router.get('/pull', async (req, res) => {
          WHERE negocio_id=$1 AND sucursal_id=$2 AND actualizado_en > $3
          ORDER BY actualizado_en`,
         [negocio_id, sucursal_id, since]
+      ).catch(() => ({ rows: [] })),
+      pool.query(
+        `SELECT * FROM proveedores WHERE negocio_id=$1 ORDER BY nombre`,
+        [negocio_id]
+      ).catch(() => ({ rows: [] })),
+      pool.query(
+        `SELECT p.*,
+          COALESCE(json_agg(json_build_object(
+            'producto_id', pi.producto_id, 'nombre_producto', pi.nombre_producto,
+            'cantidad', pi.cantidad, 'costo_unitario', pi.costo_unitario
+          )) FILTER (WHERE pi.id IS NOT NULL), '[]') AS items
+         FROM pedidos p
+         LEFT JOIN pedido_items pi ON pi.pedido_id = p.id
+         WHERE p.negocio_id=$1 AND (p.sucursal_id=$2 OR p.sucursal_id IS NULL) AND p.actualizado_en > $3
+         GROUP BY p.id ORDER BY p.actualizado_en`,
+        [negocio_id, sucursal_id, since]
       ).catch(() => ({ rows: [] }))
     ]);
 
@@ -264,7 +336,9 @@ router.get('/pull', async (req, res) => {
       movimientos: movimientos.rows,
       lotes: lotesPull.rows,
       kits: kitsPull.rows,
-      variantes: variantesPull.rows
+      variantes: variantesPull.rows,
+      proveedores: proveedoresPull.rows,
+      pedidos: pedidosPull.rows
     });
   } catch (e) {
     res.status(500).json({ error: e.message });

@@ -594,6 +594,42 @@ router.post('/proveedores', async (req, res) => {
     res.json({ ok: true, proveedor: r.rows[0] });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
+router.put('/proveedores/:id', async (req, res) => {
+  try {
+    const { nombre, telefono='', email='' } = req.body;
+    if (!nombre) return res.status(400).json({ error: 'Nombre requerido' });
+    await pool.query('UPDATE proveedores SET nombre=$1, telefono=$2, email=$3 WHERE id=$4 AND negocio_id=$5',
+      [nombre, telefono, email, req.params.id, req.caja.negocio_id]);
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+router.delete('/proveedores/:id', async (req, res) => {
+  try {
+    await pool.query('UPDATE proveedores SET activo=false WHERE id=$1 AND negocio_id=$2', [req.params.id, req.caja.negocio_id]);
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── GET /api/pedidos/sugeridos?proveedor_id=X&giro=Y — productos en stock mínimo ──
+router.get('/pedidos/sugeridos', async (req, res) => {
+  try {
+    const { negocio_id, sucursal_id } = req.caja;
+    const { proveedor_id } = req.query;
+    const params = [negocio_id, sucursal_id];
+    let sql = `
+      SELECT p.id, p.nombre, p.emoji, p.costo, p.stock_minimo, p.proveedor_id,
+             pv.nombre AS proveedor_nombre, COALESCE(s.stock,0) AS stock
+      FROM productos p
+      LEFT JOIN proveedores pv ON pv.id = p.proveedor_id
+      LEFT JOIN stock_actual s ON s.producto_id = p.id AND s.sucursal_id = p.sucursal_id
+      WHERE p.negocio_id=$1 AND p.sucursal_id=$2 AND p.activo=true
+        AND COALESCE(s.stock,0) <= p.stock_minimo`;
+    if (proveedor_id) { params.push(proveedor_id); sql += ` AND p.proveedor_id=$${params.length}`; }
+    sql += ' ORDER BY stock ASC';
+    const r = await pool.query(sql, params);
+    res.json(r.rows);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
 
 // ── POST /api/vincular-licencia (protegido) ────────────────────
 router.post('/vincular-licencia', async (req, res) => {
