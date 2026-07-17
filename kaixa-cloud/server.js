@@ -351,6 +351,7 @@ app.post('/api/vincular-licencia', async (req, res) => {
 // ── SINCRONIZAR EMPLEADOS DESDE LA PC ───────────────────────────────────
 app.post('/api/sync/empleados', async (req, res) => {
   try {
+    await ensureEmpleadosFoto();
     const token = (req.headers['x-caja-token'] || '').trim();
     if (!token) return res.status(401).json({ error: 'Falta token' });
     const caja = await pool.query('SELECT c.*, n.giro_principal FROM cajas c JOIN negocios n ON n.id=c.negocio_id WHERE c.token=$1 AND c.activo=true', [token]);
@@ -486,8 +487,17 @@ app.post('/api/auth/login', authCaja, async (req, res) => {
     res.json({ ok: true, empleado: { id: e.id, nombre: e.nombre, rol: e.rol } });
   } catch(e) { res.status(500).json({ ok: false, error: e.message }); }
 });
+let _empleadosFotoListo = false;
+async function ensureEmpleadosFoto() {
+  if (_empleadosFotoListo) return;
+  try {
+    await pool.query(`ALTER TABLE empleados ADD COLUMN IF NOT EXISTS foto TEXT DEFAULT ''`);
+    _empleadosFotoListo = true;
+  } catch(e) { console.error('⚠️ ensureEmpleadosFoto:', e.message); }
+}
 app.get('/api/empleados', authCaja, async (req, res) => {
   try {
+    await ensureEmpleadosFoto();
     const { negocio_id } = req.caja;
     const todos = req.query.todos === '1';
     let sql, params;
@@ -520,6 +530,7 @@ app.get('/api/empleados/:id', authCaja, async (req, res) => {
 });
 app.post('/api/empleados', authCaja, async (req, res) => {
   try {
+    await ensureEmpleadosFoto();
     const { nombre, rol='cajero', usuario, password, foto='' } = req.body;
     if (!nombre) return res.status(400).json({ error: 'Nombre requerido' });
     const r = await pool.query('INSERT INTO empleados (negocio_id,nombre,rol,usuario,password,activo,foto) VALUES ($1,$2,$3,$4,$5,true,$6) RETURNING *', [req.caja.negocio_id, nombre, rol, usuario||null, password||null, foto||'']);
@@ -528,6 +539,7 @@ app.post('/api/empleados', authCaja, async (req, res) => {
 });
 app.put('/api/empleados/:id', authCaja, async (req, res) => {
   try {
+    await ensureEmpleadosFoto();
     const { nombre, rol, usuario, password, foto } = req.body;
     let sql = 'UPDATE empleados SET nombre=$1,rol=$2,usuario=$3,foto=COALESCE(NULLIF($4,\'\'),foto)';
     const vals = [nombre, rol, usuario||null, foto||''];
