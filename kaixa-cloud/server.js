@@ -53,6 +53,13 @@ async function aplicarEsquema() {
   } catch(e) {}
   try {
     await pool.query(`
+      ALTER TABLE cotizacion_items DROP CONSTRAINT IF EXISTS cotizacion_items_producto_id_fkey;
+      ALTER TABLE cotizacion_items ADD CONSTRAINT cotizacion_items_producto_id_fkey
+        FOREIGN KEY (producto_id) REFERENCES productos(id) ON DELETE SET NULL;
+    `);
+  } catch(e) {}
+  try {
+    await pool.query(`
       ALTER TABLE traspasos DROP CONSTRAINT IF EXISTS traspasos_producto_origen_id_fkey;
       ALTER TABLE traspasos ADD CONSTRAINT traspasos_producto_origen_id_fkey
         FOREIGN KEY (producto_origen_id) REFERENCES productos(id) ON DELETE SET NULL;

@@ -37,6 +37,16 @@ async function ensureCotizacionesTables() {
     );
     CREATE INDEX IF NOT EXISTS idx_cotizaciones_negocio ON cotizaciones(negocio_id);
   `);
+  // Sin ON DELETE SET NULL, borrar un negocio con productos referenciados
+  // por cotizaciones fallaba (FK violation) — mismo arreglo que ya se hace
+  // para venta_detalle/lotes/pedido_items en server.js.
+  try {
+    await pool.query(`
+      ALTER TABLE cotizacion_items DROP CONSTRAINT IF EXISTS cotizacion_items_producto_id_fkey;
+      ALTER TABLE cotizacion_items ADD CONSTRAINT cotizacion_items_producto_id_fkey
+        FOREIGN KEY (producto_id) REFERENCES productos(id) ON DELETE SET NULL;
+    `);
+  } catch(e) {}
 }
 
 function folioCotizacion() {
