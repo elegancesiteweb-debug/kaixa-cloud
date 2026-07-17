@@ -216,7 +216,7 @@
         </select>
       </div>
     </div>
-    <div class="totalrow"><span>Total a pagar en tienda</span><span id="ckTotal">$0.00</span></div>
+    <div class="totalrow"><span id="ckTotalLbl">Total a pagar en tienda</span><span id="ckTotal">$0.00</span></div>
     <button class="btn" id="ckBtn" onclick="enviarPedido()">✅ Enviar pedido</button>
   </div>
 </div>
@@ -228,7 +228,7 @@
     <h2>¡Pedido enviado!</h2>
     <p style="color:var(--text2);font-size:13px;line-height:1.6">
       Tu folio es <b id="okFolio"></b>.<br>
-      La tienda revisará tu pedido y te contactará para confirmarlo.
+      <span id="okMensajeEntrega"></span>
     </p>
     <div id="okPagarBox" style="display:none;margin-bottom:12px">
       <button class="btn" style="background:#009ee3" onclick="pagarConTarjeta()">💳 Pagar ahora con tarjeta</button>
@@ -592,6 +592,7 @@ function setTipoEntrega(tipo){
   document.getElementById('btnRecoger').classList.toggle('active', tipo === 'recoger');
   document.getElementById('btnDomicilio').classList.toggle('active', tipo === 'domicilio');
   document.getElementById('ckDomicilioBox').style.display = tipo === 'domicilio' ? 'block' : 'none';
+  document.getElementById('ckTotalLbl').textContent = tipo === 'domicilio' ? 'Total a pagar al recibir' : 'Total a pagar en tienda';
 }
 
 function toggleFactura(){
@@ -669,6 +670,9 @@ async function enviarPedido(){
     if (!r.ok || !d.ok) { notif('❌ ' + (d.error || 'Error al enviar el pedido')); btn.disabled=false; btn.textContent='✅ Enviar pedido'; return; }
     cerrar('ovCheckout');
     document.getElementById('okFolio').textContent = d.folio;
+    document.getElementById('okMensajeEntrega').textContent = _tipoEntrega === 'domicilio'
+      ? 'La tienda revisará tu pedido y te lo llevará a domicilio a la dirección que registraste.'
+      : 'La tienda revisará tu pedido y te contactará para confirmarlo. Puedes recogerlo en la tienda.';
     _ultimoPedidoId = d.id;
     document.getElementById('okPagarBox').style.display = (negocio && negocio.mp_habilitado) ? 'block' : 'none';
     document.getElementById('ovOk').classList.add('show');

@@ -2248,11 +2248,13 @@ async function loadPedidosOnline() {
   } catch(e) {}
 }
 
-function avisarWhatsAppPedido(nombre, telefono, folio) {
+function avisarWhatsAppPedido(nombre, telefono, folio, tipoEntrega) {
   if (!telefono) { notif('⚠️ Este pedido no tiene teléfono', 'err'); return; }
   var tel = telefono.replace(/[^0-9]/g, '');
   if (tel.length === 10) tel = '52' + tel;
-  var msg = 'Hola ' + nombre + ', tu pedido ' + folio + ' en ' + _negocioNombreActual + ' ya está listo. Puedes pasar a recogerlo cuando gustes 🙌';
+  var msg = tipoEntrega === 'domicilio'
+    ? 'Hola ' + nombre + ', tu pedido ' + folio + ' en ' + _negocioNombreActual + ' ya está listo y va en camino a tu domicilio 🚚'
+    : 'Hola ' + nombre + ', tu pedido ' + folio + ' en ' + _negocioNombreActual + ' ya está listo. Puedes pasar a recogerlo cuando gustes 🙌';
   window.open('https://wa.me/' + tel + '?text=' + encodeURIComponent(msg), '_blank');
 }
 
@@ -2272,7 +2274,7 @@ function renderPedidosOnline() {
         '</div>'
       : '';
     var waBtn = p.cliente_telefono
-      ? '<button class="btn-full" style="padding:7px;font-size:12px;color:#25d366;background:rgba(37,211,102,.08);border:1.5px solid #25d366" onclick="avisarWhatsAppPedido(\''+p.cliente_nombre.replace(/'/g,"\\'")+'\',\''+p.cliente_telefono+'\',\''+p.folio+'\')">📲 Avisar por WhatsApp</button>'
+      ? '<button class="btn-full" style="padding:7px;font-size:12px;color:#25d366;background:rgba(37,211,102,.08);border:1.5px solid #25d366" onclick="avisarWhatsAppPedido(\''+p.cliente_nombre.replace(/'/g,"\\'")+'\',\''+p.cliente_telefono+'\',\''+p.folio+'\',\''+(p.tipo_entrega||'recoger')+'\')">📲 Avisar por WhatsApp</button>'
       : '';
     return '<div class="card" style="margin:0 16px 10px">' +
       '<div class="card-row" style="align-items:flex-start">' +
