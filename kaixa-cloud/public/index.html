@@ -1256,6 +1256,18 @@ function _cargarHtml5Qr() {
   });
 }
 
+function _traducirErrorCamara(err) {
+  var nombre = (err && (err.name || err.code || '')) + '';
+  var msg = (err && err.message) || (typeof err === 'string' ? err : '');
+  if (!window.isSecureContext) return 'Esta página no está en HTTPS — el navegador bloquea la cámara por seguridad.';
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return 'Este navegador no soporta acceso a cámara (¿lo abriste dentro de otra app, como Facebook o Instagram? Ábrelo en Safari o Chrome directamente).';
+  if (nombre === 'NotAllowedError' || nombre === 'PermissionDeniedError') return 'Permiso de cámara denegado. Ve a Ajustes del teléfono → Safari (o Chrome) → Cámara, y permite el acceso para este sitio.';
+  if (nombre === 'NotFoundError' || nombre === 'DevicesNotFoundError') return 'No se encontró ninguna cámara en este dispositivo.';
+  if (nombre === 'NotReadableError' || nombre === 'TrackStartError') return 'La cámara está siendo usada por otra app. Cierra otras apps que la estén usando e intenta de nuevo.';
+  if (nombre === 'OverconstrainedError' || nombre === 'ConstraintNotSatisfiedError') return 'La cámara trasera no está disponible con esa configuración.';
+  return 'Error de cámara' + (nombre ? ' (' + nombre + ')' : '') + (msg ? ': ' + msg : '') + '.';
+}
+
 function abrirEscanerCodigo(inputId) {
   notif('⏳ Abriendo cámara...', 'ok');
   _cargarHtml5Qr().then(function() {
@@ -1270,11 +1282,25 @@ function abrirEscanerCodigo(inputId) {
           '<span class="modal-close" onclick="cerrarEscanerCodigo()">✕</span>' +
         '</div>' +
         '<div id="scanCodigoReader" style="width:100%"></div>' +
-        '<p style="text-align:center;font-size:12px;color:var(--text3);padding:10px 16px 16px">Apunta la cámara al código de barras</p>' +
+        '<div id="scanCodigoError" style="display:none;margin:0 16px 12px;padding:10px 12px;border-radius:10px;background:rgba(239,68,68,.08);color:var(--danger);font-size:12.5px;line-height:1.5"></div>' +
+        '<p id="scanCodigoHint" style="text-align:center;font-size:12px;color:var(--text3);padding:10px 16px 16px">Apunta la cámara al código de barras</p>' +
       '</div>';
     document.body.appendChild(ov);
 
     window._scanTargetInput = inputId;
+
+    function mostrarErrorEnModal(texto) {
+      var errEl = document.getElementById('scanCodigoError');
+      var hintEl = document.getElementById('scanCodigoHint');
+      if (errEl) { errEl.textContent = '⚠️ ' + texto; errEl.style.display = 'block'; }
+      if (hintEl) hintEl.style.display = 'none';
+    }
+
+    if (!window.isSecureContext || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      mostrarErrorEnModal(_traducirErrorCamara(null));
+      return;
+    }
+
     try {
       _qrScanner = new Html5Qrcode('scanCodigoReader');
       _qrScanner.start(
@@ -1288,12 +1314,12 @@ function abrirEscanerCodigo(inputId) {
         },
         function() { /* frame sin código detectado — ignorar */ }
       ).catch(function(err) {
-        notif('❌ No se pudo acceder a la cámara', 'err');
-        cerrarEscanerCodigo();
+        console.error('Escáner — start() falló:', err);
+        mostrarErrorEnModal(_traducirErrorCamara(err));
       });
     } catch(e) {
-      notif('❌ Error al iniciar el escáner: ' + e.message, 'err');
-      cerrarEscanerCodigo();
+      console.error('Escáner — excepción al iniciar:', e);
+      mostrarErrorEnModal(_traducirErrorCamara(e));
     }
   }).catch(function(e) { notif('❌ ' + e.message, 'err'); });
 }
