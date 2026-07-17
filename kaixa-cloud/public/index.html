@@ -348,6 +348,16 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:var(--ff);backgroun
     <div class="subscreen" id="sub-lotes"><div id="lotesList"></div></div>
     <div class="subscreen" id="sub-traspasos"><div id="traspasosList"></div></div>
     <div class="subscreen" id="sub-pedidosonline"><div id="pedidosOnlineList"></div></div>
+    <div class="subscreen" id="sub-carritos"><div id="carritosAbandonadosList"></div></div>
+    <div class="subscreen" id="sub-cfdi">
+      <div class="page-pad">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+          <div style="font-size:12px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">Facturas emitidas</div>
+          <button class="btn-sec" style="width:auto;margin:0;padding:6px 12px;font-size:12px" onclick="abrirConfigCFDI()">⚙️ Configurar</button>
+        </div>
+        <div id="cfdiList"></div>
+      </div>
+    </div>
     <div class="subscreen" id="sub-kits"><div id="kitsList"></div></div>
     <div class="subscreen" id="sub-sugeridos"><div id="sugeridosList"></div></div>
     <div class="subscreen" id="sub-pedidos"><div id="pedidosList"></div></div>
@@ -547,6 +557,8 @@ var screenCfg = {
   lotes:    { title: 'Lotes', btn: '⊕', load: loadLotes },
   traspasos: { title: 'Traspasos', btn: '⊕', load: loadTraspasos },
   pedidosonline: { title: 'Pedidos en línea', btn: null, load: loadPedidosOnline },
+  carritos: { title: 'Carritos abandonados', btn: null, load: loadCarritosAbandonados },
+  cfdi:     { title: 'Facturación CFDI', btn: null, load: loadFacturas },
   kits:     { title: 'Kits y combos', btn: null, load: loadKits },
   sugeridos: { title: 'Pedidos sugeridos', btn: null, load: loadSugeridos },
   pedidos:  { title: 'Pedidos', btn: '⊕', load: loadPedidos },
@@ -568,7 +580,7 @@ function navTo(screen) {
   var btn1 = document.getElementById('topBtn1');
   if (cfg.btn) { btn1.textContent = cfg.btn; btn1.style.display = ''; }
   else { btn1.style.display = 'none'; }
-  var navMap = { dash:'dash', pos:'pos', inv:'inv', ventas:'mas', clientes:'clientes', emps:'mas', lotes:'mas', traspasos:'mas', pedidosonline:'mas', kits:'mas', sugeridos:'mas', pedidos:'mas', corte:'mas', mas:'mas' };
+  var navMap = { dash:'dash', pos:'pos', inv:'inv', ventas:'mas', clientes:'clientes', emps:'mas', lotes:'mas', traspasos:'mas', pedidosonline:'mas', carritos:'mas', cfdi:'mas', kits:'mas', sugeridos:'mas', pedidos:'mas', corte:'mas', mas:'mas' };
   document.querySelectorAll('.nav-item').forEach(function(n) { n.classList.remove('active'); });
   var navId = navMap[screen] || screen;
   var navEl = document.getElementById('nav-' + navId);
@@ -1023,6 +1035,8 @@ function abrirCobro() {
   formaPago = 'efectivo';
   montoIngresado = '';
   cobroCliente = null;
+  _mpReferencia = null;
+  clearInterval(window._mpPollTimer);
   var html = '<div class="cobro-sheet" id="cobroSheet">' +
     '<div class="cobro-bg" onclick="cerrarCobro()"></div>' +
     '<div class="cobro-panel">' +
@@ -1039,6 +1053,9 @@ function abrirCobro() {
       '<div id="cobroClienteBox" style="display:none;margin-bottom:12px;padding:10px 12px;background:var(--bg2,#f5f5f7);border-radius:12px;align-items:center;justify-content:space-between;gap:8px">' +
         '<div style="font-size:13px"><span style="color:var(--text3)">Cliente: </span><span id="cobroClienteNombre" style="font-weight:700"></span></div>' +
         '<button class="btn-full sec" style="width:auto;padding:6px 12px;font-size:12px" onclick="abrirSelectorClienteCredito()">Cambiar</button>' +
+      '</div>' +
+      '<div id="cobroTarjetaBox" style="display:none;margin-bottom:12px;padding:12px;background:var(--bg2,#f5f5f7);border-radius:12px">' +
+        '<div id="cobroTarjetaContenido"><button class="btn-full primary" style="background:#009ee3" onclick="generarCobroMP()">💳 Generar cobro con Mercado Pago</button></div>' +
       '</div>' +
       '<div id="numPadWrap">' +
         '<div class="monto-display" style="background:#fff;border:1.5px solid var(--border2)">' +
@@ -1059,7 +1076,7 @@ function abrirCobro() {
   window._cobroTotal = total;
 }
 
-function cerrarCobro() { document.getElementById('modalContainer').innerHTML = ''; }
+function cerrarCobro() { document.getElementById('modalContainer').innerHTML = ''; clearInterval(window._mpPollTimer); }
 
 function selFP(fp, btn) {
   formaPago = fp;
@@ -1073,6 +1090,57 @@ function selFP(fp, btn) {
   } else if (ccb) {
     ccb.style.display = 'none';
   }
+  var ctb = document.getElementById('cobroTarjetaBox');
+  if (ctb) {
+    ctb.style.display = fp === 'tarjeta' ? 'block' : 'none';
+    if (fp !== 'tarjeta') { clearInterval(window._mpPollTimer); }
+  }
+}
+
+var _mpReferencia = null;
+async function generarCobroMP() {
+  var cont = document.getElementById('cobroTarjetaContenido');
+  cont.innerHTML = '<div style="text-align:center;font-size:12px;color:var(--text3)">Generando link de pago…</div>';
+  try {
+    _mpReferencia = 'kx-' + Date.now();
+    var r = await apiFetch('/api/pagos/mp/preferencia', {
+      method: 'POST',
+      body: JSON.stringify({ monto: window._cobroTotal, descripcion: 'Venta Kaixa Pos', referencia_externa: _mpReferencia })
+    });
+    var d = r ? await r.json().catch(function(){return {};}) : {};
+    if (!r || !r.ok) {
+      cont.innerHTML = '<div style="font-size:12px;color:var(--danger)">❌ ' + (d.error || 'No se pudo generar el cobro') + '</div>' +
+        '<button class="btn-full sec" style="margin-top:8px" onclick="generarCobroMP()">Reintentar</button>';
+      return;
+    }
+    var tel = (cobroCliente && cobroCliente.telefono) || '';
+    var msg = 'Aquí puedes pagar tu compra con tarjeta: ' + d.init_point;
+    cont.innerHTML =
+      '<div style="font-size:12px;color:var(--text2);margin-bottom:8px">Comparte este link con el cliente para que pague desde su celular:</div>' +
+      '<div style="font-size:11px;word-break:break-all;background:#fff;border-radius:8px;padding:8px;margin-bottom:8px;color:var(--accent)">' + d.init_point + '</div>' +
+      '<div style="display:flex;gap:8px">' +
+        '<button class="btn-full sec" style="padding:8px;font-size:12px" onclick="navigator.clipboard.writeText(\'' + d.init_point + '\');notif(\'Link copiado\',\'ok\')">📋 Copiar</button>' +
+        '<button class="btn-full" style="padding:8px;font-size:12px;color:#25d366;background:rgba(37,211,102,.08);border:1.5px solid #25d366" onclick="window.open(\'https://wa.me/' + tel.replace(/\D/g,'') + '?text=' + encodeURIComponent(msg) + '\',\'_blank\')">📲 WhatsApp</button>' +
+      '</div>' +
+      '<div id="mpEstadoPago" style="text-align:center;font-size:12px;color:var(--text3);margin-top:10px">⏳ Esperando confirmación de pago…</div>';
+    clearInterval(window._mpPollTimer);
+    window._mpPollTimer = setInterval(function(){ consultarEstadoMP(); }, 4000);
+  } catch(e) {
+    cont.innerHTML = '<div style="font-size:12px;color:var(--danger)">❌ Error de conexión</div>';
+  }
+}
+
+async function consultarEstadoMP() {
+  if (!_mpReferencia) return;
+  try {
+    var r = await apiFetch('/api/pagos/mp/estado/' + _mpReferencia);
+    var d = r ? await r.json().catch(function(){return {};}) : {};
+    if (d.pagado) {
+      clearInterval(window._mpPollTimer);
+      var el = document.getElementById('mpEstadoPago');
+      if (el) el.innerHTML = '✅ <b style="color:#22c55e">Pago confirmado</b>';
+    }
+  } catch(e) {}
 }
 
 function actualizarCobroClienteBox() {
@@ -2253,6 +2321,165 @@ async function rechazarPedidoOnline(id) {
   else { notif('❌ Error al rechazar', 'err'); }
 }
 
+// ══ CARRITOS ABANDONADOS ══
+var _carritosAbandonados = [];
+async function loadCarritosAbandonados() {
+  var cont = document.getElementById('carritosAbandonadosList');
+  try {
+    var r = await apiFetch('/api/carritos-abandonados');
+    if (!r || !r.ok) { cont.innerHTML = '<div class="empty"><div class="ico">🛒</div><p>Sin carritos abandonados</p></div>'; return; }
+    _carritosAbandonados = await r.json();
+    if (!Array.isArray(_carritosAbandonados)) _carritosAbandonados = [];
+    renderCarritosAbandonados();
+  } catch(e) {}
+}
+
+function renderCarritosAbandonados() {
+  var cont = document.getElementById('carritosAbandonadosList');
+  if (!_carritosAbandonados.length) { cont.innerHTML = '<div class="empty"><div class="ico">🛒</div><p>Sin carritos abandonados</p></div>'; return; }
+  cont.innerHTML = _carritosAbandonados.map(function(c) {
+    var items = (c.items_json || []).map(function(i){ return i.cantidad + 'x ' + i.nombre; }).join(' • ');
+    var fecha = c.actualizado_en ? new Date(c.actualizado_en).toLocaleString('es-MX', {day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}) : '';
+    var estCls = c.estado === 'contactado' ? 'ok' : 'warn';
+    var estTxt = c.estado === 'contactado' ? '📲 Contactado' : '⏳ Sin contactar';
+    var nombreSafe = (c.cliente_nombre||'Cliente').replace(/'/g,"\\'");
+    var tel = c.cliente_telefono || '';
+    var waBtn = tel
+      ? '<button class="btn-full" style="padding:7px;font-size:12px;color:#25d366;background:rgba(37,211,102,.08);border:1.5px solid #25d366" onclick="contactarCarritoAbandonado(\''+c.id+'\',\''+nombreSafe+'\',\''+tel+'\')">📲 Enviar WhatsApp</button>'
+      : '';
+    return '<div class="card" style="margin:0 16px 10px">' +
+      '<div class="card-row" style="align-items:flex-start">' +
+        '<div class="card-ico">🛒</div>' +
+        '<div class="card-info">' +
+          '<div class="card-title">' + (c.cliente_nombre || 'Sin nombre') + ' · $' + Number(c.subtotal||0).toFixed(2) + '</div>' +
+          '<div class="card-sub">' + items + '</div>' +
+          '<div class="card-sub" style="margin-top:2px">📞 ' + tel + ' · ' + fecha + '</div>' +
+        '</div>' +
+        '<span class="tag ' + estCls + '">' + estTxt + '</span>' +
+      '</div>' +
+      waBtn +
+      '<button class="btn-full sec" style="padding:7px;font-size:12px;margin-top:6px" onclick="descartarCarritoAbandonado(\''+c.id+'\')">🗑️ Descartar</button>' +
+    '</div>';
+  }).join('');
+}
+
+function contactarCarritoAbandonado(id, nombre, telefono) {
+  var tel = telefono.replace(/[^0-9]/g, '');
+  if (tel.length === 10) tel = '52' + tel;
+  var msg = 'Hola ' + nombre + ', vimos que dejaste productos en tu carrito 🛒 ¿Te ayudamos a completar tu pedido?';
+  window.open('https://wa.me/' + tel + '?text=' + encodeURIComponent(msg), '_blank');
+  apiFetch('/api/carritos-abandonados/' + id, { method: 'PUT', body: JSON.stringify({ estado: 'contactado' }) })
+    .then(function(){ loadCarritosAbandonados(); }).catch(function(){});
+}
+
+function descartarCarritoAbandonado(id) {
+  apiFetch('/api/carritos-abandonados/' + id, { method: 'PUT', body: JSON.stringify({ estado: 'descartado' }) })
+    .then(function(r){ if (r && r.ok) { notif('Carrito descartado', 'ok'); loadCarritosAbandonados(); } });
+}
+
+// ══ FACTURACIÓN CFDI (FacturAPI) ══
+var _facturas = [];
+async function loadFacturas() {
+  var cont = document.getElementById('cfdiList');
+  try {
+    var r = await apiFetch('/api/cfdi');
+    if (!r || !r.ok) { cont.innerHTML = '<div class="empty"><div class="ico">🧾</div><p>Sin facturas todavía</p></div>'; return; }
+    _facturas = await r.json();
+    if (!Array.isArray(_facturas)) _facturas = [];
+    renderFacturas();
+  } catch(e) {}
+}
+
+function renderFacturas() {
+  var cont = document.getElementById('cfdiList');
+  if (!_facturas.length) {
+    cont.innerHTML = '<div class="empty"><div class="ico">🧾</div><p>Sin facturas todavía</p></div>' +
+      '<button class="btn-primary" style="margin-top:12px" onclick="abrirConfigCFDI()">⚙️ Configurar facturación</button>';
+    return;
+  }
+  cont.innerHTML = _facturas.map(function(f) {
+    var estCls = f.estado === 'vigente' ? 'ok' : 'err';
+    var fecha = f.creado_en ? new Date(f.creado_en).toLocaleString('es-MX', {day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}) : '';
+    return '<div class="card" style="margin:0 0 10px">' +
+      '<div class="card-row">' +
+        '<div class="card-ico">🧾</div>' +
+        '<div class="card-info">' +
+          '<div class="card-title">' + f.nombre_receptor + ' · $' + Number(f.total||0).toFixed(2) + '</div>' +
+          '<div class="card-sub">' + f.rfc_receptor + ' · ' + f.serie + f.folio + ' · ' + fecha + '</div>' +
+        '</div>' +
+        '<span class="tag ' + estCls + '">' + f.estado + '</span>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+}
+
+async function abrirConfigCFDI() {
+  var cfg = {};
+  try { var r = await apiFetch('/api/cfdi/config'); if (r && r.ok) cfg = await r.json(); } catch(e) {}
+  var html = '<div class="modal-overlay" id="modalConfigCFDI"><div class="modal-sheet">' +
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">' +
+      '<h3 style="margin:0">🧾 Configurar facturación</h3>' +
+      '<span class="modal-close" onclick="document.getElementById(\'modalConfigCFDI\').remove()">✕</span>' +
+    '</div>' +
+    '<p style="font-size:12px;color:var(--text3);margin-bottom:12px">Usa tu cuenta de <b>FacturAPI</b> (facturapi.io) — tiene modo sandbox gratis para probar.</p>' +
+    '<div class="field"><label>API Key de FacturAPI</label><input id="cfgApiKey" placeholder="' + (cfg.api_key_preview || 'sk_live_...') + '"></div>' +
+    '<div class="field"><label>RFC emisor</label><input id="cfgRfcEmisor" value="' + (cfg.rfc_emisor||'') + '" style="text-transform:uppercase"></div>' +
+    '<div class="field"><label>Razón social</label><input id="cfgRazonSocial" value="' + (cfg.razon_social_emisor||'') + '"></div>' +
+    '<div class="field"><label>Régimen fiscal (clave SAT)</label><input id="cfgRegimen" value="' + (cfg.regimen_fiscal_emisor||'') + '" placeholder="Ej: 626"></div>' +
+    '<div class="field"><label>Código postal</label><input id="cfgCp" value="' + (cfg.cp_emisor||'') + '"></div>' +
+    '<button class="btn-sec" style="margin-bottom:8px" onclick="probarConexionCFDI()">🔌 Probar conexión</button>' +
+    '<button class="btn-primary" onclick="guardarConfigCFDI()">💾 Guardar</button>' +
+  '</div></div>';
+  document.getElementById('modalContainer').innerHTML = html;
+}
+
+async function guardarConfigCFDI() {
+  var body = {
+    rfc_emisor: (document.getElementById('cfgRfcEmisor').value||'').toUpperCase(),
+    razon_social_emisor: document.getElementById('cfgRazonSocial').value,
+    regimen_fiscal_emisor: document.getElementById('cfgRegimen').value,
+    cp_emisor: document.getElementById('cfgCp').value
+  };
+  var apiKey = document.getElementById('cfgApiKey').value.trim();
+  if (apiKey) body.api_key = apiKey;
+  var r = await apiFetch('/api/cfdi/config', { method: 'PUT', body: JSON.stringify(body) });
+  if (r && r.ok) { notif('✅ Configuración guardada', 'ok'); document.getElementById('modalConfigCFDI').remove(); loadFacturas(); }
+  else { notif('❌ Error al guardar', 'err'); }
+}
+
+async function probarConexionCFDI() {
+  var r = await apiFetch('/api/cfdi/test', { method: 'POST' });
+  var d = r ? await r.json().catch(function(){return {};}) : {};
+  notif(d.mensaje || (d.ok ? '✅ Conexión exitosa' : '❌ Error de conexión'), d.ok ? 'ok' : 'err');
+}
+
+// ══ PAGOS CON TARJETA (Mercado Pago) ══
+async function abrirPagosConfig() {
+  var cfg = {};
+  try { var r = await apiFetch('/api/pagos/config'); if (r && r.ok) cfg = await r.json(); } catch(e) {}
+  var html = '<div class="modal-overlay" id="modalPagosConfig"><div class="modal-sheet">' +
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">' +
+      '<h3 style="margin:0">💳 Pagos con tarjeta</h3>' +
+      '<span class="modal-close" onclick="document.getElementById(\'modalPagosConfig\').remove()">✕</span>' +
+    '</div>' +
+    '<p style="font-size:12px;color:var(--text3);margin-bottom:12px">Conecta tu cuenta de <b>Mercado Pago</b> para cobrar con tarjeta desde el celular, la PC o tu tienda en línea. Obtén tu Access Token en tu panel de Mercado Pago Developers.</p>' +
+    (cfg.configurado ? '<div style="font-size:12px;color:#22c55e;font-weight:700;margin-bottom:10px">✅ Ya configurado (' + (cfg.access_token_preview||'') + ')</div>' : '') +
+    '<div class="field"><label>Access Token</label><input id="cfgMpToken" placeholder="APP_USR-..."></div>' +
+    '<div class="field"><label>Public Key (opcional)</label><input id="cfgMpPublic" value="' + (cfg.mp_public_key||'') + '"></div>' +
+    '<button class="btn-primary" onclick="guardarPagosConfig()">💾 Guardar</button>' +
+  '</div></div>';
+  document.getElementById('modalContainer').innerHTML = html;
+}
+
+async function guardarPagosConfig() {
+  var body = { mp_public_key: document.getElementById('cfgMpPublic').value.trim() };
+  var token = document.getElementById('cfgMpToken').value.trim();
+  if (token) body.mp_access_token = token;
+  var r = await apiFetch('/api/pagos/config', { method: 'PUT', body: JSON.stringify(body) });
+  if (r && r.ok) { notif('✅ Configuración guardada', 'ok'); document.getElementById('modalPagosConfig').remove(); }
+  else { notif('❌ Error al guardar', 'err'); }
+}
+
 // ── Imagen y descripción de la tienda en línea ─────────────────────────────
 var _tiendaImgBase64Movil = null;
 var _tiendaLogoBase64Movil = null;
@@ -2557,6 +2784,9 @@ function loadMas() {
   document.getElementById('masRolEmp').textContent = usuario ? usuario.rol : '';
   var items = [
     { ico:'🛍️', title:'Pedidos en línea', sub:'Apartados desde la tienda web', screen:'pedidosonline' },
+    { ico:'🛒', title:'Carritos abandonados', sub:'Clientes que no terminaron su pedido', screen:'carritos' },
+    { ico:'🧾', title:'Facturación CFDI', sub:'Timbrar facturas de tus ventas', screen:'cfdi' },
+    { ico:'💳', title:'Pagos con tarjeta', sub:'Configura Mercado Pago', accion:'abrirPagosConfig' },
     { ico:'🎁', title:'Kits y combos', sub:'Ver y vender paquetes armados', screen:'kits' },
     { ico:'💡', title:'Pedidos sugeridos', sub:'Productos con stock bajo por proveedor', screen:'sugeridos' },
     { ico:'🖼️', title:'Mi tienda en línea', sub:'Imagen y descripción públicas', accion:'abrirTiendaConfig' },

@@ -1197,4 +1197,30 @@ router.post('/pedidos-online/:id/rechazar', async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── GET /api/carritos-abandonados — carritos que no se convirtieron en pedido ──
+router.get('/carritos-abandonados', async (req, res) => {
+  try {
+    await ensureTiendaTables();
+    const r = await pool.query(
+      `SELECT * FROM carritos_abandonados WHERE negocio_id=$1 AND estado != 'convertido'
+       ORDER BY actualizado_en DESC LIMIT 100`,
+      [req.caja.negocio_id]
+    );
+    res.json(r.rows);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── PUT /api/carritos-abandonados/:id — marcar contactado/descartado ──
+router.put('/carritos-abandonados/:id', async (req, res) => {
+  try {
+    const { estado } = req.body;
+    if (!['contactado', 'descartado', 'abierto'].includes(estado)) return res.status(400).json({ error: 'Estado inválido' });
+    await pool.query(
+      `UPDATE carritos_abandonados SET estado=$1, actualizado_en=now() WHERE id=$2 AND negocio_id=$3`,
+      [estado, req.params.id, req.caja.negocio_id]
+    );
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 module.exports = router;

@@ -479,6 +479,7 @@ app.post('/api/lic/elegir-sucursal', async (req, res) => {
 });
 app.use('/api/admin',    require('./routes/negocios'));
 app.use('/api',          require('./routes/tienda').router); // público: /api/tienda/:slug/*
+app.use('/api',          require('./routes/pagos').webhookRouter); // público: /api/pagos/mp/webhook/:negocio_id
 app.get('/tienda/:slug', (req, res) => {
   const p = path.join(__dirname, 'public', 'tienda.html');
   if (fs.existsSync(p)) res.sendFile(p);
@@ -563,6 +564,8 @@ app.use('/api/sync',      authCaja, require('./routes/sync'));
 app.use('/api/dashboard', authCaja, require('./routes/dashboard'));
 app.use('/api/push',      authCaja, pushRouter);
 app.use('/api',           authCaja, require('./routes/variantes').router);
+app.use('/api',           authCaja, require('./routes/cfdi').router);
+app.use('/api',           authCaja, require('./routes/pagos').router);
 app.use('/api',           authCaja, require('./routes/api'));
 app.get('*', (req, res) => {
   const idx = path.join(__dirname, 'public', 'index.html');

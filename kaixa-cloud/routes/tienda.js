@@ -73,10 +73,32 @@ async function ensureTiendaTables() {
     CREATE INDEX IF NOT EXISTS idx_pedidos_online_sucursal ON pedidos_online(sucursal_id);
     CREATE INDEX IF NOT EXISTS idx_pedidos_online_negocio  ON pedidos_online(negocio_id);
   `);
+  await pool.query(`ALTER TABLE pedidos_online ADD COLUMN IF NOT EXISTS requiere_factura BOOLEAN DEFAULT false`);
+  await pool.query(`ALTER TABLE pedidos_online ADD COLUMN IF NOT EXISTS rfc_receptor TEXT DEFAULT ''`);
+  await pool.query(`ALTER TABLE pedidos_online ADD COLUMN IF NOT EXISTS razon_social_receptor TEXT DEFAULT ''`);
+  await pool.query(`ALTER TABLE pedidos_online ADD COLUMN IF NOT EXISTS uso_cfdi TEXT DEFAULT 'G03'`);
+  await pool.query(`ALTER TABLE pedidos_online ADD COLUMN IF NOT EXISTS pagado_en_linea BOOLEAN DEFAULT false`);
+  await pool.query(`ALTER TABLE pedidos_online ADD COLUMN IF NOT EXISTS mp_payment_id TEXT DEFAULT ''`);
   await pool.query(`ALTER TABLE pedido_online_items ADD COLUMN IF NOT EXISTS variante_id UUID`);
   await pool.query(`ALTER TABLE pedido_online_items ADD COLUMN IF NOT EXISTS variante_texto TEXT DEFAULT ''`);
   await pool.query(`ALTER TABLE pedido_online_items ADD COLUMN IF NOT EXISTS kit_id UUID`);
   await pool.query(`ALTER TABLE pedido_online_items ADD COLUMN IF NOT EXISTS componentes JSONB DEFAULT '[]'`);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS carritos_abandonados (
+      id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      negocio_id        UUID NOT NULL REFERENCES negocios(id) ON DELETE CASCADE,
+      sucursal_id       UUID REFERENCES sucursales(id),
+      cliente_nombre    TEXT DEFAULT '',
+      cliente_telefono  TEXT DEFAULT '',
+      cliente_email     TEXT DEFAULT '',
+      items_json        JSONB DEFAULT '[]',
+      subtotal          NUMERIC(12,2) DEFAULT 0,
+      estado            TEXT DEFAULT 'abierto',
+      creado_en         TIMESTAMPTZ DEFAULT now(),
+      actualizado_en    TIMESTAMPTZ DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS idx_carritos_abandonados_negocio ON carritos_abandonados(negocio_id);
+  `);
   const sinSlug = await pool.query("SELECT id, nombre FROM negocios WHERE slug IS NULL OR slug=''");
   for (const n of sinSlug.rows) { await asignarSlug(n.id, n.nombre); }
 }
@@ -93,10 +115,12 @@ function textoVariante(v) {
 router.get('/tienda/:slug/info', async (req, res) => {
   try {
     await ensureTiendaTables();
+    try { await require('./pagos').ensurePagosTables(); } catch(e) {}
     const neg = await pool.query(
       `SELECT id, nombre, giro_principal, tienda_imagen_url, tienda_descripcion,
               tienda_logo_url, tienda_telefono, tienda_direccion, tienda_horario,
-              COALESCE(tienda_mostrar_kits,false) AS tienda_mostrar_kits
+              COALESCE(tienda_mostrar_kits,false) AS tienda_mostrar_kits,
+              (mp_access_token IS NOT NULL AND mp_access_token != '') AS mp_habilitado
        FROM negocios WHERE slug=$1 AND activo=true`,
       [req.params.slug]
     );
@@ -198,7 +222,10 @@ router.post('/tienda/:slug/pedidos', async (req, res) => {
   const client = await pool.connect();
   try {
     await ensureTiendaTables();
-    const { sucursal_id, cliente_nombre, cliente_telefono='', cliente_email='', notas='', items=[] } = req.body;
+    const {
+      sucursal_id, cliente_nombre, cliente_telefono='', cliente_email='', notas='', items=[],
+      requiere_factura=false, rfc_receptor='', razon_social_receptor='', uso_cfdi='G03'
+    } = req.body;
     if (!sucursal_id) return res.status(400).json({ error: 'Falta la sucursal' });
     if (!cliente_nombre || !cliente_nombre.trim()) return res.status(400).json({ error: 'Falta tu nombre' });
     if (!items.length) return res.status(400).json({ error: 'El pedido está vacío' });
@@ -282,9 +309,11 @@ router.post('/tienda/:slug/pedidos', async (req, res) => {
 
     const folio = folioPedido();
     const pedido = await client.query(
-      `INSERT INTO pedidos_online (negocio_id, sucursal_id, folio, cliente_nombre, cliente_telefono, cliente_email, notas, subtotal)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id, folio`,
-      [negocioId, sucursal_id, folio, cliente_nombre.trim(), cliente_telefono, cliente_email, notas, subtotal]
+      `INSERT INTO pedidos_online (negocio_id, sucursal_id, folio, cliente_nombre, cliente_telefono, cliente_email, notas, subtotal,
+        requiere_factura, rfc_receptor, razon_social_receptor, uso_cfdi)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id, folio`,
+      [negocioId, sucursal_id, folio, cliente_nombre.trim(), cliente_telefono, cliente_email, notas, subtotal,
+       !!requiere_factura, rfc_receptor, razon_social_receptor, uso_cfdi]
     );
     const pedidoId = pedido.rows[0].id;
 
@@ -314,6 +343,18 @@ router.post('/tienda/:slug/pedidos', async (req, res) => {
       }
     } catch(e) {}
 
+    // El pedido se completó — si había un carrito abandonado con el mismo
+    // teléfono aún abierto, ya no hace falta seguirle: se marca convertido.
+    if (cliente_telefono) {
+      try {
+        await pool.query(
+          `UPDATE carritos_abandonados SET estado='convertido', actualizado_en=now()
+           WHERE negocio_id=$1 AND cliente_telefono=$2 AND estado='abierto'`,
+          [negocioId, cliente_telefono]
+        );
+      } catch(e) {}
+    }
+
     res.json({ ok: true, folio, id: pedidoId, subtotal });
   } catch (e) {
     await client.query('ROLLBACK');
@@ -321,6 +362,78 @@ router.post('/tienda/:slug/pedidos', async (req, res) => {
   } finally {
     client.release();
   }
+});
+
+// ── POST /api/tienda/:slug/pagar — genera link de pago con tarjeta para un pedido ya creado ──
+router.post('/tienda/:slug/pagar', async (req, res) => {
+  try {
+    try { await require('./pagos').ensurePagosTables(); } catch(e) {}
+    const { pedido_id } = req.body;
+    if (!pedido_id) return res.status(400).json({ error: 'Falta pedido_id' });
+    const neg = await pool.query(
+      `SELECT n.id, n.mp_access_token FROM negocios n WHERE n.slug=$1 AND n.activo=true`, [req.params.slug]);
+    if (!neg.rows.length) return res.status(404).json({ error: 'Tienda no encontrada' });
+    const negocio = neg.rows[0];
+    if (!negocio.mp_access_token) return res.status(400).json({ error: 'Esta tienda no acepta pago en línea todavía' });
+
+    const ped = await pool.query(
+      `SELECT id, folio, subtotal FROM pedidos_online WHERE id=$1 AND negocio_id=$2`,
+      [pedido_id, negocio.id]);
+    if (!ped.rows.length) return res.status(404).json({ error: 'Pedido no encontrado' });
+    const pedido = ped.rows[0];
+
+    const host = req.protocol + '://' + req.get('host');
+    const { mpRequest } = require('./pagos');
+    const r = await mpRequest('POST', '/checkout/preferences', {
+      items: [{ title: 'Pedido ' + pedido.folio, quantity: 1, unit_price: parseFloat(pedido.subtotal), currency_id: 'MXN' }],
+      external_reference: 'pedido:' + pedido.id,
+      notification_url: host + '/api/pagos/mp/webhook/' + negocio.id,
+      back_urls: { success: host + '/tienda/' + req.params.slug, failure: host + '/tienda/' + req.params.slug, pending: host + '/tienda/' + req.params.slug }
+    }, negocio.mp_access_token);
+
+    if (r.status !== 200 && r.status !== 201) {
+      return res.status(400).json({ error: 'Error de Mercado Pago: ' + (r.data && r.data.message || JSON.stringify(r.data)) });
+    }
+    res.json({ ok: true, init_point: r.data.init_point });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── POST /api/tienda/:slug/carrito-abandonado — guarda un carrito en curso ──
+// Se llama (con debounce) mientras el cliente escribe sus datos en el
+// checkout pero aún no envía el pedido — así el negocio puede darle
+// seguimiento por WhatsApp si lo deja a medias.
+router.post('/tienda/:slug/carrito-abandonado', async (req, res) => {
+  try {
+    await ensureTiendaTables();
+    const { sucursal_id, cliente_nombre = '', cliente_telefono = '', cliente_email = '', items = [], subtotal = 0 } = req.body;
+    const telLimpio = (cliente_telefono || '').replace(/\D/g, '');
+    if (telLimpio.length < 10 || !items.length) return res.json({ ok: true, guardado: false });
+
+    const neg = await pool.query('SELECT id FROM negocios WHERE slug=$1 AND activo=true', [req.params.slug]);
+    if (!neg.rows.length) return res.status(404).json({ error: 'Tienda no encontrada' });
+    const negocioId = neg.rows[0].id;
+
+    const existente = await pool.query(
+      `SELECT id FROM carritos_abandonados
+       WHERE negocio_id=$1 AND cliente_telefono=$2 AND estado='abierto'
+       ORDER BY actualizado_en DESC LIMIT 1`,
+      [negocioId, telLimpio]
+    );
+    if (existente.rows.length) {
+      await pool.query(
+        `UPDATE carritos_abandonados SET cliente_nombre=$1, cliente_email=$2, items_json=$3, subtotal=$4, actualizado_en=now()
+         WHERE id=$5`,
+        [cliente_nombre, cliente_email, JSON.stringify(items), subtotal, existente.rows[0].id]
+      );
+    } else {
+      await pool.query(
+        `INSERT INTO carritos_abandonados (negocio_id, sucursal_id, cliente_nombre, cliente_telefono, cliente_email, items_json, subtotal)
+         VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+        [negocioId, sucursal_id || null, cliente_nombre, telLimpio, cliente_email, JSON.stringify(items), subtotal]
+      );
+    }
+    res.json({ ok: true, guardado: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
 module.exports = { router, ensureTiendaTables, asignarSlug };

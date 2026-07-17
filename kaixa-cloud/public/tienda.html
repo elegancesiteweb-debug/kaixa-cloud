@@ -179,10 +179,26 @@
   <div class="sheet" style="position:relative">
     <button class="close" onclick="cerrar('ovCheckout')">✕</button>
     <h2>📋 Tus datos</h2>
-    <div class="field"><label>Tu nombre *</label><input id="ckNombre" placeholder="Nombre completo"></div>
-    <div class="field"><label>Teléfono</label><input id="ckTel" type="tel" placeholder="10 dígitos"></div>
+    <div class="field"><label>Tu nombre *</label><input id="ckNombre" oninput="guardarCarritoAbandonado()" placeholder="Nombre completo"></div>
+    <div class="field"><label>Teléfono</label><input id="ckTel" type="tel" oninput="guardarCarritoAbandonado()" placeholder="10 dígitos"></div>
     <div class="field"><label>Email (opcional)</label><input id="ckEmail" type="email" placeholder="tu@correo.com"></div>
     <div class="field"><label>Notas (opcional)</label><textarea id="ckNotas" rows="2" placeholder="Ej: recojo después de las 5pm"></textarea></div>
+    <div class="field" style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+      <input type="checkbox" id="ckFactura" onchange="toggleFactura()" style="width:auto">
+      <label style="margin:0;text-transform:none;font-size:13px;font-weight:600;color:var(--text)">Quiero factura (CFDI)</label>
+    </div>
+    <div id="ckFacturaBox" style="display:none">
+      <div class="field"><label>RFC *</label><input id="ckRfc" placeholder="XAXX010101000" style="text-transform:uppercase"></div>
+      <div class="field"><label>Razón social *</label><input id="ckRazonSocial" placeholder="Como aparece en tu constancia fiscal"></div>
+      <div class="field">
+        <label>Uso de CFDI</label>
+        <select id="ckUsoCfdi">
+          <option value="G03">G03 — Gastos en general</option>
+          <option value="G01">G01 — Adquisición de mercancías</option>
+          <option value="P01">P01 — Por definir</option>
+        </select>
+      </div>
+    </div>
     <div class="totalrow"><span>Total a pagar en tienda</span><span id="ckTotal">$0.00</span></div>
     <button class="btn" id="ckBtn" onclick="enviarPedido()">✅ Enviar pedido</button>
   </div>
@@ -195,9 +211,13 @@
     <h2>¡Pedido enviado!</h2>
     <p style="color:var(--text2);font-size:13px;line-height:1.6">
       Tu folio es <b id="okFolio"></b>.<br>
-      La tienda revisará tu pedido y te contactará para confirmarlo. Pagas al recoger.
+      La tienda revisará tu pedido y te contactará para confirmarlo.
     </p>
-    <button class="btn" onclick="location.reload()">Hacer otro pedido</button>
+    <div id="okPagarBox" style="display:none;margin-bottom:12px">
+      <button class="btn" style="background:#009ee3" onclick="pagarConTarjeta()">💳 Pagar ahora con tarjeta</button>
+      <p style="color:var(--text3);font-size:11.5px;margin-top:8px">Opcional — también puedes pagar al recoger</p>
+    </div>
+    <button class="btn" style="background:var(--s1);color:var(--text);border:1.5px solid var(--border)" onclick="location.reload()">Hacer otro pedido</button>
   </div>
 </div>
 
@@ -541,9 +561,43 @@ function irACheckout(){
   document.getElementById('ovCheckout').classList.add('show');
 }
 
+function toggleFactura(){
+  var on = document.getElementById('ckFactura').checked;
+  document.getElementById('ckFacturaBox').style.display = on ? 'block' : 'none';
+}
+
+var _carritoAbandonadoTimer = null;
+function guardarCarritoAbandonado(){
+  clearTimeout(_carritoAbandonadoTimer);
+  _carritoAbandonadoTimer = setTimeout(function(){
+    var tel = document.getElementById('ckTel').value.trim();
+    if (!cantidadCarrito() || tel.replace(/\D/g,'').length < 10) return;
+    var items = Object.values(cart).map(function(it){
+      var nombre = it.nombreMostrado || (it.producto && it.producto.nombre) || (it.kit && it.kit.nombre) || '';
+      var precio = it.precioMostrado != null ? it.precioMostrado : (it.producto ? it.producto.precio : (it.kit ? it.kit.precio : 0));
+      return { nombre: nombre, cantidad: it.qty, precio_unitario: precio };
+    });
+    fetch('/api/tienda/' + slug + '/carrito-abandonado', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sucursal_id: sucursalId,
+        cliente_nombre: document.getElementById('ckNombre').value.trim(),
+        cliente_telefono: tel,
+        cliente_email: document.getElementById('ckEmail').value.trim(),
+        items: items, subtotal: totalCarrito()
+      })
+    }).catch(function(){});
+  }, 1800);
+}
+
+var _ultimoPedidoId = null;
 async function enviarPedido(){
   var nombre = document.getElementById('ckNombre').value.trim();
   if (!nombre) { notif('Escribe tu nombre'); return; }
+  var quiereFactura = document.getElementById('ckFactura').checked;
+  var rfc = document.getElementById('ckRfc').value.trim().toUpperCase();
+  var razonSocial = document.getElementById('ckRazonSocial').value.trim();
+  if (quiereFactura && (!rfc || !razonSocial)) { notif('Completa el RFC y la razón social para tu factura'); return; }
   var btn = document.getElementById('ckBtn');
   btn.disabled = true; btn.textContent = 'Enviando…';
   try{
@@ -561,13 +615,19 @@ async function enviarPedido(){
         cliente_telefono: document.getElementById('ckTel').value.trim(),
         cliente_email: document.getElementById('ckEmail').value.trim(),
         notas: document.getElementById('ckNotas').value.trim(),
-        items: items
+        items: items,
+        requiere_factura: quiereFactura,
+        rfc_receptor: rfc,
+        razon_social_receptor: razonSocial,
+        uso_cfdi: document.getElementById('ckUsoCfdi').value
       })
     });
     var d = await r.json();
     if (!r.ok || !d.ok) { notif('❌ ' + (d.error || 'Error al enviar el pedido')); btn.disabled=false; btn.textContent='✅ Enviar pedido'; return; }
     cerrar('ovCheckout');
     document.getElementById('okFolio').textContent = d.folio;
+    _ultimoPedidoId = d.id;
+    document.getElementById('okPagarBox').style.display = (negocio && negocio.mp_habilitado) ? 'block' : 'none';
     document.getElementById('ovOk').classList.add('show');
     cart = {};
     actualizarCartBar();
@@ -575,6 +635,19 @@ async function enviarPedido(){
     notif('❌ Error de conexión');
     btn.disabled = false; btn.textContent = '✅ Enviar pedido';
   }
+}
+
+async function pagarConTarjeta(){
+  if (!_ultimoPedidoId) return;
+  try{
+    var r = await fetch('/api/tienda/' + slug + '/pagar', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pedido_id: _ultimoPedidoId })
+    });
+    var d = await r.json();
+    if (!r.ok || !d.ok) { notif('❌ ' + (d.error || 'No se pudo iniciar el pago')); return; }
+    location.href = d.init_point;
+  }catch(e){ notif('❌ Error de conexión'); }
 }
 
 function cerrar(id){ document.getElementById(id).classList.remove('show'); }
