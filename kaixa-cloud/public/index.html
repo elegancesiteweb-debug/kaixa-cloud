@@ -1228,12 +1228,84 @@ function abrirModalProd(p) {
         '<div class="form-field"><label>Categoría</label><input id="pCat" value="' + (p ? p.categoria || '' : '') + '"></div>' +
         '<div class="form-field"><label>Emoji</label><input id="pEmoji" value="' + (p ? p.emoji || '📦' : '📦') + '"></div>' +
       '</div>' +
-      '<div class="form-field"><label>Código de barras</label><input id="pCodigo" value="' + (p ? p.codigo_barras || '' : '') + '"></div>' +
+      '<div class="form-field"><label>Código de barras</label>' +
+        '<div style="display:flex;gap:8px">' +
+          '<input id="pCodigo" value="' + (p ? p.codigo_barras || '' : '') + '" style="flex:1">' +
+          '<button type="button" onclick="abrirEscanerCodigo(\'pCodigo\')" title="Escanear con la cámara" style="flex-shrink:0;padding:0 16px;border-radius:10px;border:1.5px solid var(--accent);background:rgba(139,92,246,.08);color:var(--accent);font-size:18px;cursor:pointer">📷</button>' +
+        '</div>' +
+      '</div>' +
       '<button class="btn-full primary" onclick="guardarProd(\'' + (p ? p.id : '') + '\')">' + (esNuevo ? 'Crear producto' : 'Guardar cambios') + '</button>' +
       (p ? '<button class="btn-full sec" onclick="abrirVariantesMovil(\'' + p.id + '\',\'' + (p.nombre||'').replace(/'/g,"\\'") + '\')">🎨 Variantes</button>' : '') +
       (p ? '<button class="btn-full danger" onclick="eliminarProd(\'' + p.id + '\')">Eliminar producto</button>' : '') +
     '</div></div>';
   document.getElementById('modalContainer').innerHTML = html;
+}
+
+// ══ ESCÁNER DE CÓDIGO DE BARRAS (cámara) ══
+var _html5QrLoaded = false;
+var _qrScanner = null;
+
+function _cargarHtml5Qr() {
+  return new Promise(function(resolve, reject) {
+    if (_html5QrLoaded && window.Html5Qrcode) { resolve(); return; }
+    var s = document.createElement('script');
+    s.src = 'https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js';
+    s.onload = function(){ _html5QrLoaded = true; resolve(); };
+    s.onerror = function(){ reject(new Error('No se pudo cargar el lector de códigos (revisa tu conexión)')); };
+    document.head.appendChild(s);
+  });
+}
+
+function abrirEscanerCodigo(inputId) {
+  notif('⏳ Abriendo cámara...', 'ok');
+  _cargarHtml5Qr().then(function() {
+    var ov = document.createElement('div');
+    ov.className = 'modal-overlay';
+    ov.id = 'scanOverlay';
+    ov.style.zIndex = '999';
+    ov.innerHTML =
+      '<div class="modal-sheet" style="padding:0;overflow:hidden;max-width:420px">' +
+        '<div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px">' +
+          '<h3 style="margin:0">📷 Escanea el código</h3>' +
+          '<span class="modal-close" onclick="cerrarEscanerCodigo()">✕</span>' +
+        '</div>' +
+        '<div id="scanCodigoReader" style="width:100%"></div>' +
+        '<p style="text-align:center;font-size:12px;color:var(--text3);padding:10px 16px 16px">Apunta la cámara al código de barras</p>' +
+      '</div>';
+    document.body.appendChild(ov);
+
+    window._scanTargetInput = inputId;
+    try {
+      _qrScanner = new Html5Qrcode('scanCodigoReader');
+      _qrScanner.start(
+        { facingMode: 'environment' },
+        { fps: 10, qrbox: { width: 260, height: 150 } },
+        function(decodedText) {
+          var inp = document.getElementById(window._scanTargetInput);
+          if (inp) inp.value = decodedText;
+          notif('✅ Código escaneado: ' + decodedText, 'ok');
+          cerrarEscanerCodigo();
+        },
+        function() { /* frame sin código detectado — ignorar */ }
+      ).catch(function(err) {
+        notif('❌ No se pudo acceder a la cámara', 'err');
+        cerrarEscanerCodigo();
+      });
+    } catch(e) {
+      notif('❌ Error al iniciar el escáner: ' + e.message, 'err');
+      cerrarEscanerCodigo();
+    }
+  }).catch(function(e) { notif('❌ ' + e.message, 'err'); });
+}
+
+function cerrarEscanerCodigo() {
+  if (_qrScanner) {
+    try {
+      _qrScanner.stop().then(function(){ try{ _qrScanner.clear(); }catch(e){} _qrScanner = null; }).catch(function(){ _qrScanner = null; });
+    } catch(e) { _qrScanner = null; }
+  }
+  var ov = document.getElementById('scanOverlay');
+  if (ov) ov.remove();
 }
 
 async function guardarProd(id) {
