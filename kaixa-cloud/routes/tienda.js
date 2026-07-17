@@ -45,6 +45,7 @@ async function ensureTiendaTables() {
   await pool.query(`ALTER TABLE negocios ADD COLUMN IF NOT EXISTS tienda_direccion TEXT DEFAULT ''`);
   await pool.query(`ALTER TABLE negocios ADD COLUMN IF NOT EXISTS tienda_horario TEXT DEFAULT ''`);
   await pool.query(`ALTER TABLE negocios ADD COLUMN IF NOT EXISTS tienda_mostrar_kits BOOLEAN DEFAULT false`);
+  await pool.query(`ALTER TABLE negocios ADD COLUMN IF NOT EXISTS domicilio_habilitado BOOLEAN DEFAULT false`);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS pedidos_online (
       id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -79,6 +80,13 @@ async function ensureTiendaTables() {
   await pool.query(`ALTER TABLE pedidos_online ADD COLUMN IF NOT EXISTS uso_cfdi TEXT DEFAULT 'G03'`);
   await pool.query(`ALTER TABLE pedidos_online ADD COLUMN IF NOT EXISTS pagado_en_linea BOOLEAN DEFAULT false`);
   await pool.query(`ALTER TABLE pedidos_online ADD COLUMN IF NOT EXISTS mp_payment_id TEXT DEFAULT ''`);
+  await pool.query(`ALTER TABLE pedidos_online ADD COLUMN IF NOT EXISTS tipo_entrega TEXT DEFAULT 'recoger'`);
+  await pool.query(`ALTER TABLE pedidos_online ADD COLUMN IF NOT EXISTS direccion_calle TEXT DEFAULT ''`);
+  await pool.query(`ALTER TABLE pedidos_online ADD COLUMN IF NOT EXISTS direccion_numero TEXT DEFAULT ''`);
+  await pool.query(`ALTER TABLE pedidos_online ADD COLUMN IF NOT EXISTS direccion_colonia TEXT DEFAULT ''`);
+  await pool.query(`ALTER TABLE pedidos_online ADD COLUMN IF NOT EXISTS direccion_ciudad TEXT DEFAULT ''`);
+  await pool.query(`ALTER TABLE pedidos_online ADD COLUMN IF NOT EXISTS direccion_cp TEXT DEFAULT ''`);
+  await pool.query(`ALTER TABLE pedidos_online ADD COLUMN IF NOT EXISTS direccion_referencias TEXT DEFAULT ''`);
   await pool.query(`ALTER TABLE pedido_online_items ADD COLUMN IF NOT EXISTS variante_id UUID`);
   await pool.query(`ALTER TABLE pedido_online_items ADD COLUMN IF NOT EXISTS variante_texto TEXT DEFAULT ''`);
   await pool.query(`ALTER TABLE pedido_online_items ADD COLUMN IF NOT EXISTS kit_id UUID`);
@@ -120,6 +128,7 @@ router.get('/tienda/:slug/info', async (req, res) => {
       `SELECT id, nombre, giro_principal, tienda_imagen_url, tienda_descripcion,
               tienda_logo_url, tienda_telefono, tienda_direccion, tienda_horario,
               COALESCE(tienda_mostrar_kits,false) AS tienda_mostrar_kits,
+              COALESCE(domicilio_habilitado,false) AS domicilio_habilitado,
               (mp_access_token IS NOT NULL AND mp_access_token != '') AS mp_habilitado
        FROM negocios WHERE slug=$1 AND activo=true`,
       [req.params.slug]
@@ -224,11 +233,16 @@ router.post('/tienda/:slug/pedidos', async (req, res) => {
     await ensureTiendaTables();
     const {
       sucursal_id, cliente_nombre, cliente_telefono='', cliente_email='', notas='', items=[],
-      requiere_factura=false, rfc_receptor='', razon_social_receptor='', uso_cfdi='G03'
+      requiere_factura=false, rfc_receptor='', razon_social_receptor='', uso_cfdi='G03',
+      tipo_entrega='recoger', direccion_calle='', direccion_numero='', direccion_colonia='',
+      direccion_ciudad='', direccion_cp='', direccion_referencias=''
     } = req.body;
     if (!sucursal_id) return res.status(400).json({ error: 'Falta la sucursal' });
     if (!cliente_nombre || !cliente_nombre.trim()) return res.status(400).json({ error: 'Falta tu nombre' });
     if (!items.length) return res.status(400).json({ error: 'El pedido está vacío' });
+    if (tipo_entrega === 'domicilio' && (!direccion_calle.trim() || !direccion_colonia.trim())) {
+      return res.status(400).json({ error: 'Falta la dirección de entrega' });
+    }
 
     const neg = await pool.query('SELECT id FROM negocios WHERE slug=$1 AND activo=true', [req.params.slug]);
     if (!neg.rows.length) return res.status(404).json({ error: 'Tienda no encontrada' });
@@ -310,10 +324,12 @@ router.post('/tienda/:slug/pedidos', async (req, res) => {
     const folio = folioPedido();
     const pedido = await client.query(
       `INSERT INTO pedidos_online (negocio_id, sucursal_id, folio, cliente_nombre, cliente_telefono, cliente_email, notas, subtotal,
-        requiere_factura, rfc_receptor, razon_social_receptor, uso_cfdi)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id, folio`,
+        requiere_factura, rfc_receptor, razon_social_receptor, uso_cfdi,
+        tipo_entrega, direccion_calle, direccion_numero, direccion_colonia, direccion_ciudad, direccion_cp, direccion_referencias)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) RETURNING id, folio`,
       [negocioId, sucursal_id, folio, cliente_nombre.trim(), cliente_telefono, cliente_email, notas, subtotal,
-       !!requiere_factura, rfc_receptor, razon_social_receptor, uso_cfdi]
+       !!requiere_factura, rfc_receptor, razon_social_receptor, uso_cfdi,
+       tipo_entrega, direccion_calle, direccion_numero, direccion_colonia, direccion_ciudad, direccion_cp, direccion_referencias]
     );
     const pedidoId = pedido.rows[0].id;
 

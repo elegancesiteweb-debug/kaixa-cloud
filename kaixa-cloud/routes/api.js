@@ -999,7 +999,8 @@ router.get('/negocio/tienda', async (req, res) => {
     const r = await pool.query(
       `SELECT slug, tienda_imagen_url, tienda_descripcion, tienda_logo_url,
               tienda_telefono, tienda_direccion, tienda_horario,
-              COALESCE(tienda_mostrar_kits,false) AS tienda_mostrar_kits
+              COALESCE(tienda_mostrar_kits,false) AS tienda_mostrar_kits,
+              COALESCE(domicilio_habilitado,false) AS domicilio_habilitado
        FROM negocios WHERE id=$1`,
       [req.caja.negocio_id]
     );
@@ -1014,7 +1015,7 @@ router.put('/negocio/tienda', async (req, res) => {
     const {
       tienda_imagen_url = null, tienda_descripcion = null, tienda_logo_url = null,
       tienda_telefono = null, tienda_direccion = null, tienda_horario = null,
-      tienda_mostrar_kits = null
+      tienda_mostrar_kits = null, domicilio_habilitado = null
     } = req.body;
     await pool.query(
       `UPDATE negocios SET
@@ -1024,10 +1025,11 @@ router.put('/negocio/tienda', async (req, res) => {
          tienda_telefono=COALESCE($4, tienda_telefono),
          tienda_direccion=COALESCE($5, tienda_direccion),
          tienda_horario=COALESCE($6, tienda_horario),
-         tienda_mostrar_kits=COALESCE($7, tienda_mostrar_kits)
+         tienda_mostrar_kits=COALESCE($7, tienda_mostrar_kits),
+         domicilio_habilitado=COALESCE($9, domicilio_habilitado)
        WHERE id=$8`,
       [tienda_imagen_url, tienda_descripcion, tienda_logo_url, tienda_telefono, tienda_direccion, tienda_horario,
-       tienda_mostrar_kits, req.caja.negocio_id]
+       tienda_mostrar_kits, req.caja.negocio_id, domicilio_habilitado]
     );
     res.json({ ok: true });
   } catch(e) { res.status(500).json({ error: e.message }); }

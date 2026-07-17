@@ -2263,7 +2263,7 @@ function renderPedidosOnline() {
       '<div class="card-row" style="align-items:flex-start">' +
         '<div class="card-ico">🛍️</div>' +
         '<div class="card-info">' +
-          '<div class="card-title">'+p.cliente_nombre+' · $'+Number(p.subtotal).toFixed(2)+(tieneVar?' <span style="font-size:9px;font-weight:800;color:#a855f7;background:rgba(168,85,247,.1);padding:2px 6px;border-radius:5px">🎨 con variantes</span>':'')+'</div>' +
+          '<div class="card-title">'+p.cliente_nombre+' · $'+Number(p.subtotal).toFixed(2)+(tieneVar?' <span style="font-size:9px;font-weight:800;color:#a855f7;background:rgba(168,85,247,.1);padding:2px 6px;border-radius:5px">🎨 con variantes</span>':'')+(p.tipo_entrega==='domicilio'?' <span style="font-size:9px;font-weight:800;color:#8b5cf6;background:rgba(139,92,246,.1);padding:2px 6px;border-radius:5px">🚚 domicilio</span>':'')+'</div>' +
           '<div class="card-sub">'+items+'</div>' +
           '<div class="card-sub" style="margin-top:2px">'+p.folio+' · '+fecha+(p.cliente_telefono?' · 📞 '+p.cliente_telefono:'')+'</div>' +
         '</div>' +
@@ -2288,6 +2288,15 @@ function verDetallePedidoOnline(id) {
       '</div>';
   }).join('') || '<p style="color:var(--text3);font-size:12px">Sin productos</p>';
 
+  var domicilioBox = p.tipo_entrega === 'domicilio'
+    ? '<div style="font-size:12px;color:var(--text);background:rgba(139,92,246,.07);border:1px solid rgba(139,92,246,.2);border-radius:8px;padding:10px 12px;margin-bottom:8px">' +
+        '<div style="font-weight:800;margin-bottom:3px">🚚 Entrega a domicilio</div>' +
+        '<div>'+(p.direccion_calle||'')+' '+(p.direccion_numero||'')+', '+(p.direccion_colonia||'')+'</div>' +
+        (p.direccion_ciudad || p.direccion_cp ? '<div>'+(p.direccion_ciudad||'')+(p.direccion_cp?' · CP '+p.direccion_cp:'')+'</div>' : '') +
+        (p.direccion_referencias ? '<div style="color:var(--text2);margin-top:2px">📌 '+p.direccion_referencias+'</div>' : '') +
+      '</div>'
+    : '<div style="font-size:11px;color:var(--text3);margin-bottom:8px">🏪 Recoger en tienda</div>';
+
   var html = '<div class="modal-overlay" id="modalPedidoOnlineDet">' +
     '<div class="modal-sheet">' +
       '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">' +
@@ -2296,6 +2305,7 @@ function verDetallePedidoOnline(id) {
       '</div>' +
       '<div style="font-size:12px;color:var(--text2);margin-bottom:4px"><b>'+p.cliente_nombre+'</b>'+(p.cliente_telefono?' · 📞 '+p.cliente_telefono:'')+(p.cliente_email?' · ✉️ '+p.cliente_email:'')+'</div>' +
       '<div style="font-size:11px;color:var(--text3);margin-bottom:8px">'+fecha+' · '+estTxt+'</div>' +
+      domicilioBox +
       (p.notas ? '<div style="font-size:12px;color:var(--text2);background:var(--s2);border-radius:8px;padding:8px 10px;margin-bottom:8px"><b>Notas:</b> '+p.notas+'</div>' : '') +
       filas +
       '<div style="display:flex;justify-content:space-between;font-size:16px;font-weight:900;margin-top:12px"><span>Total</span><span>$'+Number(p.subtotal).toFixed(2)+'</span></div>' +
@@ -2501,6 +2511,7 @@ async function abrirTiendaConfig() {
       '<div class="form-field"><label>Dirección</label><input id="tiendaDirInputMovil" placeholder="Calle, número, colonia"></div>' +
       '<div class="form-field"><label>Horario</label><input id="tiendaHorInputMovil" placeholder="Lun-Sáb 9am-8pm"></div>' +
       '<div class="card" style="margin-bottom:14px"><label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="tiendaMostrarKitsMovil" style="width:18px;height:18px"><span style="font-size:13px;font-weight:700">🎁 Mostrar kits y combos en la tienda en línea</span></label></div>' +
+      '<div class="card" style="margin-bottom:14px"><label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="tiendaDomicilioMovil" style="width:18px;height:18px"><span style="font-size:13px;font-weight:700">🚚 Ofrezco servicio a domicilio</span></label></div>' +
       '<button class="btn-full primary" onclick="guardarTiendaConfigMovil()">💾 Guardar</button>' +
     '</div></div>';
   document.getElementById('modalContainer').innerHTML = html;
@@ -2515,6 +2526,7 @@ async function abrirTiendaConfig() {
       if (d.tienda_direccion) document.getElementById('tiendaDirInputMovil').value = d.tienda_direccion;
       if (d.tienda_horario) document.getElementById('tiendaHorInputMovil').value = d.tienda_horario;
       document.getElementById('tiendaMostrarKitsMovil').checked = !!d.tienda_mostrar_kits;
+      document.getElementById('tiendaDomicilioMovil').checked = !!d.domicilio_habilitado;
       if (d.tienda_imagen_url) {
         document.getElementById('tiendaImgPreviewMovil').innerHTML = '<img src="'+d.tienda_imagen_url+'" style="width:100%;height:100%;object-fit:cover">';
       }
@@ -2551,7 +2563,8 @@ async function guardarTiendaConfigMovil() {
     tienda_telefono: document.getElementById('tiendaTelInputMovil').value.trim(),
     tienda_direccion: document.getElementById('tiendaDirInputMovil').value.trim(),
     tienda_horario: document.getElementById('tiendaHorInputMovil').value.trim(),
-    tienda_mostrar_kits: document.getElementById('tiendaMostrarKitsMovil').checked
+    tienda_mostrar_kits: document.getElementById('tiendaMostrarKitsMovil').checked,
+    domicilio_habilitado: document.getElementById('tiendaDomicilioMovil').checked
   };
   if (_tiendaImgBase64Movil) body.tienda_imagen_url = _tiendaImgBase64Movil;
   if (_tiendaLogoBase64Movil) body.tienda_logo_url = _tiendaLogoBase64Movil;

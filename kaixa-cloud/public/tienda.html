@@ -39,6 +39,8 @@
   .btn{padding:10px;border-radius:10px;border:none;background:linear-gradient(135deg,var(--acc),var(--acc2));color:#fff;font-weight:800;font-size:13px;cursor:pointer;width:100%}
   .btn:disabled{background:#d8d5e8;cursor:not-allowed}
   .btn-o{background:transparent;border:1.5px solid var(--acc);color:var(--acc)}
+  .seg-btn{flex:1;padding:10px;border-radius:10px;border:1.5px solid var(--border);background:#fff;color:var(--text2);font-weight:700;font-size:12.5px;cursor:pointer}
+  .seg-btn.active{border-color:var(--acc);color:var(--acc);background:rgba(139,92,246,.06)}
   .qty{display:flex;align-items:center;justify-content:center;gap:10px}
   .qty button{width:28px;height:28px;border-radius:8px;border:1px solid var(--border);background:#fff;font-weight:900;cursor:pointer;font-size:14px}
   .cartbar{position:fixed;left:0;right:0;bottom:0;background:linear-gradient(135deg,var(--acc),var(--acc2));color:#fff;padding:14px 18px;display:none;align-items:center;justify-content:space-between;cursor:pointer;box-shadow:0 -4px 20px rgba(0,0,0,.2)}
@@ -182,6 +184,21 @@
     <div class="field"><label>Tu nombre *</label><input id="ckNombre" oninput="guardarCarritoAbandonado()" placeholder="Nombre completo"></div>
     <div class="field"><label>Teléfono</label><input id="ckTel" type="tel" oninput="guardarCarritoAbandonado()" placeholder="10 dígitos"></div>
     <div class="field"><label>Email (opcional)</label><input id="ckEmail" type="email" placeholder="tu@correo.com"></div>
+    <div class="field" id="ckEntregaBox" style="display:none">
+      <label>¿Cómo lo quieres recibir?</label>
+      <div style="display:flex;gap:8px">
+        <button type="button" id="btnRecoger" class="seg-btn active" onclick="setTipoEntrega('recoger')">🏪 Recoger en tienda</button>
+        <button type="button" id="btnDomicilio" class="seg-btn" onclick="setTipoEntrega('domicilio')">🚚 A domicilio</button>
+      </div>
+    </div>
+    <div id="ckDomicilioBox" style="display:none">
+      <div class="field"><label>Calle *</label><input id="ckCalle" placeholder="Nombre de la calle"></div>
+      <div class="field"><label>Número *</label><input id="ckNumero" placeholder="Ej: 123"></div>
+      <div class="field"><label>Colonia *</label><input id="ckColonia"></div>
+      <div class="field"><label>Ciudad</label><input id="ckCiudad"></div>
+      <div class="field"><label>Código postal</label><input id="ckCP" inputmode="numeric" maxlength="5"></div>
+      <div class="field"><label>Referencias (opcional)</label><textarea id="ckReferencias" rows="2" placeholder="Ej: casa azul, portón negro"></textarea></div>
+    </div>
     <div class="field"><label>Notas (opcional)</label><textarea id="ckNotas" rows="2" placeholder="Ej: recojo después de las 5pm"></textarea></div>
     <div class="field" style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
       <input type="checkbox" id="ckFactura" onchange="toggleFactura()" style="width:auto">
@@ -558,7 +575,23 @@ function irACheckout(){
   if (!cantidadCarrito()) { notif('Agrega al menos un producto'); return; }
   cerrar('ovCarrito');
   document.getElementById('ckTotal').textContent = '$' + totalCarrito().toFixed(2);
+  var entregaBox = document.getElementById('ckEntregaBox');
+  if (negocio && negocio.domicilio_habilitado) {
+    entregaBox.style.display = 'block';
+    setTipoEntrega('recoger');
+  } else {
+    entregaBox.style.display = 'none';
+    setTipoEntrega('recoger');
+  }
   document.getElementById('ovCheckout').classList.add('show');
+}
+
+var _tipoEntrega = 'recoger';
+function setTipoEntrega(tipo){
+  _tipoEntrega = tipo;
+  document.getElementById('btnRecoger').classList.toggle('active', tipo === 'recoger');
+  document.getElementById('btnDomicilio').classList.toggle('active', tipo === 'domicilio');
+  document.getElementById('ckDomicilioBox').style.display = tipo === 'domicilio' ? 'block' : 'none';
 }
 
 function toggleFactura(){
@@ -598,6 +631,9 @@ async function enviarPedido(){
   var rfc = document.getElementById('ckRfc').value.trim().toUpperCase();
   var razonSocial = document.getElementById('ckRazonSocial').value.trim();
   if (quiereFactura && (!rfc || !razonSocial)) { notif('Completa el RFC y la razón social para tu factura'); return; }
+  var calle = document.getElementById('ckCalle').value.trim();
+  var colonia = document.getElementById('ckColonia').value.trim();
+  if (_tipoEntrega === 'domicilio' && (!calle || !colonia)) { notif('Completa la calle y colonia para la entrega a domicilio'); return; }
   var btn = document.getElementById('ckBtn');
   btn.disabled = true; btn.textContent = 'Enviando…';
   try{
@@ -619,7 +655,14 @@ async function enviarPedido(){
         requiere_factura: quiereFactura,
         rfc_receptor: rfc,
         razon_social_receptor: razonSocial,
-        uso_cfdi: document.getElementById('ckUsoCfdi').value
+        uso_cfdi: document.getElementById('ckUsoCfdi').value,
+        tipo_entrega: _tipoEntrega,
+        direccion_calle: calle,
+        direccion_numero: document.getElementById('ckNumero').value.trim(),
+        direccion_colonia: colonia,
+        direccion_ciudad: document.getElementById('ckCiudad').value.trim(),
+        direccion_cp: document.getElementById('ckCP').value.trim(),
+        direccion_referencias: document.getElementById('ckReferencias').value.trim()
       })
     });
     var d = await r.json();
