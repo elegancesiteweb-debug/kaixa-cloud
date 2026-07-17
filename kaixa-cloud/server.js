@@ -73,6 +73,10 @@ async function aplicarEsquema() {
     console.log('✅ productos.proveedor_id listo');
   } catch(e) { console.error('⚠️ Migración proveedor_id:', e.message); }
   try {
+    await pool.query(`ALTER TABLE empleados ADD COLUMN IF NOT EXISTS foto TEXT DEFAULT ''`);
+    console.log('✅ empleados.foto listo');
+  } catch(e) { console.error('⚠️ Migración empleados.foto:', e.message); }
+  try {
     await pool.query(`
       CREATE TABLE IF NOT EXISTS licencias (
         id                SERIAL PRIMARY KEY,
@@ -365,17 +369,18 @@ app.post('/api/sync/empleados', async (req, res) => {
           // Actualizar horarios
           const activoEmp = (e.activo === false || e.activo === 0) ? false : true;
           await pool.query(
-            `UPDATE empleados SET rol=$1, ultima_entrada=$2, ultima_salida=$3, sucursal_id=$4, activo=$5 WHERE id=$6`,
-            [e.rol||'cajero', e.ultima_entrada||null, e.ultima_salida||null, e.sucursal_id||sucursal_id, activoEmp, existe.rows[0].id]
+            `UPDATE empleados SET rol=$1, ultima_entrada=$2, ultima_salida=$3, sucursal_id=$4, activo=$5,
+               foto=COALESCE(NULLIF($6,''), foto) WHERE id=$7`,
+            [e.rol||'cajero', e.ultima_entrada||null, e.ultima_salida||null, e.sucursal_id||sucursal_id, activoEmp, e.foto||'', existe.rows[0].id]
           );
         } else {
           // Insertar nuevo
           await pool.query(
-            `INSERT INTO empleados (negocio_id, sucursal_id, nombre, rol, usuario, password, activo, ultima_entrada, ultima_salida)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+            `INSERT INTO empleados (negocio_id, sucursal_id, nombre, rol, usuario, password, activo, ultima_entrada, ultima_salida, foto)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
             [negocio_id, e.sucursal_id||sucursal_id, e.nombre, e.rol||'cajero',
              e.usuario||null, e.password||null, e.activo!==false,
-             e.ultima_entrada||null, e.ultima_salida||null]
+             e.ultima_entrada||null, e.ultima_salida||null, e.foto||'']
           );
         }
         sincronizados++;
@@ -487,7 +492,7 @@ app.get('/api/empleados', authCaja, async (req, res) => {
     const todos = req.query.todos === '1';
     let sql, params;
     if (todos) {
-      sql = `SELECT e.id, e.nombre, e.rol, e.usuario, e.ultima_entrada, e.ultima_salida, e.sucursal_id,
+      sql = `SELECT e.id, e.nombre, e.rol, e.usuario, e.ultima_entrada, e.ultima_salida, e.sucursal_id, e.foto,
              COALESCE(s.nombre, 'Sin sucursal') AS sucursal_nombre
              FROM empleados e
              LEFT JOIN sucursales s ON s.id::text = e.sucursal_id::text
@@ -495,7 +500,7 @@ app.get('/api/empleados', authCaja, async (req, res) => {
              ORDER BY sucursal_nombre, e.nombre`;
       params = [negocio_id];
     } else {
-      sql = `SELECT e.id, e.nombre, e.rol, e.usuario, e.ultima_entrada, e.ultima_salida, e.sucursal_id,
+      sql = `SELECT e.id, e.nombre, e.rol, e.usuario, e.ultima_entrada, e.ultima_salida, e.sucursal_id, e.foto,
              COALESCE(s.nombre, 'Sin sucursal') AS sucursal_nombre
              FROM empleados e
              LEFT JOIN sucursales s ON s.id::text = e.sucursal_id::text
@@ -515,17 +520,17 @@ app.get('/api/empleados/:id', authCaja, async (req, res) => {
 });
 app.post('/api/empleados', authCaja, async (req, res) => {
   try {
-    const { nombre, rol='cajero', usuario, password } = req.body;
+    const { nombre, rol='cajero', usuario, password, foto='' } = req.body;
     if (!nombre) return res.status(400).json({ error: 'Nombre requerido' });
-    const r = await pool.query('INSERT INTO empleados (negocio_id,nombre,rol,usuario,password,activo) VALUES ($1,$2,$3,$4,$5,true) RETURNING *', [req.caja.negocio_id, nombre, rol, usuario||null, password||null]);
+    const r = await pool.query('INSERT INTO empleados (negocio_id,nombre,rol,usuario,password,activo,foto) VALUES ($1,$2,$3,$4,$5,true,$6) RETURNING *', [req.caja.negocio_id, nombre, rol, usuario||null, password||null, foto||'']);
     res.json({ ok: true, empleado: r.rows[0] });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 app.put('/api/empleados/:id', authCaja, async (req, res) => {
   try {
-    const { nombre, rol, usuario, password } = req.body;
-    let sql = 'UPDATE empleados SET nombre=$1,rol=$2,usuario=$3';
-    const vals = [nombre, rol, usuario||null];
+    const { nombre, rol, usuario, password, foto } = req.body;
+    let sql = 'UPDATE empleados SET nombre=$1,rol=$2,usuario=$3,foto=COALESCE(NULLIF($4,\'\'),foto)';
+    const vals = [nombre, rol, usuario||null, foto||''];
     if (password) { sql += `,password=$${vals.length+1}`; vals.push(password); }
     sql += ` WHERE id=$${vals.length+1} AND negocio_id=$${vals.length+2}`;
     vals.push(req.params.id, req.caja.negocio_id);

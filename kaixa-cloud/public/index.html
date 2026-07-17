@@ -1757,9 +1757,12 @@ function renderEmps() {
   var fuera   = _emps.filter(function(e){return !e.ultima_entrada||e.ultima_salida;});
   function mkCard(e, activo) {
     var ini = e.nombre.split(' ').map(function(p){return p[0]||'';}).join('').substring(0,2).toUpperCase();
+    var icoHtml = (e.foto && e.foto.indexOf('data:') === 0)
+      ? '<img src="' + e.foto + '" style="width:100%;height:100%;object-fit:cover;border-radius:50%">'
+      : ini;
     return '<div class="card" style="cursor:pointer;margin-bottom:8px" onclick="abrirEditEmp(\'' + e.id + '\')">' +
       '<div class="card-row">' +
-        '<div class="card-ico" style="background:' + (activo?'linear-gradient(135deg,#22c55e,#0ea5e9)':'var(--s2)') + ';color:' + (activo?'#fff':'var(--text3)') + ';font-weight:900">' + ini + '</div>' +
+        '<div class="card-ico" style="overflow:hidden;background:' + (activo?'linear-gradient(135deg,#22c55e,#0ea5e9)':'var(--s2)') + ';color:' + (activo?'#fff':'var(--text3)') + ';font-weight:900">' + icoHtml + '</div>' +
         '<div class="card-info"><div class="card-title">' + e.nombre + '</div>' +
         '<div class="card-sub">' + (e.rol||'cajero') + (activo?' · Entró '+new Date(e.ultima_entrada).toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'}):'') + '</div>' +
         (e.ultima_entrada ? (function(){
@@ -1791,12 +1794,22 @@ async function registrarSalida(id) { var r = await apiFetch('/api/empleados/'+id
 function abrirNuevoEmp() { abrirModalEmp(null); }
 function abrirEditEmp(id) { var e = _emps.find(function(x){return String(x.id)===String(id);}); if(e) abrirModalEmp(e); }
 
+var _empFotoBase64 = null;
 function abrirModalEmp(e) {
   var esNuevo = !e;
+  _empFotoBase64 = null;
+  var fotoPreview = (e && e.foto && e.foto.indexOf('data:') === 0)
+    ? '<img id="eFotoImg" src="' + e.foto + '" style="width:100%;height:100%;object-fit:cover">'
+    : '👤';
   var html = '<div class="modal-overlay" id="modalEmp"><div class="modal-sheet">' +
     '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">' +
       '<h3 style="margin:0">' + (esNuevo?'➕ Nuevo empleado':'✏️ Editar empleado') + '</h3>' +
       '<span class="modal-close" onclick="document.getElementById(\'modalEmp\').remove()">✕</span></div>' +
+    '<div style="text-align:center;margin-bottom:14px">' +
+      '<div id="eFotoPreview" onclick="document.getElementById(\'eFotoInput\').click()" style="width:72px;height:72px;border-radius:50%;margin:0 auto 8px;overflow:hidden;background:var(--s2);display:flex;align-items:center;justify-content:center;font-size:30px;cursor:pointer">' + fotoPreview + '</div>' +
+      '<label style="font-size:12px;color:var(--accent);font-weight:700;cursor:pointer" for="eFotoInput">📷 ' + (esNuevo?'Agregar foto':'Cambiar foto') + '</label>' +
+      '<input type="file" id="eFotoInput" accept="image/*" style="display:none" onchange="onEmpFotoFile(this)">' +
+    '</div>' +
     '<div class="form-field"><label>Nombre</label><input id="eNombre" value="' + (e?e.nombre:'') + '"></div>' +
     '<div class="form-field"><label>Rol</label><select id="eRol">' +
       ['cajero','supervisor','administrador'].map(function(r){return '<option value="'+r+'"'+(e&&e.rol===r?' selected':'')+'>'+r+'</option>';}).join('') +
@@ -1808,10 +1821,21 @@ function abrirModalEmp(e) {
   document.getElementById('modalContainer').innerHTML = html;
 }
 
+async function onEmpFotoFile(input) {
+  if (!input.files || !input.files[0]) return;
+  try {
+    _empFotoBase64 = await comprimirImagen(input.files[0], 300, 300, 0.7);
+    document.getElementById('eFotoPreview').innerHTML = '<img id="eFotoImg" src="' + _empFotoBase64 + '" style="width:100%;height:100%;object-fit:cover">';
+  } catch(err) {
+    notif('❌ No se pudo procesar la foto: ' + err.message, 'err');
+  }
+}
+
 async function guardarEmp(id) {
   var data = { nombre: document.getElementById('eNombre').value, rol: document.getElementById('eRol').value, usuario: document.getElementById('eUsuario').value, giro: giro };
   var pass = document.getElementById('ePass').value;
   if (pass) data.password = pass;
+  if (_empFotoBase64) data.foto = _empFotoBase64;
   if (!data.nombre) { notif('El nombre es requerido','err'); return; }
   var r = await apiFetch('/api/empleados'+(id?'/'+id:''),{method:id?'PUT':'POST',body:JSON.stringify(data)});
   if(r&&r.ok){document.getElementById('modalContainer').innerHTML='';notif(id?'✅ Empleado actualizado':'✅ Empleado creado','ok');loadEmps();}
@@ -1840,8 +1864,11 @@ function renderLotes() {
     var dias = cad ? Math.ceil((cad - hoy) / 86400000) : null;
     var cls = !cad ? 'ok' : dias < 0 ? 'err' : dias <= 30 ? 'warn' : 'ok';
     var txt = !cad ? '✓ Sin cad.' : dias < 0 ? '🔴 Vencido' : dias <= 30 ? '🟡 ' + dias + ' días' : '🟢 OK';
+    var icoHtml = (l.producto_imagen_url && l.producto_imagen_url.indexOf('data:') === 0)
+      ? '<img src="' + l.producto_imagen_url + '" style="width:100%;height:100%;object-fit:cover;border-radius:50%">'
+      : '🏷️';
     return '<div class="card" onclick="abrirEditLote(\'' + l.id + '\')" style="cursor:pointer;margin:0 16px 8px">' +
-      '<div class="card-row"><div class="card-ico">🏷️</div>' +
+      '<div class="card-row"><div class="card-ico" style="overflow:hidden">' + icoHtml + '</div>' +
       '<div class="card-info"><div class="card-title">' + (l.nombre_producto||'Sin producto') + '</div>' +
       '<div class="card-sub">Lote: ' + l.numero_lote + ' · ' + l.cantidad + ' uds</div></div>' +
       '<span class="tag ' + cls + '">' + txt + '</span></div></div>';

@@ -419,7 +419,7 @@ router.get('/lotes', async (req, res) => {
   try {
     const { negocio_id, sucursal_id } = req.caja;
     const r = await pool.query(
-      `SELECT l.*, p.nombre AS nombre_producto, p.emoji AS producto_emoji,
+      `SELECT l.*, p.nombre AS nombre_producto, p.emoji AS producto_emoji, p.imagen_url AS producto_imagen_url,
         CASE WHEN l.fecha_caducidad IS NULL THEN NULL
           ELSE (l.fecha_caducidad::date - CURRENT_DATE)
         END AS dias_restantes
