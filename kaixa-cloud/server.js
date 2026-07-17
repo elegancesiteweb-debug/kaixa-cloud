@@ -68,6 +68,11 @@ async function aplicarEsquema() {
     `);
   } catch(e) {}
   try {
+    await pool.query(`ALTER TABLE productos ADD COLUMN IF NOT EXISTS proveedor_id UUID REFERENCES proveedores(id) ON DELETE SET NULL`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_productos_proveedor ON productos(proveedor_id)`);
+    console.log('✅ productos.proveedor_id listo');
+  } catch(e) { console.error('⚠️ Migración proveedor_id:', e.message); }
+  try {
     await pool.query(`
       CREATE TABLE IF NOT EXISTS licencias (
         id                SERIAL PRIMARY KEY,
