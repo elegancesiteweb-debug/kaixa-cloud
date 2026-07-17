@@ -1263,12 +1263,35 @@ function _cargarHtml5Qr() {
   });
 }
 
-async function _tieneBarcodeDetectorNativo() {
-  if (!('BarcodeDetector' in window)) return false;
+// Formatos de código de barras que realmente se usan en productos (evita que
+// el detector pierda tiempo intentando otros como QR/Aztec/PDF417).
+var FORMATOS_BARRAS = ['ean_13','ean_8','upc_a','upc_e','code_128','code_39','itf','codabar'];
+
+async function _formatosNativosSoportados() {
+  if (!('BarcodeDetector' in window)) return null;
   try {
-    var formatos = await BarcodeDetector.getSupportedFormats();
-    return !!(formatos && formatos.length);
-  } catch(e) { return false; }
+    var soportados = await BarcodeDetector.getSupportedFormats();
+    if (!soportados || !soportados.length) return null;
+    var interseccion = FORMATOS_BARRAS.filter(function(f){ return soportados.indexOf(f) !== -1; });
+    return interseccion.length ? interseccion : null;
+  } catch(e) { return null; }
+}
+
+// Valida el dígito verificador de EAN-13 / EAN-8 / UPC-A (normalizado a
+// EAN-13 agregando un 0 al inicio) para descartar lecturas parciales o mal
+// interpretadas antes de aceptarlas — sin esto, un solo cuadro borroso podía
+// devolver un número incompleto o con un dígito equivocado.
+function _checksumValido(codigo) {
+  if (!/^\d+$/.test(codigo)) return true; // Code128/Code39 alfanumérico — no aplica
+  var digs = codigo.length === 12 ? '0' + codigo : codigo; // UPC-A → EAN-13
+  if (digs.length !== 13 && digs.length !== 8) return true; // otros largos — no aplica
+  var nums = digs.split('').map(Number);
+  var check = nums.pop();
+  var pesoImpar = digs.length === 13 ? 1 : 3; // posición 1 (0-index par) desde la izquierda
+  var pesoPar   = digs.length === 13 ? 3 : 1;
+  var sum = 0;
+  for (var i = 0; i < nums.length; i++) sum += nums[i] * (i % 2 === 0 ? pesoImpar : pesoPar);
+  return ((10 - (sum % 10)) % 10) === check;
 }
 
 function _traducirErrorCamara(err) {
@@ -1294,7 +1317,8 @@ async function abrirEscanerCodigo(inputId) {
   window._scanTargetInput = inputId;
   notif('⏳ Abriendo cámara...', 'ok');
 
-  var usarNativo = await _tieneBarcodeDetectorNativo();
+  var formatosNativos = await _formatosNativosSoportados();
+  var usarNativo = !!formatosNativos;
 
   var ov = document.createElement('div');
   ov.className = 'modal-overlay';
@@ -1310,7 +1334,7 @@ async function abrirEscanerCodigo(inputId) {
         ? '<div style="position:relative;width:100%;background:#000"><video id="scanVideoNativo" playsinline autoplay muted style="width:100%;display:block;max-height:60vh;object-fit:cover"></video></div>'
         : '<div id="scanCodigoReader" style="width:100%"></div>') +
       '<div id="scanCodigoError" style="display:none;margin:12px 16px 0;padding:10px 12px;border-radius:10px;background:rgba(239,68,68,.08);color:var(--danger);font-size:12.5px;line-height:1.5"></div>' +
-      '<p id="scanCodigoHint" style="text-align:center;font-size:12px;color:var(--text3);padding:10px 16px 16px">Apunta la cámara al código de barras, a unos 10-15cm de distancia</p>' +
+      '<p id="scanCodigoHint" style="text-align:center;font-size:12px;color:var(--text3);padding:10px 16px 16px">Apunta la cámara al código de barras, a unos 10-15cm de distancia, con buena luz</p>' +
     '</div>';
   document.body.appendChild(ov);
 
@@ -1321,29 +1345,42 @@ async function abrirEscanerCodigo(inputId) {
 
   if (usarNativo) {
     try {
-      _scanStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+      _scanStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
+      });
       var video = document.getElementById('scanVideoNativo');
       if (!video) { cerrarEscanerCodigo(); return; }
       video.srcObject = _scanStream;
       await video.play().catch(function(){});
-      var detector = new BarcodeDetector();
+      var detector = new BarcodeDetector({ formats: formatosNativos });
       var detectado = false;
+      var ultimoValor = null;
+      var repeticiones = 0;
       var loop = function() {
         if (detectado || !document.getElementById('scanVideoNativo')) return;
         detector.detect(video).then(function(codigos) {
           if (detectado) return;
-          if (codigos.length > 0) {
-            detectado = true;
-            var valor = codigos[0].rawValue;
-            var inp = document.getElementById(window._scanTargetInput);
-            if (inp) inp.value = valor;
-            notif('✅ Código escaneado: ' + valor, 'ok');
-            cerrarEscanerCodigo();
-            return;
+          var candidato = codigos.length ? codigos[0].rawValue : null;
+          // Exige el mismo valor en 2 lecturas seguidas + checksum válido
+          // (si aplica) antes de aceptarlo — evita capturar un número
+          // incompleto o mal leído de un solo cuadro borroso.
+          if (candidato && _checksumValido(candidato)) {
+            if (candidato === ultimoValor) repeticiones++;
+            else { ultimoValor = candidato; repeticiones = 1; }
+            if (repeticiones >= 2) {
+              detectado = true;
+              var inp = document.getElementById(window._scanTargetInput);
+              if (inp) inp.value = candidato;
+              notif('✅ Código escaneado: ' + candidato, 'ok');
+              cerrarEscanerCodigo();
+              return;
+            }
+          } else {
+            ultimoValor = null; repeticiones = 0;
           }
-          _scanRAF = requestAnimationFrame(loop);
+          _scanRAF = setTimeout(loop, 150);
         }).catch(function() {
-          if (!detectado) _scanRAF = requestAnimationFrame(loop);
+          if (!detectado) _scanRAF = setTimeout(loop, 150);
         });
       };
       loop();
@@ -1381,7 +1418,7 @@ async function abrirEscanerCodigo(inputId) {
 }
 
 function cerrarEscanerCodigo() {
-  if (_scanRAF) { cancelAnimationFrame(_scanRAF); _scanRAF = null; }
+  if (_scanRAF) { clearTimeout(_scanRAF); _scanRAF = null; }
   if (_scanStream) {
     try { _scanStream.getTracks().forEach(function(t){ t.stop(); }); } catch(e) {}
     _scanStream = null;
