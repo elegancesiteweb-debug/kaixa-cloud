@@ -212,7 +212,7 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:var(--ff);backgroun
 <div class="notif" id="notif"></div>
 <div class="screen active" id="sc-splash">
   <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:0" class="splash-enter">
-    <img src="kaixa_mascot.png" class="splash-mascot" alt="Kaixa" onerror="this.style.fontSize='80px';this.outerHTML='<div style=font-size:80px>K</div>'">
+    <img src="kaixa_mascot.png" class="splash-mascot" alt="Kaixa" onerror="this.onerror=null;this.src='kaixa_icon.png'">
     <div class="splash-title">KAIXA PRO</div>
     <div class="splash-sub">Sistema POS</div>
     <div class="splash-bar-wrap"><div class="splash-bar" id="splashBar"></div></div>
@@ -222,7 +222,7 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:var(--ff);backgroun
 <div class="screen" id="sc-setup">
   <div class="auth-card">
     <div class="auth-logo">
-      <div class="k">K</div>
+      <img src="kaixa_icon.png" alt="Kaixa" style="width:60px;height:60px;border-radius:14px;box-shadow:0 4px 14px rgba(139,92,246,.35)" onerror="this.outerHTML='<div class=k>K</div>'">
       <div class="brand">Kaixa Pro</div>
       <div class="sub">Activar con tu licencia</div>
     </div>
@@ -238,7 +238,7 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:var(--ff);backgroun
 <div class="screen" id="sc-sucursal">
   <div class="auth-card">
     <div class="auth-logo">
-      <div class="k">K</div>
+      <img src="kaixa_icon.png" alt="Kaixa" style="width:60px;height:60px;border-radius:14px;box-shadow:0 4px 14px rgba(139,92,246,.35)" onerror="this.outerHTML='<div class=k>K</div>'">
       <div class="brand" id="sucNegNombre">Mi Negocio</div>
       <div class="sub">Elige tu sucursal</div>
     </div>
@@ -248,7 +248,7 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:var(--ff);backgroun
 <div class="screen" id="sc-login">
   <div class="auth-card">
     <div class="auth-logo">
-      <div class="k">K</div>
+      <img src="kaixa_icon.png" alt="Kaixa" style="width:60px;height:60px;border-radius:14px;box-shadow:0 4px 14px rgba(139,92,246,.35)" onerror="this.outerHTML='<div class=k>K</div>'">
       <div class="brand">Kaixa Pro</div>
       <div class="sub" id="loginNegocio">Sistema POS</div>
     </div>
@@ -2429,7 +2429,7 @@ function renderPedidosOnline() {
   cont.innerHTML = _pedidosOnline.map(function(p) {
     var estCls = p.estado === 'pendiente' ? 'warn' : p.estado === 'confirmado' ? 'ok' : 'err';
     var estTxt = p.estado === 'pendiente' ? '⏳ Pendiente' : p.estado === 'confirmado' ? '✅ Confirmado' : '❌ Rechazado';
-    var fecha = p.creado_en ? new Date(p.creado_en).toLocaleString('es-MX', {day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}) : '';
+    var fecha = p.creado_en ? new Date(p.creado_en).toLocaleString('es-MX', {day:'numeric',month:'short',hour:'2-digit',minute:'2-digit',timeZone:'America/Mexico_City'}) : '';
     var tieneVar = (p.items||[]).some(function(i){ return i.variante_texto; });
     var items = (p.items||[]).map(function(i){ return i.cantidad+'x '+i.nombre_producto+(i.variante_texto?' ('+i.variante_texto+')':''); }).join(' • ');
     var acciones = p.estado === 'pendiente'
@@ -2460,7 +2460,7 @@ function renderPedidosOnline() {
 function verDetallePedidoOnline(id) {
   var p = _pedidosOnline.find(function(x){ return x.id === id; });
   if (!p) { notif('Pedido no encontrado', 'err'); return; }
-  var fecha = p.creado_en ? new Date(p.creado_en).toLocaleString('es-MX', {day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '';
+  var fecha = p.creado_en ? new Date(p.creado_en).toLocaleString('es-MX', {day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit',timeZone:'America/Mexico_City'}) : '';
   var estTxt = p.estado === 'pendiente' ? '⏳ Pendiente' : p.estado === 'confirmado' ? '✅ Confirmado' : '❌ Rechazado';
   var filas = (p.items||[]).map(function(i) {
     var varBadge = i.variante_texto ? '<div style="font-size:11px;color:#a855f7;font-weight:700;margin-top:2px">🎨 '+i.variante_texto+'</div>' : '';
