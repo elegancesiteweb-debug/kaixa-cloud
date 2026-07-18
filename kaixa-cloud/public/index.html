@@ -26,14 +26,14 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:var(--ff);backgroun
 @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800;900&display=swap');
 .screen{display:none;position:fixed;inset:0;flex-direction:column;overflow:hidden}
 .screen.active{display:flex}
-#sc-splash{background:linear-gradient(160deg,#1a0a2e 0%,#16213e 50%,#0d0d1a 100%);align-items:center;justify-content:center}
+#sc-splash{background:linear-gradient(160deg,#ffffff 0%,#f3ebff 40%,#ddc6fb 75%,#b98af0 100%);align-items:center;justify-content:center}
 .splash-mascot{width:200px;height:200px;object-fit:contain;filter:drop-shadow(0 10px 30px rgba(139,92,246,.5));animation:splashFloat 3s ease-in-out infinite}
 @keyframes splashFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-12px)}}
 .splash-enter{animation:splashIn .8s cubic-bezier(.34,1.4,.64,1) both}
 @keyframes splashIn{from{opacity:0;transform:scale(.7) translateY(30px)}to{opacity:1;transform:scale(1) translateY(0)}}
-.splash-title{color:#fff;font-size:28px;font-weight:900;margin-top:16px;letter-spacing:.5px}
-.splash-sub{color:rgba(139,92,246,.8);font-size:12px;letter-spacing:4px;text-transform:uppercase;margin-top:6px}
-.splash-bar-wrap{width:200px;margin-top:32px;height:3px;background:rgba(255,255,255,.1);border-radius:20px;overflow:hidden}
+.splash-title{color:#4c1d95;font-size:28px;font-weight:900;margin-top:16px;letter-spacing:.5px}
+.splash-sub{color:rgba(139,92,246,.9);font-size:12px;letter-spacing:4px;text-transform:uppercase;margin-top:6px}
+.splash-bar-wrap{width:200px;margin-top:32px;height:3px;background:rgba(139,92,246,.15);border-radius:20px;overflow:hidden}
 .splash-bar{height:100%;background:var(--grad);border-radius:20px;width:0%;transition:width .5s ease;box-shadow:0 0 10px rgba(139,92,246,.8)}
 #sc-setup,#sc-login{background:var(--s1);align-items:center;justify-content:center;padding:24px}
 .auth-card{background:#fff;border-radius:24px;padding:28px 24px;width:100%;max-width:400px;box-shadow:0 8px 32px rgba(139,92,246,.12)}
@@ -212,11 +212,11 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:var(--ff);backgroun
 <div class="notif" id="notif"></div>
 <div class="screen active" id="sc-splash">
   <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:0" class="splash-enter">
-    <img src="kaixa_mascot.png" class="splash-mascot" alt="Kaixa" onerror="this.onerror=null;this.src='kaixa_icon.png'">
+    <img src="kaixa_mascot.png" class="splash-mascot" alt="Kaixa">
     <div class="splash-title">KAIXA PRO</div>
     <div class="splash-sub">Sistema POS</div>
     <div class="splash-bar-wrap"><div class="splash-bar" id="splashBar"></div></div>
-    <div style="color:rgba(255,255,255,.4);font-size:11px;margin-top:10px" id="splashTxt">Iniciando...</div>
+    <div style="color:rgba(76,29,149,.55);font-size:11px;margin-top:10px" id="splashTxt">Iniciando...</div>
   </div>
 </div>
 <div class="screen" id="sc-setup">
