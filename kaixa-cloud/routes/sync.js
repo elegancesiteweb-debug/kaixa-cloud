@@ -312,8 +312,16 @@ router.get('/pull', async (req, res) => {
         [negocio_id, sucursal_id, since]
       ),
       pool.query(
-        `SELECT * FROM stock_movimientos WHERE negocio_id=$1 AND sucursal_id=$2 AND creado_en > $3 ORDER BY creado_en`,
-        [negocio_id, sucursal_id, since]
+        // Excluir los movimientos que esta MISMA caja generó: ella ya aplicó
+        // el descuento de stock localmente en el momento de la venta (UPDATE
+        // directo), así que si el pull se los regresa se aplican DOS veces
+        // (una vez local al vender, otra vez aquí) y el stock queda negativo
+        // hasta que un pull posterior lo corrige con el stock_actual real.
+        // Los movimientos de OTRAS cajas (o de la nube, caja_id NULL —
+        // pedidos en línea confirmados, etc.) sí deben llegar por aquí.
+        `SELECT * FROM stock_movimientos WHERE negocio_id=$1 AND sucursal_id=$2 AND creado_en > $3
+         AND caja_id IS DISTINCT FROM $4 ORDER BY creado_en`,
+        [negocio_id, sucursal_id, since, caja_id]
       ),
       pool.query(
         `SELECT * FROM lotes WHERE negocio_id=$1 AND (sucursal_id=$2 OR sucursal_id IS NULL) AND actualizado_en > $3 ORDER BY actualizado_en`,
