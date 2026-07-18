@@ -575,6 +575,7 @@ app.use('/api',           authCaja, require('./routes/cfdi').router);
 app.use('/api',           authCaja, require('./routes/whatsapp').router);
 app.use('/api',           authCaja, require('./routes/pagos').router);
 app.use('/api',           authCaja, require('./routes/cotizaciones').router);
+app.use('/api',           authCaja, require('./routes/ventas-pendientes').router);
 app.use('/api',           authCaja, require('./routes/api'));
 app.get('*', (req, res) => {
   const idx = path.join(__dirname, 'public', 'index.html');
@@ -601,6 +602,8 @@ const PORT = process.env.PORT || 4500;
 aplicarEsquema().then(async () => {
   await crearTablasPush();
   try { await require('./routes/variantes').ensureVariantesTable(); } catch(e) { console.error('⚠️ producto_variantes:', e.message); }
+  const { ensureVentasPendientesTables, expirarVentasPendientes } = require('./routes/ventas-pendientes');
+  try { await ensureVentasPendientesTables(); } catch(e) { console.error('⚠️ ventas_pendientes:', e.message); }
   server.listen(PORT, () => {
     console.log('🚀 Kaixa Cloud v2.0 en puerto', PORT);
     console.log('📱 PWA en /  |  🔧 Admin en /admin.html');
@@ -609,4 +612,7 @@ aplicarEsquema().then(async () => {
   // Revisa stock bajo y lotes por caducar cada 45 minutos
   setTimeout(revisarAlertas, 30 * 1000);
   setInterval(revisarAlertas, 45 * 60 * 1000);
+  // Expira los tickets de caja de cobro que nadie fue a cobrar (ventana de 2h)
+  setTimeout(expirarVentasPendientes, 20 * 1000);
+  setInterval(expirarVentasPendientes, 5 * 60 * 1000);
 });
