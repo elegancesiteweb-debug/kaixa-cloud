@@ -6,6 +6,7 @@ const express = require('express');
 const router  = express.Router();
 const pool    = require('../db/pool');
 const webpush = require('web-push');
+const { enviarWhatsapp } = require('./whatsapp');
 
 async function crearTablasPush() {
   try {
@@ -148,6 +149,39 @@ async function revisarAlertas() {
         tag: 'lote_caduca'
       });
       await marcarAvisado(l.sucursal_id, 'lote_caduca', l.id);
+    }
+    // Fiado (venta a crédito) con fecha de pago vencida — se avisa al CLIENTE por WhatsApp
+    const fiados = await pool.query(`
+      SELECT v.id, v.negocio_id, v.sucursal_id, v.folio, v.total, v.fecha_pago,
+             c.nombre AS cliente_nombre, c.telefono AS cliente_telefono
+      FROM ventas v
+      JOIN clientes c ON c.id = v.cliente_id
+      WHERE v.forma_pago = 'credito' AND v.estado = 'completada'
+        AND v.fecha_pago IS NOT NULL AND v.fecha_pago <= CURRENT_DATE
+        AND c.telefono IS NOT NULL AND c.telefono <> ''
+    `);
+    for (const v of fiados.rows) {
+      if (await yaSeAviso(v.sucursal_id, 'cobro_fiado', v.id)) continue;
+      await enviarWhatsapp(v.negocio_id, v.cliente_telefono,
+        'Hola ' + v.cliente_nombre + ', te recordamos que tienes un saldo pendiente de $' +
+        Number(v.total).toFixed(2) + ' (folio ' + v.folio + '). ¡Gracias por tu preferencia!');
+      await marcarAvisado(v.sucursal_id, 'cobro_fiado', v.id);
+    }
+
+    // Apartados con fecha de cobro vencida — se avisa al CLIENTE por WhatsApp
+    const apartados = await pool.query(`
+      SELECT ar.id, ar.negocio_id, ar.sucursal_id, ar.apartado_local_id, ar.folio, ar.saldo,
+             ar.cliente_nombre, ar.cliente_telefono
+      FROM apartados_recordatorio ar
+      WHERE ar.activo = true AND ar.fecha_pago IS NOT NULL AND ar.fecha_pago <= CURRENT_DATE
+        AND ar.cliente_telefono IS NOT NULL AND ar.cliente_telefono <> ''
+    `);
+    for (const a of apartados.rows) {
+      if (await yaSeAviso(a.sucursal_id, 'cobro_apartado', a.apartado_local_id)) continue;
+      await enviarWhatsapp(a.negocio_id, a.cliente_telefono,
+        'Hola ' + a.cliente_nombre + ', te recordamos que tienes un apartado pendiente de $' +
+        Number(a.saldo).toFixed(2) + ' (folio ' + a.folio + '). ¡Gracias por tu preferencia!');
+      await marcarAvisado(a.sucursal_id, 'cobro_apartado', a.apartado_local_id);
     }
   } catch(e) {
     console.error('❌ Error revisando alertas de push:', e.message);

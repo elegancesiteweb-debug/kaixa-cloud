@@ -20,6 +20,32 @@ async function ensureVentasFechaPagoColumn() {
   _ventasFechaPagoColOk = true;
 }
 
+// Los apartados en sí viven solo en la PC de cada sucursal (no se comparten
+// entre sucursales) — esta tabla es solo un espejo ligero para que el
+// sistema de alertas (que corre en la nube) sepa que hay un cobro pendiente
+// y pueda avisar al cliente.
+let _apartadosRecordatorioOk = false;
+async function ensureApartadosRecordatorioTable() {
+  if (_apartadosRecordatorioOk) return;
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS apartados_recordatorio (
+      id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      negocio_id         UUID NOT NULL REFERENCES negocios(id) ON DELETE CASCADE,
+      sucursal_id        UUID NOT NULL REFERENCES sucursales(id),
+      apartado_local_id  INTEGER NOT NULL,
+      cliente_nombre     TEXT DEFAULT '',
+      cliente_telefono   TEXT DEFAULT '',
+      folio              TEXT DEFAULT '',
+      saldo              NUMERIC(12,2) DEFAULT 0,
+      fecha_pago         DATE,
+      activo             BOOLEAN DEFAULT true,
+      actualizado_en     TIMESTAMPTZ DEFAULT now(),
+      UNIQUE(sucursal_id, apartado_local_id)
+    );
+  `);
+  _apartadosRecordatorioOk = true;
+}
+
 // ── GET /api/productos ─────────────────────────────────────────
 router.get('/productos', async (req, res) => {
   try {
@@ -345,6 +371,74 @@ router.put('/ventas/:id/fecha-pago', async (req, res) => {
       [req.body.fecha_pago || null, req.params.id, req.caja.negocio_id]);
     broadcast(req, 'venta:editada', { id: req.params.id });
     res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── GET /api/clientes/:id/creditos — fiado del cliente EN TODAS LAS SUCURSALES ──
+// A diferencia de la PC (que solo ve su propia base local), esto vive en la
+// nube y no filtra por sucursal — así un cliente puede deber en la Sucursal A
+// y pagar en la Sucursal B sin problema.
+router.get('/clientes/:id/creditos', async (req, res) => {
+  try {
+    await ensureVentasFechaPagoColumn();
+    const r = await pool.query(
+      `SELECT v.id, v.folio, v.total, v.forma_pago, v.estado, v.creado_en, v.fecha_pago,
+              v.sucursal_id, s.nombre AS sucursal_nombre
+       FROM ventas v
+       JOIN sucursales s ON s.id = v.sucursal_id
+       WHERE v.negocio_id=$1 AND v.cliente_id=$2 AND v.forma_pago='credito' AND v.estado='completada'
+       ORDER BY v.creado_en ASC`,
+      [req.caja.negocio_id, req.params.id]
+    );
+    res.json(r.rows);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── GET /api/cobros-pendientes — fiados y apartados con fecha de pago próxima o vencida ──
+router.get('/cobros-pendientes', async (req, res) => {
+  try {
+    await ensureVentasFechaPagoColumn();
+    await ensureApartadosRecordatorioTable();
+    const fiados = await pool.query(
+      `SELECT v.id, v.folio, v.total, v.fecha_pago, v.sucursal_id, s.nombre AS sucursal_nombre,
+              c.id AS cliente_id, c.nombre AS cliente_nombre, c.telefono AS cliente_telefono
+       FROM ventas v
+       JOIN sucursales s ON s.id = v.sucursal_id
+       JOIN clientes c ON c.id = v.cliente_id
+       WHERE v.negocio_id=$1 AND v.forma_pago='credito' AND v.estado='completada'
+         AND v.fecha_pago IS NOT NULL
+       ORDER BY v.fecha_pago ASC`,
+      [req.caja.negocio_id]
+    );
+    const apartados = await pool.query(
+      `SELECT ar.apartado_local_id AS id, ar.folio, ar.saldo, ar.fecha_pago, ar.sucursal_id,
+              s.nombre AS sucursal_nombre, ar.cliente_nombre, ar.cliente_telefono
+       FROM apartados_recordatorio ar
+       JOIN sucursales s ON s.id = ar.sucursal_id
+       WHERE ar.negocio_id=$1 AND ar.activo=true AND ar.fecha_pago IS NOT NULL
+       ORDER BY ar.fecha_pago ASC`,
+      [req.caja.negocio_id]
+    );
+    res.json({ fiados: fiados.rows, apartados: apartados.rows });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── PUT /api/ventas/:id/liquidar — marca un fiado como pagado, desde cualquier sucursal ──
+router.put('/ventas/:id/liquidar', async (req, res) => {
+  try {
+    const v = await pool.query(
+      `SELECT * FROM ventas WHERE id=$1 AND negocio_id=$2`,
+      [req.params.id, req.caja.negocio_id]
+    );
+    if (!v.rows.length) return res.status(404).json({ error: 'Venta no encontrada' });
+    if (v.rows[0].forma_pago !== 'credito') return res.status(400).json({ error: 'Esta venta no es a crédito' });
+    const { forma_pago = 'efectivo' } = req.body;
+    await pool.query(
+      `UPDATE ventas SET forma_pago=$1 WHERE id=$2 AND negocio_id=$3`,
+      [forma_pago, req.params.id, req.caja.negocio_id]
+    );
+    broadcast(req, 'venta:editada', { id: req.params.id });
+    res.json({ ok: true, mensaje: 'Venta liquidada correctamente', folio: v.rows[0].folio });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -1228,6 +1322,43 @@ router.put('/carritos-abandonados/:id', async (req, res) => {
       [estado, req.params.id, req.caja.negocio_id]
     );
     res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── POST /api/apartados-recordatorio — la PC sube (upsert) el cobro pendiente de un apartado ──
+router.post('/apartados-recordatorio', async (req, res) => {
+  try {
+    await ensureApartadosRecordatorioTable();
+    const { negocio_id, sucursal_id } = req.caja;
+    const {
+      apartado_local_id, cliente_nombre = '', cliente_telefono = '',
+      folio = '', saldo = 0, fecha_pago = null, activo = true
+    } = req.body;
+    if (!apartado_local_id) return res.status(400).json({ error: 'Falta apartado_local_id' });
+    await pool.query(
+      `INSERT INTO apartados_recordatorio
+        (negocio_id, sucursal_id, apartado_local_id, cliente_nombre, cliente_telefono, folio, saldo, fecha_pago, activo, actualizado_en)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9, now())
+       ON CONFLICT (sucursal_id, apartado_local_id) DO UPDATE SET
+         cliente_nombre=$4, cliente_telefono=$5, folio=$6, saldo=$7, fecha_pago=$8, activo=$9, actualizado_en=now()`,
+      [negocio_id, sucursal_id, apartado_local_id, cliente_nombre, cliente_telefono, folio, saldo, fecha_pago, !!activo]
+    );
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── GET /api/apartados-recordatorio — cobros pendientes de apartados (esta sucursal o todas si eres admin viendo el negocio) ──
+router.get('/apartados-recordatorio', async (req, res) => {
+  try {
+    await ensureApartadosRecordatorioTable();
+    const r = await pool.query(
+      `SELECT ar.*, s.nombre AS sucursal_nombre FROM apartados_recordatorio ar
+       JOIN sucursales s ON s.id = ar.sucursal_id
+       WHERE ar.negocio_id=$1 AND ar.activo=true AND ar.fecha_pago IS NOT NULL
+       ORDER BY ar.fecha_pago ASC`,
+      [req.caja.negocio_id]
+    );
+    res.json(r.rows);
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 

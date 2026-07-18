@@ -572,6 +572,7 @@ app.use('/api/dashboard', authCaja, require('./routes/dashboard'));
 app.use('/api/push',      authCaja, pushRouter);
 app.use('/api',           authCaja, require('./routes/variantes').router);
 app.use('/api',           authCaja, require('./routes/cfdi').router);
+app.use('/api',           authCaja, require('./routes/whatsapp').router);
 app.use('/api',           authCaja, require('./routes/pagos').router);
 app.use('/api',           authCaja, require('./routes/cotizaciones').router);
 app.use('/api',           authCaja, require('./routes/api'));
