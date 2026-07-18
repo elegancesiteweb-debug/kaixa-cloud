@@ -550,7 +550,7 @@ app.post('/api/empleados', authCaja, async (req, res) => {
     await ensureEmpleadosFoto();
     const { nombre, rol='cajero', usuario, password, foto='' } = req.body;
     if (!nombre) return res.status(400).json({ error: 'Nombre requerido' });
-    const r = await pool.query('INSERT INTO empleados (negocio_id,nombre,rol,usuario,password,activo,foto) VALUES ($1,$2,$3,$4,$5,true,$6) RETURNING *', [req.caja.negocio_id, nombre, rol, usuario||null, password||null, foto||'']);
+    const r = await pool.query('INSERT INTO empleados (negocio_id,sucursal_id,nombre,rol,usuario,password,activo,foto) VALUES ($1,$2,$3,$4,$5,$6,true,$7) RETURNING *', [req.caja.negocio_id, req.caja.sucursal_id, nombre, rol, usuario||null, password||null, foto||'']);
     res.json({ ok: true, empleado: r.rows[0] });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
