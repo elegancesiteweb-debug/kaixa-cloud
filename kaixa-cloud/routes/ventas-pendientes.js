@@ -41,7 +41,7 @@ async function ensureVentasPendientesTables() {
     CREATE TABLE IF NOT EXISTS ventas_pendientes_detalle (
       id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       venta_pendiente_id UUID NOT NULL REFERENCES ventas_pendientes(id) ON DELETE CASCADE,
-      producto_id        UUID REFERENCES productos(id),
+      producto_id        UUID REFERENCES productos(id) ON DELETE CASCADE,
       nombre_producto    TEXT DEFAULT '',
       cantidad           INTEGER DEFAULT 1,
       precio_unitario    NUMERIC(12,2) DEFAULT 0,
@@ -49,6 +49,14 @@ async function ensureVentasPendientesTables() {
     );
   `);
   await pool.query(`ALTER TABLE stock_movimientos ADD COLUMN IF NOT EXISTS venta_pendiente_id UUID REFERENCES ventas_pendientes(id)`);
+  // Corrige el comportamiento de borrado de las FK de arriba para negocios
+  // creados antes de este fix (CREATE/ADD COLUMN IF NOT EXISTS no lo hacen
+  // retroactivamente) — sin esto, borrar un negocio con tickets pendientes
+  // truena por violar la FK en vez de dejar que el cascade limpie todo.
+  await pool.query(`ALTER TABLE ventas_pendientes_detalle DROP CONSTRAINT IF EXISTS ventas_pendientes_detalle_producto_id_fkey`);
+  await pool.query(`ALTER TABLE ventas_pendientes_detalle ADD CONSTRAINT ventas_pendientes_detalle_producto_id_fkey FOREIGN KEY (producto_id) REFERENCES productos(id) ON DELETE CASCADE`);
+  await pool.query(`ALTER TABLE stock_movimientos DROP CONSTRAINT IF EXISTS stock_movimientos_venta_pendiente_id_fkey`);
+  await pool.query(`ALTER TABLE stock_movimientos ADD CONSTRAINT stock_movimientos_venta_pendiente_id_fkey FOREIGN KEY (venta_pendiente_id) REFERENCES ventas_pendientes(id) ON DELETE SET NULL`);
   _tablasOk = true;
 }
 
