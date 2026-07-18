@@ -127,7 +127,7 @@ router.put('/cotizaciones/:id/estado', async (req, res) => {
 
 // ── POST /api/cotizaciones/:id/confirmar — convierte en venta real ──
 router.post('/cotizaciones/:id/confirmar', async (req, res) => {
-  const { negocio_id, sucursal_id, id: cajaId } = req.caja;
+  const { negocio_id, sucursal_id, id: cajaId, giro } = req.caja;
   const client = await pool.connect();
   try {
     await ensureCotizacionesTables();
@@ -165,9 +165,9 @@ router.post('/cotizaciones/:id/confirmar', async (req, res) => {
     await client.query(
       `INSERT INTO ventas (id, negocio_id, sucursal_id, caja_id, folio, subtotal, descuento, iva, total,
          forma_pago, efectivo_recibido, cambio, cajero, giro, referencia_externa)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,0,$8,$9,$10,$11,$12,'tienda',$13)`,
+       VALUES ($1,$2,$3,$4,$5,$6,$7,0,$8,$9,$10,$11,$12,$13,$14)`,
       [ventaId, negocio_id, sucId, cajaId, folioVenta, c.subtotal, c.descuento, total,
-       forma_pago, recibido, Math.max(0, recibido - total), cajero || c.cajero || 'Cotización', c.folio]
+       forma_pago, recibido, Math.max(0, recibido - total), cajero || c.cajero || 'Cotización', giro || 'tienda', c.folio]
     );
 
     for (const it of items.rows) {
