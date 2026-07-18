@@ -997,7 +997,7 @@ router.get('/negocio/tienda', async (req, res) => {
   try {
     await ensureTiendaTables();
     const r = await pool.query(
-      `SELECT slug, tienda_imagen_url, tienda_descripcion, tienda_logo_url,
+      `SELECT nombre, slug, tienda_imagen_url, tienda_descripcion, tienda_logo_url,
               tienda_telefono, tienda_direccion, tienda_horario,
               COALESCE(tienda_mostrar_kits,false) AS tienda_mostrar_kits,
               COALESCE(domicilio_habilitado,false) AS domicilio_habilitado,

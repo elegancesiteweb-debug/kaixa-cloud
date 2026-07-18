@@ -355,6 +355,7 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:var(--ff);backgroun
         <div class="subtab on" id="subtabVO-pedidos" onclick="irTabVentasOnlineMovil('pedidos')">📦 Pedidos</div>
         <div class="subtab" id="subtabVO-carritos" onclick="irTabVentasOnlineMovil('carritos')">🛒 Carritos</div>
         <div class="subtab" id="subtabVO-cotizaciones" onclick="irTabVentasOnlineMovil('cotizaciones')">📝 Cotizaciones</div>
+        <div class="subtab" id="subtabVO-ajustes" onclick="irTabVentasOnlineMovil('ajustes')">⚙️ Ajustes</div>
       </div>
       <div id="bodyVOMovil-pedidos"><div id="pedidosOnlineList"></div></div>
       <div id="bodyVOMovil-carritos" style="display:none"><div id="carritosAbandonadosList"></div></div>
@@ -363,6 +364,30 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:var(--ff);backgroun
           <button class="btn-primary" onclick="abrirNuevaCotizacionMovil()">+ Nueva cotización</button>
         </div>
         <div id="cotizacionesListMovil"></div>
+      </div>
+      <div id="bodyVOMovil-ajustes" style="display:none">
+        <div class="page-pad">
+          <div class="card" style="cursor:pointer;margin-bottom:8px" onclick="abrirTiendaConfig()">
+            <div class="card-row">
+              <div class="card-ico">🖼️</div>
+              <div class="card-info">
+                <div class="card-title">Imagen, datos y logo del negocio</div>
+                <div class="card-sub">Logo, teléfono, dirección — se usan en tu tienda en línea y en las cotizaciones</div>
+              </div>
+              <div style="color:var(--text3)">›</div>
+            </div>
+          </div>
+          <div class="card" style="cursor:pointer" onclick="abrirPagosConfig()">
+            <div class="card-row">
+              <div class="card-ico">💳</div>
+              <div class="card-info">
+                <div class="card-title">Pagos con tarjeta</div>
+                <div class="card-sub">Conecta Mercado Pago para cobrar con tarjeta</div>
+              </div>
+              <div style="color:var(--text3)">›</div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
     <div class="subscreen" id="sub-cfdi">
@@ -2352,13 +2377,13 @@ async function rechazarPedidoOnline(id) {
 var _tabVOMovilActual = 'pedidos';
 function irTabVentasOnlineMovil(tab) {
   _tabVOMovilActual = tab;
-  ['pedidos','carritos','cotizaciones'].forEach(function(t) {
+  ['pedidos','carritos','cotizaciones','ajustes'].forEach(function(t) {
     document.getElementById('subtabVO-'+t).classList.toggle('on', t === tab);
     document.getElementById('bodyVOMovil-'+t).style.display = t === tab ? 'block' : 'none';
   });
   if (tab === 'pedidos') loadPedidosOnline();
   else if (tab === 'carritos') loadCarritosAbandonados();
-  else loadCotizacionesMovil();
+  else if (tab === 'cotizaciones') loadCotizacionesMovil();
 }
 
 // ══ CARRITOS ABANDONADOS ══
@@ -2667,10 +2692,12 @@ async function confirmarCotizacionMovil(id, formaPago) {
 function enviarCotizacionWhatsAppMovil(id) {
   var c = _cotizacionesMovil.find(function(x){ return x.id === id; });
   if (!c || !c.cliente_telefono) return;
+  var tcfg = window._negocioTiendaCfgMovil || {};
+  var negocio = tcfg.nombre || _negocioNombreActual || 'Mi Negocio';
   var tel = c.cliente_telefono.replace(/[^0-9]/g, '');
   if (tel.length === 10) tel = '52' + tel;
   var items = (c.items||[]).map(function(i){ return '• '+i.cantidad+'x '+i.nombre_producto+' — $'+(i.precio_unitario*i.cantidad).toFixed(2); }).join('\n');
-  var msg = '📝 Cotización '+c.folio+'\n\n'+items+'\n\n💰 Total: $'+Number(c.total).toFixed(2)
+  var msg = '🏪 *'+negocio+'*\n📝 Cotización '+c.folio+'\n\n'+items+'\n\n💰 Total: $'+Number(c.total).toFixed(2)
     + (c.valida_hasta ? '\n📅 Válida hasta: '+c.valida_hasta.substring(0,10) : '')
     + '\n\n¿Deseas confirmar tu compra? Contáctanos para agendarla 🙌';
   window.open('https://wa.me/' + tel + '?text=' + encodeURIComponent(msg), '_blank');
@@ -2680,8 +2707,10 @@ function enviarCotizacionWhatsAppMovil(id) {
 function imprimirCotizacionMovil(id) {
   var c = _cotizacionesMovil.find(function(x){ return x.id === id; });
   if (!c) return;
-  var negocioNombre = _negocioNombreActual || 'Kaixa Pos';
   var tcfg = window._negocioTiendaCfgMovil || {};
+  var negocioNombre = tcfg.nombre || _negocioNombreActual || 'Mi Negocio';
+  var tel = tcfg.tienda_telefono || '';
+  var dir = tcfg.tienda_direccion || '';
   var logo = tcfg.tienda_logo_url || '';
   var mostrarFotos = !!tcfg.cotizacion_mostrar_fotos;
   var filas = (c.items||[]).map(function(i) {
@@ -2707,6 +2736,8 @@ function imprimirCotizacionMovil(id) {
     (logo ? '<div class="center" style="margin-bottom:8px"><img src="'+logo+'" style="max-height:70px;max-width:220px;object-fit:contain"></div>' : '') +
     '<div class="center bold big">📝 COTIZACIÓN</div>' +
     '<div class="center bold" style="margin-top:4px">'+negocioNombre+'</div>' +
+    (tel ? '<div class="center" style="font-size:11px;color:#666">'+tel+'</div>' : '') +
+    (dir ? '<div class="center" style="font-size:11px;color:#666">'+dir+'</div>' : '') +
     '<hr>' +
     '<div class="row"><span>Folio:</span><span class="bold">'+c.folio+'</span></div>' +
     '<div class="row"><span>Fecha:</span><span>'+new Date(c.creado_en).toLocaleDateString('es-MX')+'</span></div>' +

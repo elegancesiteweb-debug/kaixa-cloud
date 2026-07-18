@@ -293,19 +293,27 @@ router.get('/pull', async (req, res) => {
         [negocio_id, since]
       ),
       pool.query(
+        // Antes excluía las ventas de esta misma caja (v.caja_id IS DISTINCT
+        // FROM $4) asumiendo que "si es mía, ya la tengo local" — cierto para
+        // una venta normal (se crea local y luego se empuja), pero falso para
+        // una venta creada directamente en la nube y atribuida a esta caja
+        // (cotización o pedido en línea confirmados): esa nunca llega a la
+        // base local y la pantalla de Ventas la mostraba como si no existiera.
+        // El pull es idempotente por uuid (ver sync-engine.js), así que quitar
+        // el filtro es seguro — a lo más re-toca un UPDATE inofensivo.
         `SELECT v.*, json_agg(json_build_object(
             'producto_id', vd.producto_id, 'nombre_producto', vd.nombre_producto,
             'cantidad', vd.cantidad, 'precio_unitario', vd.precio_unitario
           )) AS items
          FROM ventas v
          LEFT JOIN venta_detalle vd ON vd.venta_id = v.id
-         WHERE v.negocio_id=$1 AND v.sucursal_id=$2 AND v.creado_en > $3 AND v.caja_id IS DISTINCT FROM $4
+         WHERE v.negocio_id=$1 AND v.sucursal_id=$2 AND v.creado_en > $3
          GROUP BY v.id ORDER BY v.creado_en`,
-        [negocio_id, sucursal_id, since, caja_id]
+        [negocio_id, sucursal_id, since]
       ),
       pool.query(
-        `SELECT * FROM stock_movimientos WHERE negocio_id=$1 AND sucursal_id=$2 AND creado_en > $3 AND caja_id IS DISTINCT FROM $4 ORDER BY creado_en`,
-        [negocio_id, sucursal_id, since, caja_id]
+        `SELECT * FROM stock_movimientos WHERE negocio_id=$1 AND sucursal_id=$2 AND creado_en > $3 ORDER BY creado_en`,
+        [negocio_id, sucursal_id, since]
       ),
       pool.query(
         `SELECT * FROM lotes WHERE negocio_id=$1 AND (sucursal_id=$2 OR sucursal_id IS NULL) AND actualizado_en > $3 ORDER BY actualizado_en`,
