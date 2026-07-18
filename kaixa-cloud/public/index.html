@@ -2667,7 +2667,7 @@ function agregarItemCotizacionMovil(id) {
   if (!p) return;
   var existente = _cotItemsMovil.find(function(i){ return i.producto_id === id; });
   if (existente) existente.cantidad++;
-  else _cotItemsMovil.push({ producto_id: id, nombre: p.nombre, precio_unitario: p.precio, cantidad: 1, imagen_url: (p.tiene_imagen && p.imagen_url) || '' });
+  else _cotItemsMovil.push({ producto_id: id, nombre: p.nombre, precio_unitario: p.precio, cantidad: 1, imagen_url: (p.tiene_imagen && p.imagen_url) || '', especificaciones: '' });
   document.getElementById('cotBuscarProdM').value = '';
   document.getElementById('cotBuscarResultadosM').style.display = 'none';
   renderCotItemsMovil();
@@ -2683,6 +2683,11 @@ function quitarCotItemMovil(idx) {
   renderCotItemsMovil();
 }
 
+// No vuelve a renderizar todo — así el input no pierde el foco/cursor mientras se escribe.
+function actualizarEspecCotItemMovil(idx, val) {
+  if(_cotItemsMovil[idx]) _cotItemsMovil[idx].especificaciones = val;
+}
+
 function renderCotItemsMovil() {
   var cont = document.getElementById('cotItemsM');
   if (!cont) return;
@@ -2692,7 +2697,8 @@ function renderCotItemsMovil() {
     cont.innerHTML = _cotItemsMovil.map(function(it, idx) {
       return '<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 4px;border-bottom:1px solid var(--border)">' +
         '<div style="flex:1;min-width:0"><div style="font-size:12.5px;font-weight:700">'+it.nombre+'</div>' +
-        '<div style="font-size:11px;color:var(--text3)">$'+Number(it.precio_unitario).toFixed(2)+' c/u</div></div>' +
+        '<div style="font-size:11px;color:var(--text3)">$'+Number(it.precio_unitario).toFixed(2)+' c/u</div>' +
+        '<input placeholder="Especificaciones (opcional)" value="'+(it.especificaciones||'').replace(/"/g,'&quot;')+'" oninput="actualizarEspecCotItemMovil('+idx+',this.value)" style="width:100%;margin-top:4px;font-size:11px;background:#fff;border:1px solid var(--border);border-radius:6px;padding:4px 6px;color:var(--text)"></div>' +
         '<div style="display:flex;align-items:center;gap:6px">' +
           '<button onclick="cambiarCantidadCotItemMovil('+idx+',-1)" style="width:26px;height:26px;border-radius:6px;border:1px solid var(--border);background:#fff">−</button>' +
           '<span style="font-size:12px;font-weight:700;min-width:16px;text-align:center">'+it.cantidad+'</span>' +
@@ -2783,7 +2789,8 @@ function verDetalleCotizacionMovil(id) {
       ? '<img src="'+i.imagen_url+'" style="width:36px;height:36px;object-fit:cover;border-radius:6px;margin-right:8px;flex-shrink:0">'
       : '';
     return '<div style="display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--border)">' +
-      '<div style="display:flex;align-items:center;min-width:0">'+foto+'<span style="font-size:13px;font-weight:700">'+i.cantidad+'x '+i.nombre_producto+'</span></div>' +
+      '<div style="display:flex;align-items:center;min-width:0">'+foto+'<div><span style="font-size:13px;font-weight:700">'+i.cantidad+'x '+i.nombre_producto+'</span>' +
+      (i.especificaciones?'<div style="font-size:10.5px;color:var(--text3);margin-top:1px">'+i.especificaciones+'</div>':'')+'</div></div>' +
       '<div style="font-size:13px;font-weight:800;color:var(--text2);flex-shrink:0;margin-left:8px">$'+(Number(i.precio_unitario)*Number(i.cantidad)).toFixed(2)+'</div>' +
     '</div>';
   }).join('') || '<p style="color:var(--text3);font-size:12px">Sin productos</p>';
@@ -2864,7 +2871,7 @@ function enviarCotizacionWhatsAppMovil(id) {
   var negocio = tcfg.nombre || _negocioNombreActual || 'Mi Negocio';
   var tel = c.cliente_telefono.replace(/[^0-9]/g, '');
   if (tel.length === 10) tel = '52' + tel;
-  var items = (c.items||[]).map(function(i){ return '• '+i.cantidad+'x '+i.nombre_producto+' — $'+(i.precio_unitario*i.cantidad).toFixed(2); }).join('\n');
+  var items = (c.items||[]).map(function(i){ return '• '+i.cantidad+'x '+i.nombre_producto+(i.especificaciones?' ('+i.especificaciones+')':'')+' — $'+(i.precio_unitario*i.cantidad).toFixed(2); }).join('\n');
   var msg = '🏪 *'+negocio+'*\n📝 Cotización '+c.folio+'\n\n'+items+'\n\n💰 Total: $'+Number(c.total).toFixed(2)
     + (c.valida_hasta ? '\n📅 Válida hasta: '+c.valida_hasta.substring(0,10) : '')
     + '\n\n¿Deseas confirmar tu compra? Contáctanos para agendarla 🙌';
@@ -2882,14 +2889,15 @@ function imprimirCotizacionMovil(id) {
   var logo = tcfg.tienda_logo_url || '';
   var mostrarFotos = !!tcfg.cotizacion_mostrar_fotos;
   var filas = (c.items||[]).map(function(i) {
+    var specHtml = i.especificaciones ? '<div style="font-size:10.5px;color:#888;margin-top:1px">'+i.especificaciones+'</div>' : '';
     if (mostrarFotos && i.imagen_url) {
       return '<div class="item-row">' +
         '<img class="item-img" src="'+i.imagen_url+'">' +
-        '<div class="item-info">'+i.cantidad+'x '+i.nombre_producto+'</div>' +
+        '<div class="item-info">'+i.cantidad+'x '+i.nombre_producto+specHtml+'</div>' +
         '<div class="item-price">$'+(i.precio_unitario*i.cantidad).toFixed(2)+'</div>' +
       '</div>';
     }
-    return '<div class="row"><span>'+i.cantidad+'x '+i.nombre_producto+'</span><span>$'+(i.precio_unitario*i.cantidad).toFixed(2)+'</span></div>';
+    return '<div class="row"><span>'+i.cantidad+'x '+i.nombre_producto+specHtml+'</span><span>$'+(i.precio_unitario*i.cantidad).toFixed(2)+'</span></div>';
   }).join('');
   var html = '<!DOCTYPE html><html><head><meta charset="UTF-8">' +
     '<style>body{font-family:Arial,sans-serif;font-size:13px;margin:0;padding:28px;max-width:480px}' +

@@ -16,6 +16,12 @@ async function ensureClientesFiadoColumns() {
   await pool.query(`ALTER TABLE clientes ADD COLUMN IF NOT EXISTS frecuencia_pago TEXT DEFAULT 'mensual'`);
   _clientesFiadoColOk = true;
 }
+let _coberturaM2ColOk = false;
+async function ensureCoberturaM2Column() {
+  if (_coberturaM2ColOk) return;
+  await pool.query(`ALTER TABLE productos ADD COLUMN IF NOT EXISTS cobertura_m2 NUMERIC(10,3) DEFAULT 0`);
+  _coberturaM2ColOk = true;
+}
 
 // ── POST /api/sync/push ──────────────────────────────────────
 router.post('/push', async (req, res) => {
@@ -28,6 +34,7 @@ router.post('/push', async (req, res) => {
   try {
     await ensureVentasFechaPagoColumn();
     await ensureClientesFiadoColumns();
+    await ensureCoberturaM2Column();
     await client.query('BEGIN');
 
     // Proveedores (van primero: los productos pueden referenciarlos por uuid)
@@ -50,16 +57,16 @@ router.post('/push', async (req, res) => {
       await client.query(
         `INSERT INTO productos
           (id, negocio_id, sucursal_id, nombre, emoji, imagen_url, codigo_barras, precio, costo,
-           stock_minimo, categoria_id, giro, por_peso, unidad_peso, tiene_prescripcion, activo, proveedor_id, actualizado_en)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17, now())
+           stock_minimo, categoria_id, giro, por_peso, unidad_peso, tiene_prescripcion, cobertura_m2, activo, proveedor_id, actualizado_en)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18, now())
          ON CONFLICT (id) DO UPDATE SET
            sucursal_id=COALESCE(productos.sucursal_id, $3),
            nombre=$4, emoji=$5, imagen_url=COALESCE(NULLIF($6,''), productos.imagen_url), codigo_barras=$7, precio=$8, costo=$9,
            stock_minimo=$10, categoria_id=$11, giro=$12, por_peso=$13, unidad_peso=$14,
-           tiene_prescripcion=$15, activo=$16, proveedor_id=COALESCE($17, productos.proveedor_id), actualizado_en=now()`,
+           tiene_prescripcion=$15, cobertura_m2=$16, activo=$17, proveedor_id=COALESCE($18, productos.proveedor_id), actualizado_en=now()`,
         [p.uuid, negocio_id, prodSucursalId, p.nombre, p.emoji||'📦', p.imagen_url||'', p.codigo_barras||'',
          p.precio||0, p.costo||0, p.stock_minimo||5, p.categoria_id||null, p.giro||'tienda',
-         !!p.por_peso, p.unidad_peso||'kg', !!p.tiene_prescripcion, activoProd, p.proveedor_uuid||null]
+         !!p.por_peso, p.unidad_peso||'kg', !!p.tiene_prescripcion, parseFloat(p.cobertura_m2)||0, activoProd, p.proveedor_uuid||null]
       );
       // Ajuste de stock si viene stock
       if (p.stock !== undefined && p.stock !== null) {
@@ -275,11 +282,12 @@ router.get('/pull', async (req, res) => {
   try {
     await ensureVentasFechaPagoColumn();
     await ensureClientesFiadoColumns();
+    await ensureCoberturaM2Column();
     const [productos, clientes, ventas, movimientos, lotesPull, kitsPull, variantesPull, proveedoresPull, pedidosPull] = await Promise.all([
       pool.query(
         `SELECT p.id, p.negocio_id, p.sucursal_id, p.nombre, p.emoji, p.codigo_barras,
                 p.precio, p.costo, p.stock_minimo, p.categoria_id, p.giro, p.por_peso,
-                p.unidad_peso, p.tiene_prescripcion, p.activo, p.creado_en, p.actualizado_en,
+                p.unidad_peso, p.tiene_prescripcion, p.cobertura_m2, p.activo, p.creado_en, p.actualizado_en,
                 p.imagen_url, p.proveedor_id,
                 COALESCE(s.stock,0) AS stock_actual
          FROM productos p

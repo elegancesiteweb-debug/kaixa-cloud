@@ -67,6 +67,7 @@ CREATE TABLE IF NOT EXISTS productos (
   por_peso        BOOLEAN DEFAULT false,
   unidad_peso     TEXT DEFAULT 'kg',
   tiene_prescripcion BOOLEAN DEFAULT false,
+  cobertura_m2    NUMERIC(10,3) DEFAULT 0,
   activo          BOOLEAN DEFAULT true,
   creado_en       TIMESTAMPTZ DEFAULT now(),
   actualizado_en  TIMESTAMPTZ DEFAULT now()

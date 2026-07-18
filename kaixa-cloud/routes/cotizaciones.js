@@ -41,6 +41,9 @@ async function ensureCotizacionesTables() {
   // nombre_producto, es un snapshot: si luego cambia/borra la foto del
   // producto, la cotización ya emitida conserva la que tenía.
   await pool.query(`ALTER TABLE cotizacion_items ADD COLUMN IF NOT EXISTS imagen_url TEXT DEFAULT ''`);
+  // Especificaciones libres por producto (ej. "tubo PVC 4 pulgadas cédula 40") —
+  // opcional, solo vive en la cotización, no se lleva a la venta al confirmarse.
+  await pool.query(`ALTER TABLE cotizacion_items ADD COLUMN IF NOT EXISTS especificaciones TEXT DEFAULT ''`);
   // Sin ON DELETE SET NULL, borrar un negocio con productos referenciados
   // por cotizaciones fallaba (FK violation) — mismo arreglo que ya se hace
   // para venta_detalle/lotes/pedido_items en server.js.
@@ -83,9 +86,9 @@ router.post('/cotizaciones', async (req, res) => {
 
     for (const it of items) {
       await pool.query(
-        `INSERT INTO cotizacion_items (cotizacion_id, producto_id, nombre_producto, cantidad, precio_unitario, imagen_url)
-         VALUES ($1,$2,$3,$4,$5,$6)`,
-        [cotId, it.producto_id || null, it.nombre || it.nombre_producto || '', it.cantidad || 1, it.precio_unitario || 0, it.imagen_url || '']
+        `INSERT INTO cotizacion_items (cotizacion_id, producto_id, nombre_producto, cantidad, precio_unitario, imagen_url, especificaciones)
+         VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+        [cotId, it.producto_id || null, it.nombre || it.nombre_producto || '', it.cantidad || 1, it.precio_unitario || 0, it.imagen_url || '', it.especificaciones || '']
       );
     }
     res.json({ ok: true, id: cotId, folio, subtotal, total });
@@ -100,7 +103,8 @@ router.get('/cotizaciones', async (req, res) => {
       `SELECT c.*,
         COALESCE(json_agg(json_build_object(
           'producto_id', ci.producto_id, 'nombre_producto', ci.nombre_producto,
-          'cantidad', ci.cantidad, 'precio_unitario', ci.precio_unitario, 'imagen_url', ci.imagen_url
+          'cantidad', ci.cantidad, 'precio_unitario', ci.precio_unitario, 'imagen_url', ci.imagen_url,
+          'especificaciones', ci.especificaciones
         )) FILTER (WHERE ci.id IS NOT NULL), '[]') AS items
        FROM cotizaciones c
        LEFT JOIN cotizacion_items ci ON ci.cotizacion_id = c.id
