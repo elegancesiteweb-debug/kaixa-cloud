@@ -515,7 +515,7 @@ async function ensureEmpleadosFoto() {
 app.get('/api/empleados', authCaja, async (req, res) => {
   try {
     await ensureEmpleadosFoto();
-    const { negocio_id } = req.caja;
+    const { negocio_id, sucursal_id } = req.caja;
     const todos = req.query.todos === '1';
     let sql, params;
     if (todos) {
@@ -531,8 +531,8 @@ app.get('/api/empleados', authCaja, async (req, res) => {
              COALESCE(s.nombre, 'Sin sucursal') AS sucursal_nombre
              FROM empleados e
              LEFT JOIN sucursales s ON s.id::text = e.sucursal_id::text
-             WHERE e.negocio_id=$1 AND e.activo=true ORDER BY e.nombre`;
-      params = [negocio_id];
+             WHERE e.negocio_id=$1 AND e.sucursal_id=$2 AND e.activo=true ORDER BY e.nombre`;
+      params = [negocio_id, sucursal_id];
     }
     const r = await pool.query(sql, params);
     res.json(r.rows);

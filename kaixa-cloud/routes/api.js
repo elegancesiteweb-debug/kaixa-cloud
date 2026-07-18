@@ -338,14 +338,14 @@ router.post('/ventas', async (req, res) => {
 router.get('/ventas', async (req, res) => {
   try {
     await ensureVentasFechaPagoColumn();
-    const { negocio_id } = req.caja;
+    const { negocio_id, sucursal_id } = req.caja;
     const r = await pool.query(
       `SELECT v.*, s.nombre AS sucursal_nombre, c.nombre AS caja_nombre
        FROM ventas v
        JOIN sucursales s ON s.id = v.sucursal_id
        LEFT JOIN cajas c ON c.id = v.caja_id
-       WHERE v.negocio_id=$1 ORDER BY v.creado_en DESC LIMIT 200`,
-      [negocio_id]
+       WHERE v.negocio_id=$1 AND v.sucursal_id=$2 ORDER BY v.creado_en DESC LIMIT 200`,
+      [negocio_id, sucursal_id]
     );
     res.json(r.rows);
   } catch (e) { res.status(500).json({ error: e.message }); }
