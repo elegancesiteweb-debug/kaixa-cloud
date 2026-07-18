@@ -1016,10 +1016,14 @@ router.put('/negocio/tienda', async (req, res) => {
     const {
       tienda_imagen_url = null, tienda_descripcion = null, tienda_logo_url = null,
       tienda_telefono = null, tienda_direccion = null, tienda_horario = null,
-      tienda_mostrar_kits = null, domicilio_habilitado = null, cotizacion_mostrar_fotos = null
+      tienda_mostrar_kits = null, domicilio_habilitado = null, cotizacion_mostrar_fotos = null,
+      nombre = null
     } = req.body;
+    // nombre no admite NULL en la tabla — solo se actualiza si mandan algo no vacío
+    const nombreVal = (nombre && nombre.trim()) ? nombre.trim() : null;
     await pool.query(
       `UPDATE negocios SET
+         nombre=COALESCE($11, nombre),
          tienda_imagen_url=COALESCE($1, tienda_imagen_url),
          tienda_descripcion=COALESCE($2, tienda_descripcion),
          tienda_logo_url=COALESCE($3, tienda_logo_url),
@@ -1031,7 +1035,7 @@ router.put('/negocio/tienda', async (req, res) => {
          cotizacion_mostrar_fotos=COALESCE($10, cotizacion_mostrar_fotos)
        WHERE id=$8`,
       [tienda_imagen_url, tienda_descripcion, tienda_logo_url, tienda_telefono, tienda_direccion, tienda_horario,
-       tienda_mostrar_kits, req.caja.negocio_id, domicilio_habilitado, cotizacion_mostrar_fotos]
+       tienda_mostrar_kits, req.caja.negocio_id, domicilio_habilitado, cotizacion_mostrar_fotos, nombreVal]
     );
     res.json({ ok: true });
   } catch(e) { res.status(500).json({ error: e.message }); }

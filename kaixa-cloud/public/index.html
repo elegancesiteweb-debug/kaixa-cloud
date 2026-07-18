@@ -351,6 +351,13 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:var(--ff);backgroun
     <div class="subscreen" id="sub-lotes"><div id="lotesList"></div></div>
     <div class="subscreen" id="sub-traspasos"><div id="traspasosList"></div></div>
     <div class="subscreen" id="sub-ventasonline">
+      <div id="ventasOnlineUrlBoxMovil" style="display:none;margin:10px 16px;padding:10px 12px;background:rgba(139,92,246,.07);border:1px solid rgba(139,92,246,.2);border-radius:10px">
+        <div style="font-size:11px;color:var(--text3);margin-bottom:4px">🔗 Tu tienda en línea</div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <a id="ventasOnlineUrlLinkMovil" href="#" target="_blank" style="font-size:12px;font-weight:700;color:#8b5cf6;word-break:break-all;flex:1"></a>
+          <button onclick="copiarUrlTiendaMovil()" style="padding:5px 10px;border-radius:7px;border:1px solid #8b5cf6;background:transparent;color:#8b5cf6;font-size:11px;font-weight:700;cursor:pointer">📋</button>
+        </div>
+      </div>
       <div class="subtab-bar">
         <div class="subtab on" id="subtabVO-pedidos" onclick="irTabVentasOnlineMovil('pedidos')">📦 Pedidos</div>
         <div class="subtab" id="subtabVO-carritos" onclick="irTabVentasOnlineMovil('carritos')">🛒 Carritos</div>
@@ -597,7 +604,7 @@ var screenCfg = {
   emps:     { title: 'Empleados', btn: '⊕', load: loadEmps },
   lotes:    { title: 'Lotes', btn: '⊕', load: loadLotes },
   traspasos: { title: 'Traspasos', btn: '⊕', load: loadTraspasos },
-  ventasonline: { title: 'Ventas en línea', btn: null, load: function(){ irTabVentasOnlineMovil(_tabVOMovilActual); } },
+  ventasonline: { title: 'Ventas en línea', btn: null, load: function(){ irTabVentasOnlineMovil(_tabVOMovilActual); mostrarUrlTiendaMovil(); } },
   cfdi:     { title: 'Facturación CFDI', btn: null, load: loadFacturas },
   kits:     { title: 'Kits y combos', btn: null, load: loadKits },
   sugeridos: { title: 'Pedidos sugeridos', btn: null, load: loadSugeridos },
@@ -2386,6 +2393,32 @@ function irTabVentasOnlineMovil(tab) {
   else if (tab === 'cotizaciones') loadCotizacionesMovil();
 }
 
+async function mostrarUrlTiendaMovil() {
+  var box = document.getElementById('ventasOnlineUrlBoxMovil');
+  var link = document.getElementById('ventasOnlineUrlLinkMovil');
+  try {
+    var tcfg = window._negocioTiendaCfgMovil;
+    if (!tcfg || !tcfg.slug) {
+      var r = await apiFetch('/api/negocio/tienda');
+      if (!r || !r.ok) return;
+      tcfg = await r.json();
+      window._negocioTiendaCfgMovil = tcfg;
+    }
+    if (!tcfg.slug) return;
+    var url = location.origin + '/tienda/' + tcfg.slug;
+    link.href = url;
+    link.textContent = url;
+    box.style.display = 'block';
+  } catch(e) {}
+}
+
+function copiarUrlTiendaMovil() {
+  var link = document.getElementById('ventasOnlineUrlLinkMovil');
+  if (!link || !link.textContent) return;
+  navigator.clipboard.writeText(link.textContent);
+  notif('✅ Link copiado', 'ok');
+}
+
 // ══ CARRITOS ABANDONADOS ══
 var _carritosAbandonados = [];
 async function loadCarritosAbandonados() {
@@ -2869,7 +2902,8 @@ async function abrirTiendaConfig() {
         '<h3 style="margin:0">🖼️ Mi tienda en línea</h3>' +
         '<span class="modal-close" onclick="document.getElementById(\'modalTiendaConfig\').remove()">✕</span>' +
       '</div>' +
-      '<p style="font-size:12px;color:var(--text3);margin-bottom:14px">Esto aparece en tu tienda pública.</p>' +
+      '<p style="font-size:12px;color:var(--text3);margin-bottom:14px">Esto aparece en tu tienda pública y en tus cotizaciones.</p>' +
+      '<div class="form-field"><label>Nombre del negocio</label><input id="tiendaNombreInputMovil" placeholder="Mi Negocio"></div>' +
       '<div id="tiendaImgPreviewMovil" onclick="document.getElementById(\'tiendaImgInputMovil\').click()" style="width:100%;aspect-ratio:16/7;border-radius:10px;border:1.5px dashed var(--border);background:var(--s2);display:flex;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;color:var(--text3);font-size:12px;margin-bottom:14px">Toca para elegir una imagen</div>' +
       '<input type="file" id="tiendaImgInputMovil" accept="image/*" style="display:none" onchange="onTiendaImgFileMovil(this)">' +
       '<div id="tiendaLogoPreviewMovil" onclick="document.getElementById(\'tiendaLogoInputMovil\').click()" style="width:70px;height:70px;border-radius:12px;border:1.5px dashed var(--border);background:var(--s2);display:flex;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;color:var(--text3);font-size:10px;text-align:center;margin-bottom:14px">Elegir logo</div>' +
@@ -2890,6 +2924,7 @@ async function abrirTiendaConfig() {
     var r = await apiFetch('/api/negocio/tienda');
     if (r && r.ok) {
       var d = await r.json();
+      if (d.nombre) document.getElementById('tiendaNombreInputMovil').value = d.nombre;
       if (d.tienda_descripcion) document.getElementById('tiendaDescInputMovil').value = d.tienda_descripcion;
       if (d.tienda_telefono) document.getElementById('tiendaTelInputMovil').value = d.tienda_telefono;
       if (d.tienda_direccion) document.getElementById('tiendaDirInputMovil').value = d.tienda_direccion;
@@ -2928,7 +2963,10 @@ async function onTiendaLogoFileMovil(input) {
 }
 
 async function guardarTiendaConfigMovil() {
+  var nombreVal = document.getElementById('tiendaNombreInputMovil').value.trim();
+  if (!nombreVal) { notif('⚠️ El nombre del negocio no puede quedar vacío', 'err'); return; }
   var body = {
+    nombre: nombreVal,
     tienda_descripcion: document.getElementById('tiendaDescInputMovil').value.trim(),
     tienda_telefono: document.getElementById('tiendaTelInputMovil').value.trim(),
     tienda_direccion: document.getElementById('tiendaDirInputMovil').value.trim(),
