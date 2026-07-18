@@ -32,14 +32,15 @@ router.get('/sucursales', async (req, res) => {
           AND estado != 'cancelada'
       `, [suc.id, hoy]).catch(() => ({ rows:[{ total_ventas:0, monto_hoy:0, efectivo:0, tarjeta:0 }] }));
 
-      // Empleados en turno (entrada sin salida hoy)
+      // Empleados en turno (entrada de hoy sin salida) — el check-in/out vive
+      // directo en empleados.ultima_entrada/ultima_salida, no hay tabla "asistencia"
       const emps = await pool.query(`
-        SELECT e.nombre FROM asistencia a
-        JOIN empleados e ON e.id = a.empleado_id
-        WHERE a.sucursal_id=$1
-          AND DATE(a.entrada AT TIME ZONE 'America/Mexico_City')=$2
-          AND a.salida IS NULL
-        ORDER BY a.entrada DESC LIMIT 5
+        SELECT nombre FROM empleados
+        WHERE sucursal_id=$1 AND activo=true
+          AND ultima_entrada IS NOT NULL
+          AND DATE(ultima_entrada AT TIME ZONE 'America/Mexico_City')=$2
+          AND ultima_salida IS NULL
+        ORDER BY ultima_entrada DESC LIMIT 5
       `, [suc.id, hoy]).catch(() => ({ rows:[] }));
 
       // Top producto del día
@@ -99,9 +100,8 @@ router.get('/sucursal/:id/ventas', async (req, res) => {
   try {
     const hoy = new Date().toISOString().substring(0,10);
     const r = await pool.query(`
-      SELECT v.*, u.nombre AS cajero_nombre
+      SELECT v.*, v.cajero AS cajero_nombre
       FROM ventas v
-      LEFT JOIN usuarios u ON u.id = v.usuario_id
       WHERE v.sucursal_id=$1
         AND DATE(v.creado_en AT TIME ZONE 'America/Mexico_City')=$2
         AND v.estado != 'cancelada'
@@ -114,21 +114,11 @@ router.get('/sucursal/:id/ventas', async (req, res) => {
 // ── GET /api/dashboard/sucursal/:id/empleados ─────────────────────────────
 router.get('/sucursal/:id/empleados', async (req, res) => {
   try {
-    const hoy = new Date().toISOString().substring(0,10);
     const r = await pool.query(`
-      SELECT e.*,
-        a.entrada AS ultima_entrada,
-        a.salida  AS ultima_salida
-      FROM empleados e
-      LEFT JOIN (
-        SELECT DISTINCT ON (empleado_id) *
-        FROM asistencia
-        WHERE DATE(entrada AT TIME ZONE 'America/Mexico_City')=$2
-        ORDER BY empleado_id, entrada DESC
-      ) a ON a.empleado_id = e.id
-      WHERE e.sucursal_id=$1 AND e.activo=true
-      ORDER BY e.nombre
-    `, [req.params.id, hoy]);
+      SELECT * FROM empleados
+      WHERE sucursal_id=$1 AND activo=true
+      ORDER BY nombre
+    `, [req.params.id]);
     res.json(r.rows);
   } catch(e){ res.status(500).json({ error: e.message }); }
 });
@@ -137,9 +127,11 @@ router.get('/sucursal/:id/empleados', async (req, res) => {
 router.get('/sucursal/:id/inventario', async (req, res) => {
   try {
     const r = await pool.query(`
-      SELECT * FROM productos
-      WHERE sucursal_id=$1 AND activo=true
-      ORDER BY stock ASC, nombre ASC
+      SELECT p.*, COALESCE(s.stock,0) AS stock
+      FROM productos p
+      LEFT JOIN stock_actual s ON s.producto_id = p.id AND s.sucursal_id = p.sucursal_id
+      WHERE p.sucursal_id=$1 AND p.activo=true
+      ORDER BY COALESCE(s.stock,0) ASC, p.nombre ASC
       LIMIT 100
     `, [req.params.id]);
     res.json(r.rows);
