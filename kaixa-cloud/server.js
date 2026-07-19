@@ -204,6 +204,22 @@ async function aplicarEsquema() {
     `);
     console.log('✅ Tabla promociones lista');
   } catch(e) { console.error('⚠️ promociones:', e.message); }
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS divisas (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        negocio_id UUID NOT NULL,
+        sucursal_id UUID,
+        codigo TEXT NOT NULL,
+        nombre TEXT NOT NULL,
+        simbolo TEXT DEFAULT '$',
+        tipo_cambio NUMERIC(10,4) DEFAULT 1,
+        activo BOOLEAN DEFAULT true,
+        actualizado_en TIMESTAMPTZ DEFAULT now()
+      )
+    `);
+    console.log('✅ Tabla divisas lista');
+  } catch(e) { console.error('⚠️ divisas:', e.message); }
 }
 const GIROS = {
   tienda:      { nombre:'Tienda / Abarrotes',      ico:'🛒', modulos:['pos','inventario','lotes','granel','bascula','monedero','servicios','proveedores','pedidos','ventas','reportes','corte','cfdi'] },

@@ -32,6 +32,14 @@ async function ensureDimensionesColumns() {
   _dimensionesColOk = true;
 }
 
+let _monedaCostoColOk = false;
+async function ensureMonedaCostoColumns() {
+  if (_monedaCostoColOk) return;
+  await pool.query(`ALTER TABLE productos ADD COLUMN IF NOT EXISTS moneda_costo TEXT DEFAULT 'MXN'`);
+  await pool.query(`ALTER TABLE productos ADD COLUMN IF NOT EXISTS costo_moneda NUMERIC(10,2) DEFAULT 0`);
+  _monedaCostoColOk = true;
+}
+
 // ── POST /api/sync/push ──────────────────────────────────────
 router.post('/push', async (req, res) => {
   const { negocio_id, sucursal_id, id: caja_id } = req.caja;
@@ -45,6 +53,7 @@ router.post('/push', async (req, res) => {
     await ensureClientesFiadoColumns();
     await ensureCoberturaM2Column();
     await ensureDimensionesColumns();
+    await ensureMonedaCostoColumns();
     await client.query('BEGIN');
 
     // Proveedores (van primero: los productos pueden referenciarlos por uuid)
@@ -68,19 +77,20 @@ router.post('/push', async (req, res) => {
         `INSERT INTO productos
           (id, negocio_id, sucursal_id, nombre, emoji, imagen_url, codigo_barras, precio, costo,
            stock_minimo, categoria_id, giro, por_peso, unidad_peso, tiene_prescripcion, cobertura_m2,
-           peso_kg, largo_cm, ancho_cm, alto_cm, activo, proveedor_id, actualizado_en)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22, now())
+           peso_kg, largo_cm, ancho_cm, alto_cm, activo, proveedor_id, actualizado_en, moneda_costo, costo_moneda)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22, now(), $23,$24)
          ON CONFLICT (id) DO UPDATE SET
            sucursal_id=COALESCE(productos.sucursal_id, $3),
            nombre=$4, emoji=$5, imagen_url=COALESCE(NULLIF($6,''), productos.imagen_url), codigo_barras=$7, precio=$8, costo=$9,
            stock_minimo=$10, categoria_id=$11, giro=$12, por_peso=$13, unidad_peso=$14,
            tiene_prescripcion=$15, cobertura_m2=$16, peso_kg=$17, largo_cm=$18, ancho_cm=$19, alto_cm=$20,
-           activo=$21, proveedor_id=COALESCE($22, productos.proveedor_id), actualizado_en=now()`,
+           activo=$21, proveedor_id=COALESCE($22, productos.proveedor_id), actualizado_en=now(),
+           moneda_costo=$23, costo_moneda=$24`,
         [p.uuid, negocio_id, prodSucursalId, p.nombre, p.emoji||'📦', p.imagen_url||'', p.codigo_barras||'',
          p.precio||0, p.costo||0, p.stock_minimo||5, p.categoria_id||null, p.giro||'tienda',
          !!p.por_peso, p.unidad_peso||'kg', !!p.tiene_prescripcion, parseFloat(p.cobertura_m2)||0,
          parseFloat(p.peso_kg)||0, parseFloat(p.largo_cm)||0, parseFloat(p.ancho_cm)||0, parseFloat(p.alto_cm)||0,
-         activoProd, p.proveedor_uuid||null]
+         activoProd, p.proveedor_uuid||null, p.moneda_costo||'MXN', parseFloat(p.costo_moneda)||0]
       );
       // Ajuste de stock si viene stock
       if (p.stock !== undefined && p.stock !== null) {
@@ -220,6 +230,21 @@ router.post('/push', async (req, res) => {
       } catch(e) { console.warn('Promoción push error:', e.message); }
     }
 
+    // Divisas — sin resolución de id/nombre, codigo/nombre/tipo_cambio son
+    // valores planos (a diferencia de promociones, no hay tabla local a la
+    // que referenciar).
+    for (const dv of (req.body.divisas || [])) {
+      try {
+        await client.query(`
+          INSERT INTO divisas (id, negocio_id, sucursal_id, codigo, nombre, simbolo, tipo_cambio, activo, actualizado_en)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,now())
+          ON CONFLICT (id) DO UPDATE SET
+            codigo=$4, nombre=$5, simbolo=$6, tipo_cambio=$7, activo=$8, actualizado_en=now()`,
+          [dv.id, negocio_id, dv.sucursal_id||sucursal_id, dv.codigo, dv.nombre, dv.simbolo||'$', dv.tipo_cambio||1, dv.activo!==false]
+        );
+      } catch(e) { console.warn('Divisa push error:', e.message); }
+    }
+
     // Variantes de producto (genéricas, cualquier giro)
     for (const v of variantes) {
       try {
@@ -318,13 +343,14 @@ router.get('/pull', async (req, res) => {
     await ensureClientesFiadoColumns();
     await ensureCoberturaM2Column();
     await ensureDimensionesColumns();
-    const [productos, clientes, ventas, movimientos, lotesPull, kitsPull, promocionesPull, variantesPull, proveedoresPull, pedidosPull] = await Promise.all([
+    await ensureMonedaCostoColumns();
+    const [productos, clientes, ventas, movimientos, lotesPull, kitsPull, promocionesPull, divisasPull, variantesPull, proveedoresPull, pedidosPull] = await Promise.all([
       pool.query(
         `SELECT p.id, p.negocio_id, p.sucursal_id, p.nombre, p.emoji, p.codigo_barras,
                 p.precio, p.costo, p.stock_minimo, p.categoria_id, p.giro, p.por_peso,
                 p.unidad_peso, p.tiene_prescripcion, p.cobertura_m2,
                 p.peso_kg, p.largo_cm, p.ancho_cm, p.alto_cm, p.activo, p.creado_en, p.actualizado_en,
-                p.imagen_url, p.proveedor_id,
+                p.imagen_url, p.proveedor_id, p.moneda_costo, p.costo_moneda,
                 COALESCE(s.stock,0) AS stock_actual
          FROM productos p
          LEFT JOIN stock_actual s ON s.producto_id = p.id AND s.sucursal_id = $2
@@ -393,6 +419,11 @@ router.get('/pull', async (req, res) => {
         `SELECT * FROM promociones WHERE negocio_id=$1 AND actualizado_en > $2 ORDER BY actualizado_en`,
         [negocio_id, since]
       ).catch(() => ({ rows: [] })),
+      // Igual que promociones — el tipo de cambio es del negocio completo, sin filtro de sucursal.
+      pool.query(
+        `SELECT * FROM divisas WHERE negocio_id=$1 AND actualizado_en > $2 ORDER BY actualizado_en`,
+        [negocio_id, since]
+      ).catch(() => ({ rows: [] })),
       pool.query(
         `SELECT * FROM producto_variantes
          WHERE negocio_id=$1 AND sucursal_id=$2 AND actualizado_en > $3
@@ -427,6 +458,7 @@ router.get('/pull', async (req, res) => {
       lotes: lotesPull.rows,
       kits: kitsPull.rows,
       promociones: promocionesPull.rows,
+      divisas: divisasPull.rows,
       variantes: variantesPull.rows,
       proveedores: proveedoresPull.rows,
       pedidos: pedidosPull.rows
