@@ -437,11 +437,18 @@ function renderProductos(){
     } else {
       accion = '<button class="btn" onclick="agregarCarrito(\''+p.id+'\')">Agregar</button>';
     }
+    var promoBadge = p.promocion
+      ? '<div style="font-size:10px;font-weight:800;color:#f59e0b;background:rgba(245,158,11,.1);border-radius:5px;padding:2px 6px;display:inline-block;margin-bottom:3px">🏷️ '+(p.promocion.tipo==='pct' ? p.promocion.valor+'% off' : 'Compra '+p.promocion.nxm_compra+' paga '+p.promocion.nxm_paga)+'</div>'
+      : '';
+    var precioHtml = p.precio_original
+      ? '<span style="text-decoration:line-through;color:var(--text3);font-size:12px;margin-right:4px">$'+Number(p.precio_original).toFixed(2)+'</span>$'+Number(p.precio).toFixed(2)+(tieneVar?'+':'')
+      : '$'+Number(p.precio).toFixed(2)+(tieneVar?'+':'');
     return '<div class="p">' +
       '<div class="p-imgwrap">'+img+'</div>' +
       '<div class="p-body">' +
+      promoBadge +
       '<div class="p-nm">'+p.nombre+'</div>' +
-      '<div class="p-pr">$'+Number(p.precio).toFixed(2)+(tieneVar?'+':'')+'</div>' +
+      '<div class="p-pr">'+precioHtml+'</div>' +
       '<div class="p-st">Disponibles: '+p.stock+'</div>' +
       accion +
       '</div></div>';

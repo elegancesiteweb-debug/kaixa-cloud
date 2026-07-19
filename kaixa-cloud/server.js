@@ -183,6 +183,27 @@ async function aplicarEsquema() {
     `);
     console.log('✅ Tablas kits listas');
   } catch(e) { console.error('⚠️ kits:', e.message); }
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS promociones (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        negocio_id UUID NOT NULL,
+        sucursal_id UUID,
+        nombre TEXT NOT NULL,
+        tipo TEXT NOT NULL,
+        categoria_nombre TEXT,
+        producto_id UUID,
+        valor NUMERIC(10,2) DEFAULT 0,
+        nxm_compra INTEGER DEFAULT 0,
+        nxm_paga INTEGER DEFAULT 0,
+        fecha_inicio DATE,
+        fecha_fin DATE,
+        activo BOOLEAN DEFAULT true,
+        actualizado_en TIMESTAMPTZ DEFAULT now()
+      )
+    `);
+    console.log('✅ Tabla promociones lista');
+  } catch(e) { console.error('⚠️ promociones:', e.message); }
 }
 const GIROS = {
   tienda:      { nombre:'Tienda / Abarrotes',      ico:'🛒', modulos:['pos','inventario','lotes','granel','bascula','monedero','servicios','proveedores','pedidos','ventas','reportes','corte','cfdi'] },

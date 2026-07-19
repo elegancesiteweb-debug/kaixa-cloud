@@ -7,6 +7,54 @@ const router  = express.Router();
 const pool    = require('../db/pool');
 const crypto  = require('crypto');
 
+// ── Promociones vigentes (solo por producto o "todo el inventario") ──
+// Las de categoría se evalúan únicamente en el POS: la tabla categorias de
+// esta base nunca se llena desde pos-mexico (el sync de productos no manda
+// categoria_id), así que no hay forma confiable de saber a qué categoría
+// pertenece un producto aquí — aplicar por categoría_nombre podría acertar
+// por coincidencia de texto en unos negocios y fallar silenciosamente en
+// otros, así que se prefiere no aplicarlas en línea antes que aplicarlas mal.
+async function promocionesVigentesNegocio(negocioId) {
+  try {
+    const r = await pool.query(
+      `SELECT * FROM promociones
+       WHERE negocio_id=$1 AND activo=true AND categoria_nombre IS NULL
+         AND fecha_inicio <= CURRENT_DATE AND fecha_fin >= CURRENT_DATE`,
+      [negocioId]
+    );
+    return r.rows;
+  } catch(e) { return []; }
+}
+
+function mejorPromoParaProducto(productoId, vigentes) {
+  const porProducto = vigentes.filter(p => p.producto_id === productoId);
+  const porTodos = vigentes.filter(p => !p.producto_id);
+  const candidatas = porProducto.length ? porProducto : porTodos;
+  if (!candidatas.length) return null;
+  let mejor = null, mejorPct = -1;
+  candidatas.forEach(p => {
+    const pct = p.tipo === 'pct' ? parseFloat(p.valor) || 0 : 0;
+    if (pct > mejorPct) { mejorPct = pct; mejor = p; }
+  });
+  return candidatas.length === 1 ? candidatas[0] : mejor;
+}
+
+// Descuento en pesos que aporta una promo a una línea (cantidad × precio unitario)
+function descuentoPromoLinea(precioUnit, cantidad, promo) {
+  if (!promo) return 0;
+  if (promo.tipo === 'pct') {
+    return precioUnit * cantidad * ((parseFloat(promo.valor) || 0) / 100);
+  }
+  if (promo.tipo === 'nxm') {
+    const compra = promo.nxm_compra || 0, paga = promo.nxm_paga || 0;
+    if (compra <= 0 || paga <= 0 || paga >= compra || cantidad < compra) return 0;
+    const grupos = Math.floor(cantidad / compra);
+    const itemsPagados = grupos * paga + (cantidad % compra);
+    return Math.max(0, (cantidad - itemsPagados) * precioUnit);
+  }
+  return 0;
+}
+
 function slugify(str) {
   return (str || '')
     .toString()
@@ -176,6 +224,20 @@ router.get('/tienda/:slug/productos', async (req, res) => {
     );
     const productos = r.rows;
 
+    // Adjuntar promociones vigentes (solo por producto o "todo el inventario" — ver comentario en promocionesVigentesNegocio)
+    const promosVigentes = await promocionesVigentesNegocio(neg.rows[0].id);
+    if (promosVigentes.length) {
+      productos.forEach(p => {
+        const promo = mejorPromoParaProducto(p.id, promosVigentes);
+        if (!promo) return;
+        p.promocion = { nombre: promo.nombre, tipo: promo.tipo, valor: promo.valor, nxm_compra: promo.nxm_compra, nxm_paga: promo.nxm_paga };
+        if (promo.tipo === 'pct') {
+          p.precio_original = p.precio;
+          p.precio = parseFloat((parseFloat(p.precio) * (1 - (parseFloat(promo.valor)||0)/100)).toFixed(2));
+        }
+      });
+    }
+
     // Adjuntar variantes activas de los productos que las tienen
     const conVariantes = productos.filter(p => p.tiene_variantes);
     if (conVariantes.length) {
@@ -272,6 +334,10 @@ router.post('/tienda/:slug/pedidos', async (req, res) => {
 
     await client.query('BEGIN');
 
+    // Promociones vigentes de este negocio, evaluadas una sola vez para todo el pedido
+    const promosVigentes = await promocionesVigentesNegocio(negocioId);
+    let descuentoPromoTotal = 0;
+
     // Validar productos (y variantes) y calcular subtotal en el servidor
     // (no confiar en precios ni stock que mande el navegador)
     let subtotal = 0;
@@ -328,6 +394,10 @@ router.post('/tienda/:slug/pedidos', async (req, res) => {
       }
 
       subtotal += precioUnit * cantidad;
+      // Las promociones aplican sobre el producto base, no sobre variantes con
+      // precio_extra distinto — igual que en el POS, se evalúan por producto_id.
+      const promo = mejorPromoParaProducto(p.id, promosVigentes);
+      if (promo) descuentoPromoTotal += descuentoPromoLinea(precioUnit, cantidad, promo);
       itemsValidados.push({
         producto_id: p.id, nombre_producto: p.nombre, cantidad, precio_unitario: precioUnit,
         variante_id: varianteId, variante_texto: varianteTexto, kit_id: null, componentes: []
@@ -336,6 +406,7 @@ router.post('/tienda/:slug/pedidos', async (req, res) => {
     if (!itemsValidados.length) {
       throw Object.assign(new Error('Ningún producto del pedido está disponible'), { status: 400 });
     }
+    subtotal = Math.max(subtotal - descuentoPromoTotal, 0);
 
     const folio = folioPedido();
     const pedido = await client.query(
@@ -387,7 +458,7 @@ router.post('/tienda/:slug/pedidos', async (req, res) => {
       } catch(e) {}
     }
 
-    res.json({ ok: true, folio, id: pedidoId, subtotal, costo_envio: costoEnvio });
+    res.json({ ok: true, folio, id: pedidoId, subtotal, costo_envio: costoEnvio, descuento_promo: descuentoPromoTotal });
   } catch (e) {
     await client.query('ROLLBACK');
     res.status(e.status || 500).json({ error: e.message });

@@ -200,6 +200,26 @@ router.post('/push', async (req, res) => {
       } catch(e) { console.warn('Kit push error:', e.message); }
     }
 
+    // Promociones — categoria_nombre se guarda tal cual (texto), no como FK a
+    // categorias: esa tabla nunca se llena desde pos-mexico (el sync de
+    // productos no manda categoria_id), así que no hay id de categoría
+    // confiable para referenciar en la nube. La tienda en línea evalúa
+    // promociones por producto/todos; las de categoría solo aplican en el POS.
+    for (const pr of (req.body.promociones || [])) {
+      try {
+        await client.query(`
+          INSERT INTO promociones (id, negocio_id, sucursal_id, nombre, tipo, categoria_nombre, producto_id,
+            valor, nxm_compra, nxm_paga, fecha_inicio, fecha_fin, activo, actualizado_en)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,now())
+          ON CONFLICT (id) DO UPDATE SET
+            nombre=$4, tipo=$5, categoria_nombre=$6, producto_id=$7,
+            valor=$8, nxm_compra=$9, nxm_paga=$10, fecha_inicio=$11, fecha_fin=$12, activo=$13, actualizado_en=now()`,
+          [pr.id, negocio_id, pr.sucursal_id||sucursal_id, pr.nombre, pr.tipo, pr.categoria_nombre||null, pr.producto_id||null,
+           pr.valor||0, pr.nxm_compra||0, pr.nxm_paga||0, pr.fecha_inicio||null, pr.fecha_fin||null, pr.activo!==false]
+        );
+      } catch(e) { console.warn('Promoción push error:', e.message); }
+    }
+
     // Variantes de producto (genéricas, cualquier giro)
     for (const v of variantes) {
       try {
@@ -298,7 +318,7 @@ router.get('/pull', async (req, res) => {
     await ensureClientesFiadoColumns();
     await ensureCoberturaM2Column();
     await ensureDimensionesColumns();
-    const [productos, clientes, ventas, movimientos, lotesPull, kitsPull, variantesPull, proveedoresPull, pedidosPull] = await Promise.all([
+    const [productos, clientes, ventas, movimientos, lotesPull, kitsPull, promocionesPull, variantesPull, proveedoresPull, pedidosPull] = await Promise.all([
       pool.query(
         `SELECT p.id, p.negocio_id, p.sucursal_id, p.nombre, p.emoji, p.codigo_barras,
                 p.precio, p.costo, p.stock_minimo, p.categoria_id, p.giro, p.por_peso,
@@ -366,6 +386,13 @@ router.get('/pull', async (req, res) => {
          GROUP BY k.id ORDER BY k.actualizado_en`,
         [negocio_id, sucursal_id, since]
       ).catch(() => ({ rows: [] })),
+      // Sin filtro de sucursal a propósito: una promoción es una regla de
+      // negocio que debe verse igual en todas las sucursales (mismo patrón
+      // que proveedores más abajo), a diferencia de kits que sí son por sucursal.
+      pool.query(
+        `SELECT * FROM promociones WHERE negocio_id=$1 AND actualizado_en > $2 ORDER BY actualizado_en`,
+        [negocio_id, since]
+      ).catch(() => ({ rows: [] })),
       pool.query(
         `SELECT * FROM producto_variantes
          WHERE negocio_id=$1 AND sucursal_id=$2 AND actualizado_en > $3
@@ -399,6 +426,7 @@ router.get('/pull', async (req, res) => {
       movimientos: movimientos.rows,
       lotes: lotesPull.rows,
       kits: kitsPull.rows,
+      promociones: promocionesPull.rows,
       variantes: variantesPull.rows,
       proveedores: proveedoresPull.rows,
       pedidos: pedidosPull.rows
