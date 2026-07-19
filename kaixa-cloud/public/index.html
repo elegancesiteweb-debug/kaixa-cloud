@@ -2502,7 +2502,7 @@ function renderPedidosOnline() {
       '<div class="card-row" style="align-items:flex-start">' +
         '<div class="card-ico">🛍️</div>' +
         '<div class="card-info">' +
-          '<div class="card-title">'+p.cliente_nombre+' · $'+Number(p.subtotal).toFixed(2)+(tieneVar?' <span style="font-size:9px;font-weight:800;color:#a855f7;background:rgba(168,85,247,.1);padding:2px 6px;border-radius:5px">🎨 con variantes</span>':'')+(p.tipo_entrega==='domicilio'?' <span style="font-size:9px;font-weight:800;color:#8b5cf6;background:rgba(139,92,246,.1);padding:2px 6px;border-radius:5px">🚚 domicilio</span>':'')+'</div>' +
+          '<div class="card-title">'+p.cliente_nombre+' · $'+(Number(p.subtotal)+Number(p.costo_envio||0)).toFixed(2)+(tieneVar?' <span style="font-size:9px;font-weight:800;color:#a855f7;background:rgba(168,85,247,.1);padding:2px 6px;border-radius:5px">🎨 con variantes</span>':'')+(p.tipo_entrega==='domicilio'?' <span style="font-size:9px;font-weight:800;color:#8b5cf6;background:rgba(139,92,246,.1);padding:2px 6px;border-radius:5px">🚚 domicilio</span>':'')+(p.tipo_entrega==='envio'?(p.enviado_en?' <span style="font-size:9px;font-weight:800;color:#22c55e;background:rgba(34,197,94,.1);padding:2px 6px;border-radius:5px">🚚 enviado</span>':' <span style="font-size:9px;font-weight:800;color:#f59e0b;background:rgba(245,158,11,.1);padding:2px 6px;border-radius:5px">📦 pendiente de envío</span>'):'')+'</div>' +
           '<div class="card-sub">'+items+'</div>' +
           '<div class="card-sub" style="margin-top:2px">'+p.folio+' · '+fecha+(p.cliente_telefono?' · 📞 '+p.cliente_telefono:'')+'</div>' +
         '</div>' +
@@ -2534,8 +2534,25 @@ function verDetallePedidoOnline(id) {
         (p.direccion_ciudad || p.direccion_cp ? '<div>'+(p.direccion_ciudad||'')+(p.direccion_cp?' · CP '+p.direccion_cp:'')+'</div>' : '') +
         (p.direccion_referencias ? '<div style="color:var(--text2);margin-top:2px">📌 '+p.direccion_referencias+'</div>' : '') +
       '</div>'
+    : p.tipo_entrega === 'envio'
+    ? '<div style="font-size:12px;color:var(--text);background:rgba(245,158,11,.07);border:1px solid rgba(245,158,11,.2);border-radius:8px;padding:10px 12px;margin-bottom:8px">' +
+        '<div style="font-weight:800;margin-bottom:3px">📦 Envío por paquetería'+(p.costo_envio?' · $'+Number(p.costo_envio).toFixed(2):'')+'</div>' +
+        '<div>'+(p.direccion_calle||'')+' '+(p.direccion_numero||'')+', '+(p.direccion_colonia||'')+'</div>' +
+        (p.direccion_ciudad || p.direccion_cp ? '<div>'+(p.direccion_ciudad||'')+(p.direccion_cp?' · CP '+p.direccion_cp:'')+'</div>' : '') +
+        (p.direccion_referencias ? '<div style="color:var(--text2);margin-top:2px">📌 '+p.direccion_referencias+'</div>' : '') +
+        (p.enviado_en
+          ? '<div style="margin-top:6px;color:#22c55e;font-weight:700">✅ Enviado'+(p.paqueteria?' con '+p.paqueteria:'')+(p.guia_rastreo?' · Guía: '+p.guia_rastreo:'')+'</div>'
+          : (p.estado === 'confirmado'
+              ? '<div style="margin-top:8px;display:flex;gap:6px">' +
+                  '<input id="pedEnvioGuiaMovil" placeholder="Guía de rastreo" style="flex:1;font-size:12px;padding:6px 8px;border-radius:6px;border:1px solid var(--border)">' +
+                  '<input id="pedEnvioPaqMovil" placeholder="Paquetería" style="width:90px;font-size:12px;padding:6px 8px;border-radius:6px;border:1px solid var(--border)">' +
+                '</div>' +
+                '<button class="btn-full primary" style="margin-top:6px;padding:8px;font-size:12px" onclick="marcarEnviadoPedidoOnline(\''+p.id+'\')">🚚 Marcar como enviado</button>'
+              : '<div style="margin-top:6px;color:var(--text3)">Confirma el pedido antes de registrar el envío</div>')) +
+      '</div>'
     : '<div style="font-size:11px;color:var(--text3);margin-bottom:8px">🏪 Recoger en tienda</div>';
 
+  var totalConEnvio = Number(p.subtotal) + Number(p.costo_envio||0);
   var html = '<div class="modal-overlay" id="modalPedidoOnlineDet">' +
     '<div class="modal-sheet">' +
       '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">' +
@@ -2547,10 +2564,22 @@ function verDetallePedidoOnline(id) {
       domicilioBox +
       (p.notas ? '<div style="font-size:12px;color:var(--text2);background:var(--s2);border-radius:8px;padding:8px 10px;margin-bottom:8px"><b>Notas:</b> '+p.notas+'</div>' : '') +
       filas +
-      '<div style="display:flex;justify-content:space-between;font-size:16px;font-weight:900;margin-top:12px"><span>Total</span><span>$'+Number(p.subtotal).toFixed(2)+'</span></div>' +
+      (p.costo_envio ? '<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text2);padding-top:6px"><span>Envío</span><span>$'+Number(p.costo_envio).toFixed(2)+'</span></div>' : '') +
+      '<div style="display:flex;justify-content:space-between;font-size:16px;font-weight:900;margin-top:12px"><span>Total</span><span>$'+totalConEnvio.toFixed(2)+'</span></div>' +
       '<button class="btn-full sec" style="margin-top:14px" onclick="document.getElementById(\'modalPedidoOnlineDet\').remove()">Cerrar</button>' +
     '</div></div>';
   document.getElementById('modalContainer').innerHTML = html;
+}
+
+async function marcarEnviadoPedidoOnline(id) {
+  var guiaEl = document.getElementById('pedEnvioGuiaMovil');
+  var paqEl  = document.getElementById('pedEnvioPaqMovil');
+  var r = await apiFetch('/api/pedidos-online/' + id + '/enviar', {
+    method: 'POST',
+    body: JSON.stringify({ guia_rastreo: guiaEl ? guiaEl.value.trim() : '', paqueteria: paqEl ? paqEl.value.trim() : '' })
+  });
+  if (r && r.ok) { notif('🚚 Pedido marcado como enviado', 'ok'); await loadPedidosOnline(); verDetallePedidoOnline(id); }
+  else { var err = r ? await r.json().catch(function(){return {};}) : {}; notif('❌ ' + (err.error || 'Error al marcar como enviado'), 'err'); }
 }
 
 async function confirmarPedidoOnline(id) {
@@ -3147,6 +3176,10 @@ async function abrirTiendaConfig() {
       '<div class="form-field"><label>Horario</label><input id="tiendaHorInputMovil" placeholder="Lun-Sáb 9am-8pm"></div>' +
       '<div class="card" style="margin-bottom:14px"><label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="tiendaMostrarKitsMovil" style="width:18px;height:18px"><span style="font-size:13px;font-weight:700">🎁 Mostrar kits y combos en la tienda en línea</span></label></div>' +
       '<div class="card" style="margin-bottom:14px"><label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="tiendaDomicilioMovil" style="width:18px;height:18px"><span style="font-size:13px;font-weight:700">🚚 Ofrezco servicio a domicilio</span></label></div>' +
+      '<div class="card" style="margin-bottom:14px">' +
+        '<label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="tiendaEnvioMovil" onchange="document.getElementById(\'tiendaEnvioCostoWrapMovil\').style.display=this.checked?\'block\':\'none\'" style="width:18px;height:18px"><span style="font-size:13px;font-weight:700">📦 Ofrezco envío por paquetería</span></label>' +
+        '<div id="tiendaEnvioCostoWrapMovil" style="display:none;margin-top:8px"><label style="font-size:12px;color:var(--text3)">Costo de envío (tarifa plana)</label><input id="tiendaEnvioCostoMovil" type="number" step="0.01" placeholder="0.00"></div>' +
+      '</div>' +
       '<div class="card" style="margin-bottom:14px"><label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="tiendaCotFotosMovil" style="width:18px;height:18px"><span style="font-size:13px;font-weight:700">📸 Mostrar fotos de producto en las cotizaciones</span></label></div>' +
       '<button class="btn-full primary" onclick="guardarTiendaConfigMovil()">💾 Guardar</button>' +
     '</div></div>';
@@ -3165,6 +3198,9 @@ async function abrirTiendaConfig() {
       document.getElementById('tiendaMostrarKitsMovil').checked = !!d.tienda_mostrar_kits;
       document.getElementById('tiendaDomicilioMovil').checked = !!d.domicilio_habilitado;
       document.getElementById('tiendaCotFotosMovil').checked = !!d.cotizacion_mostrar_fotos;
+      document.getElementById('tiendaEnvioMovil').checked = !!d.envio_habilitado;
+      document.getElementById('tiendaEnvioCostoMovil').value = d.envio_costo || '';
+      document.getElementById('tiendaEnvioCostoWrapMovil').style.display = d.envio_habilitado ? 'block' : 'none';
       if (d.tienda_imagen_url) {
         document.getElementById('tiendaImgPreviewMovil').innerHTML = '<img src="'+d.tienda_imagen_url+'" style="width:100%;height:100%;object-fit:cover">';
       }
@@ -3206,7 +3242,9 @@ async function guardarTiendaConfigMovil() {
     tienda_horario: document.getElementById('tiendaHorInputMovil').value.trim(),
     tienda_mostrar_kits: document.getElementById('tiendaMostrarKitsMovil').checked,
     domicilio_habilitado: document.getElementById('tiendaDomicilioMovil').checked,
-    cotizacion_mostrar_fotos: document.getElementById('tiendaCotFotosMovil').checked
+    cotizacion_mostrar_fotos: document.getElementById('tiendaCotFotosMovil').checked,
+    envio_habilitado: document.getElementById('tiendaEnvioMovil').checked,
+    envio_costo: parseFloat(document.getElementById('tiendaEnvioCostoMovil').value) || 0
   };
   if (_tiendaImgBase64Movil) body.tienda_imagen_url = _tiendaImgBase64Movil;
   if (_tiendaLogoBase64Movil) body.tienda_logo_url = _tiendaLogoBase64Movil;

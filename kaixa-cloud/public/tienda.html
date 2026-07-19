@@ -186,9 +186,10 @@
     <div class="field"><label>Email (opcional)</label><input id="ckEmail" type="email" placeholder="tu@correo.com"></div>
     <div class="field" id="ckEntregaBox" style="display:none">
       <label>¿Cómo lo quieres recibir?</label>
-      <div style="display:flex;gap:8px">
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button type="button" id="btnRecoger" class="seg-btn active" onclick="setTipoEntrega('recoger')">🏪 Recoger en tienda</button>
-        <button type="button" id="btnDomicilio" class="seg-btn" onclick="setTipoEntrega('domicilio')">🚚 A domicilio</button>
+        <button type="button" id="btnDomicilio" class="seg-btn" onclick="setTipoEntrega('domicilio')" style="display:none">🚚 A domicilio</button>
+        <button type="button" id="btnEnvio" class="seg-btn" onclick="setTipoEntrega('envio')" style="display:none">📦 Envío</button>
       </div>
     </div>
     <div id="ckDomicilioBox" style="display:none">
@@ -576,13 +577,11 @@ function irACheckout(){
   cerrar('ovCarrito');
   document.getElementById('ckTotal').textContent = '$' + totalCarrito().toFixed(2);
   var entregaBox = document.getElementById('ckEntregaBox');
-  if (negocio && negocio.domicilio_habilitado) {
-    entregaBox.style.display = 'block';
-    setTipoEntrega('recoger');
-  } else {
-    entregaBox.style.display = 'none';
-    setTipoEntrega('recoger');
-  }
+  var haySelect = negocio && (negocio.domicilio_habilitado || negocio.envio_habilitado);
+  entregaBox.style.display = haySelect ? 'block' : 'none';
+  document.getElementById('btnDomicilio').style.display = (negocio && negocio.domicilio_habilitado) ? 'inline-block' : 'none';
+  document.getElementById('btnEnvio').style.display = (negocio && negocio.envio_habilitado) ? 'inline-block' : 'none';
+  setTipoEntrega('recoger');
   document.getElementById('ovCheckout').classList.add('show');
 }
 
@@ -591,8 +590,12 @@ function setTipoEntrega(tipo){
   _tipoEntrega = tipo;
   document.getElementById('btnRecoger').classList.toggle('active', tipo === 'recoger');
   document.getElementById('btnDomicilio').classList.toggle('active', tipo === 'domicilio');
-  document.getElementById('ckDomicilioBox').style.display = tipo === 'domicilio' ? 'block' : 'none';
-  document.getElementById('ckTotalLbl').textContent = tipo === 'domicilio' ? 'Total a pagar al recibir' : 'Total a pagar en tienda';
+  document.getElementById('btnEnvio').classList.toggle('active', tipo === 'envio');
+  document.getElementById('ckDomicilioBox').style.display = (tipo === 'domicilio' || tipo === 'envio') ? 'block' : 'none';
+  var envioCosto = (negocio && parseFloat(negocio.envio_costo)) || 0;
+  var totalMostrar = totalCarrito() + (tipo === 'envio' ? envioCosto : 0);
+  document.getElementById('ckTotal').textContent = '$' + totalMostrar.toFixed(2) + (tipo === 'envio' && envioCosto ? ' (incluye $'+envioCosto.toFixed(2)+' de envío)' : '');
+  document.getElementById('ckTotalLbl').textContent = tipo === 'domicilio' ? 'Total a pagar al recibir' : tipo === 'envio' ? 'Total a pagar (envío incluido)' : 'Total a pagar en tienda';
 }
 
 function toggleFactura(){
@@ -634,7 +637,7 @@ async function enviarPedido(){
   if (quiereFactura && (!rfc || !razonSocial)) { notif('Completa el RFC y la razón social para tu factura'); return; }
   var calle = document.getElementById('ckCalle').value.trim();
   var colonia = document.getElementById('ckColonia').value.trim();
-  if (_tipoEntrega === 'domicilio' && (!calle || !colonia)) { notif('Completa la calle y colonia para la entrega a domicilio'); return; }
+  if ((_tipoEntrega === 'domicilio' || _tipoEntrega === 'envio') && (!calle || !colonia)) { notif('Completa la calle y colonia para la entrega'); return; }
   var btn = document.getElementById('ckBtn');
   btn.disabled = true; btn.textContent = 'Enviando…';
   try{
@@ -672,6 +675,8 @@ async function enviarPedido(){
     document.getElementById('okFolio').textContent = d.folio;
     document.getElementById('okMensajeEntrega').textContent = _tipoEntrega === 'domicilio'
       ? 'La tienda revisará tu pedido y te lo llevará a domicilio a la dirección que registraste.'
+      : _tipoEntrega === 'envio'
+      ? 'La tienda revisará tu pedido y te lo enviará por paquetería a la dirección que registraste. Te avisarán con la guía de rastreo.'
       : 'La tienda revisará tu pedido y te contactará para confirmarlo. Puedes recogerlo en la tienda.';
     _ultimoPedidoId = d.id;
     document.getElementById('okPagarBox').style.display = (negocio && negocio.mp_habilitado) ? 'block' : 'none';

@@ -47,6 +47,10 @@ async function ensureTiendaTables() {
   await pool.query(`ALTER TABLE negocios ADD COLUMN IF NOT EXISTS tienda_mostrar_kits BOOLEAN DEFAULT false`);
   await pool.query(`ALTER TABLE negocios ADD COLUMN IF NOT EXISTS domicilio_habilitado BOOLEAN DEFAULT false`);
   await pool.query(`ALTER TABLE negocios ADD COLUMN IF NOT EXISTS cotizacion_mostrar_fotos BOOLEAN DEFAULT false`);
+  // Envíos por paquetería (distinto de "domicilio" — entrega local propia del negocio).
+  // Tarifa plana para arrancar; zonas/CP quedan para una pasada futura si se necesita.
+  await pool.query(`ALTER TABLE negocios ADD COLUMN IF NOT EXISTS envio_habilitado BOOLEAN DEFAULT false`);
+  await pool.query(`ALTER TABLE negocios ADD COLUMN IF NOT EXISTS envio_costo NUMERIC(10,2) DEFAULT 0`);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS pedidos_online (
       id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -88,6 +92,11 @@ async function ensureTiendaTables() {
   await pool.query(`ALTER TABLE pedidos_online ADD COLUMN IF NOT EXISTS direccion_ciudad TEXT DEFAULT ''`);
   await pool.query(`ALTER TABLE pedidos_online ADD COLUMN IF NOT EXISTS direccion_cp TEXT DEFAULT ''`);
   await pool.query(`ALTER TABLE pedidos_online ADD COLUMN IF NOT EXISTS direccion_referencias TEXT DEFAULT ''`);
+  // tipo_entrega también acepta 'envio' (paquetería) — usa las mismas columnas de dirección de arriba.
+  await pool.query(`ALTER TABLE pedidos_online ADD COLUMN IF NOT EXISTS costo_envio NUMERIC(10,2) DEFAULT 0`);
+  await pool.query(`ALTER TABLE pedidos_online ADD COLUMN IF NOT EXISTS guia_rastreo TEXT DEFAULT ''`);
+  await pool.query(`ALTER TABLE pedidos_online ADD COLUMN IF NOT EXISTS paqueteria TEXT DEFAULT ''`);
+  await pool.query(`ALTER TABLE pedidos_online ADD COLUMN IF NOT EXISTS enviado_en TIMESTAMPTZ`);
   await pool.query(`ALTER TABLE pedido_online_items ADD COLUMN IF NOT EXISTS variante_id UUID`);
   await pool.query(`ALTER TABLE pedido_online_items ADD COLUMN IF NOT EXISTS variante_texto TEXT DEFAULT ''`);
   await pool.query(`ALTER TABLE pedido_online_items ADD COLUMN IF NOT EXISTS kit_id UUID`);
@@ -130,6 +139,8 @@ router.get('/tienda/:slug/info', async (req, res) => {
               tienda_logo_url, tienda_telefono, tienda_direccion, tienda_horario,
               COALESCE(tienda_mostrar_kits,false) AS tienda_mostrar_kits,
               COALESCE(domicilio_habilitado,false) AS domicilio_habilitado,
+              COALESCE(envio_habilitado,false) AS envio_habilitado,
+              COALESCE(envio_costo,0) AS envio_costo,
               (mp_access_token IS NOT NULL AND mp_access_token != '') AS mp_habilitado
        FROM negocios WHERE slug=$1 AND activo=true`,
       [req.params.slug]
@@ -241,13 +252,17 @@ router.post('/tienda/:slug/pedidos', async (req, res) => {
     if (!sucursal_id) return res.status(400).json({ error: 'Falta la sucursal' });
     if (!cliente_nombre || !cliente_nombre.trim()) return res.status(400).json({ error: 'Falta tu nombre' });
     if (!items.length) return res.status(400).json({ error: 'El pedido está vacío' });
-    if (tipo_entrega === 'domicilio' && (!direccion_calle.trim() || !direccion_colonia.trim())) {
+    if ((tipo_entrega === 'domicilio' || tipo_entrega === 'envio') && (!direccion_calle.trim() || !direccion_colonia.trim())) {
       return res.status(400).json({ error: 'Falta la dirección de entrega' });
     }
 
-    const neg = await pool.query('SELECT id FROM negocios WHERE slug=$1 AND activo=true', [req.params.slug]);
+    const neg = await pool.query('SELECT id, envio_habilitado, envio_costo FROM negocios WHERE slug=$1 AND activo=true', [req.params.slug]);
     if (!neg.rows.length) return res.status(404).json({ error: 'Tienda no encontrada' });
     const negocioId = neg.rows[0].id;
+    if (tipo_entrega === 'envio' && !neg.rows[0].envio_habilitado) {
+      return res.status(400).json({ error: 'Este negocio no ofrece envío por paquetería' });
+    }
+    const costoEnvio = tipo_entrega === 'envio' ? parseFloat(neg.rows[0].envio_costo) || 0 : 0;
 
     const suc = await pool.query(
       'SELECT id FROM sucursales WHERE id=$1 AND negocio_id=$2 AND activo=true',
@@ -326,11 +341,11 @@ router.post('/tienda/:slug/pedidos', async (req, res) => {
     const pedido = await client.query(
       `INSERT INTO pedidos_online (negocio_id, sucursal_id, folio, cliente_nombre, cliente_telefono, cliente_email, notas, subtotal,
         requiere_factura, rfc_receptor, razon_social_receptor, uso_cfdi,
-        tipo_entrega, direccion_calle, direccion_numero, direccion_colonia, direccion_ciudad, direccion_cp, direccion_referencias)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) RETURNING id, folio`,
+        tipo_entrega, direccion_calle, direccion_numero, direccion_colonia, direccion_ciudad, direccion_cp, direccion_referencias, costo_envio)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20) RETURNING id, folio`,
       [negocioId, sucursal_id, folio, cliente_nombre.trim(), cliente_telefono, cliente_email, notas, subtotal,
        !!requiere_factura, rfc_receptor, razon_social_receptor, uso_cfdi,
-       tipo_entrega, direccion_calle, direccion_numero, direccion_colonia, direccion_ciudad, direccion_cp, direccion_referencias]
+       tipo_entrega, direccion_calle, direccion_numero, direccion_colonia, direccion_ciudad, direccion_cp, direccion_referencias, costoEnvio]
     );
     const pedidoId = pedido.rows[0].id;
 
@@ -372,7 +387,7 @@ router.post('/tienda/:slug/pedidos', async (req, res) => {
       } catch(e) {}
     }
 
-    res.json({ ok: true, folio, id: pedidoId, subtotal });
+    res.json({ ok: true, folio, id: pedidoId, subtotal, costo_envio: costoEnvio });
   } catch (e) {
     await client.query('ROLLBACK');
     res.status(e.status || 500).json({ error: e.message });

@@ -1036,7 +1036,9 @@ router.get('/negocio/tienda', async (req, res) => {
               tienda_telefono, tienda_direccion, tienda_horario,
               COALESCE(tienda_mostrar_kits,false) AS tienda_mostrar_kits,
               COALESCE(domicilio_habilitado,false) AS domicilio_habilitado,
-              COALESCE(cotizacion_mostrar_fotos,false) AS cotizacion_mostrar_fotos
+              COALESCE(cotizacion_mostrar_fotos,false) AS cotizacion_mostrar_fotos,
+              COALESCE(envio_habilitado,false) AS envio_habilitado,
+              COALESCE(envio_costo,0) AS envio_costo
        FROM negocios WHERE id=$1`,
       [req.caja.negocio_id]
     );
@@ -1052,6 +1054,7 @@ router.put('/negocio/tienda', async (req, res) => {
       tienda_imagen_url = null, tienda_descripcion = null, tienda_logo_url = null,
       tienda_telefono = null, tienda_direccion = null, tienda_horario = null,
       tienda_mostrar_kits = null, domicilio_habilitado = null, cotizacion_mostrar_fotos = null,
+      envio_habilitado = null, envio_costo = null,
       nombre = null
     } = req.body;
     // nombre no admite NULL en la tabla — solo se actualiza si mandan algo no vacío
@@ -1067,10 +1070,13 @@ router.put('/negocio/tienda', async (req, res) => {
          tienda_horario=COALESCE($6, tienda_horario),
          tienda_mostrar_kits=COALESCE($7, tienda_mostrar_kits),
          domicilio_habilitado=COALESCE($9, domicilio_habilitado),
-         cotizacion_mostrar_fotos=COALESCE($10, cotizacion_mostrar_fotos)
+         cotizacion_mostrar_fotos=COALESCE($10, cotizacion_mostrar_fotos),
+         envio_habilitado=COALESCE($12, envio_habilitado),
+         envio_costo=COALESCE($13, envio_costo)
        WHERE id=$8`,
       [tienda_imagen_url, tienda_descripcion, tienda_logo_url, tienda_telefono, tienda_direccion, tienda_horario,
-       tienda_mostrar_kits, req.caja.negocio_id, domicilio_habilitado, cotizacion_mostrar_fotos, nombreVal]
+       tienda_mostrar_kits, req.caja.negocio_id, domicilio_habilitado, cotizacion_mostrar_fotos, nombreVal,
+       envio_habilitado, envio_costo]
     );
     res.json({ ok: true });
   } catch(e) { res.status(500).json({ error: e.message }); }
@@ -1161,11 +1167,13 @@ router.post('/pedidos-online/:id/confirmar', async (req, res) => {
     // local (nació directo en la nube al confirmar el pedido), así que no debe
     // excluirse del pull de la caja que confirma — ver /api/sync/pull, que
     // excluye ventas con caja_id igual al de quien pregunta.
+    const costoEnvio = parseFloat(p.costo_envio) || 0;
+    const totalVenta = parseFloat(p.subtotal) + costoEnvio;
     await client.query(
       `INSERT INTO ventas (id, negocio_id, sucursal_id, caja_id, folio, subtotal, descuento, iva, total,
          forma_pago, efectivo_recibido, cambio, cajero, giro, referencia_externa)
-       VALUES ($1,$2,$3,NULL,$4,$5,0,0,$5,'pedido_online',$5,0,$6,'tienda',$7)`,
-      [ventaId, negocio_id, sucursal_id, folioVenta, p.subtotal, req.body.cajero || 'Pedido en línea', p.folio]
+       VALUES ($1,$2,$3,NULL,$4,$5,0,0,$6,'pedido_online',$6,0,$7,'tienda',$8)`,
+      [ventaId, negocio_id, sucursal_id, folioVenta, p.subtotal, totalVenta, req.body.cajero || 'Pedido en línea', p.folio]
     );
 
     for (const it of items.rows) {
@@ -1236,6 +1244,27 @@ router.post('/pedidos-online/:id/rechazar', async (req, res) => {
     if (!r.rows.length) return res.status(404).json({ error: 'Pedido no encontrado o ya procesado' });
     const io = req.app.get('io');
     if (io) io.to('negocio:' + negocio_id).emit('pedido_online:rechazado', { id: req.params.id });
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── POST /api/pedidos-online/:id/enviar — capturar guía y marcar enviado ──
+// No se agrega un estado nuevo — "enviado_en" es la señal de que ya se envió,
+// para no tocar la máquina de estados de confirmar/rechazar.
+router.post('/pedidos-online/:id/enviar', async (req, res) => {
+  try {
+    await ensureTiendaTables();
+    const { negocio_id, sucursal_id } = req.caja;
+    const { guia_rastreo = '', paqueteria = '' } = req.body;
+    const r = await pool.query(
+      `UPDATE pedidos_online SET guia_rastreo=$1, paqueteria=$2, enviado_en=now()
+       WHERE id=$3 AND negocio_id=$4 AND sucursal_id=$5 AND estado='confirmado' AND tipo_entrega='envio' AND enviado_en IS NULL
+       RETURNING id`,
+      [guia_rastreo, paqueteria, req.params.id, negocio_id, sucursal_id]
+    );
+    if (!r.rows.length) return res.status(404).json({ error: 'Pedido no encontrado, no confirmado, o ya marcado como enviado' });
+    const io = req.app.get('io');
+    if (io) io.to('negocio:' + negocio_id).emit('pedido_online:enviado', { id: req.params.id });
     res.json({ ok: true });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
