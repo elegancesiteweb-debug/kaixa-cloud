@@ -1098,13 +1098,22 @@ function abrirCobro() {
   montoIngresado = '';
   cobroCliente = null;
   _mpReferencia = null;
+  window._cobroTarjeta = null;
   clearInterval(window._mpPollTimer);
   var html = '<div class="cobro-sheet" id="cobroSheet">' +
     '<div class="cobro-bg" onclick="cerrarCobro()"></div>' +
     '<div class="cobro-panel">' +
       '<div class="cart-handle"></div>' +
       '<h3 style="font-size:17px;font-weight:900;margin-bottom:12px">💳 Cobrar</h3>' +
-      '<div class="monto-display"><div class="lbl">Total a cobrar</div><div class="val">' + fmt(total) + '</div></div>' +
+      '<div class="monto-display"><div class="lbl">Total a cobrar</div><div class="val" id="cobroTotalVal">' + fmt(total) + '</div></div>' +
+      '<div class="form-field" style="margin-bottom:10px" id="tgCobroInputRow"><div style="display:flex;gap:6px">' +
+        '<input id="tgCodigoCobroMovil" placeholder="🎁 Código de tarjeta de regalo (opcional)" style="flex:1">' +
+        '<button class="btn-full sec" style="width:auto;padding:0 14px" onclick="aplicarTarjetaRegaloMovil()">Aplicar</button>' +
+      '</div></div>' +
+      '<div id="tgCobroAplicada" style="display:none;justify-content:space-between;align-items:center;background:var(--s1);border-radius:10px;padding:9px 12px;margin-bottom:10px">' +
+        '<div style="font-size:12px;color:var(--accent);font-weight:700" id="tgCobroInfo"></div>' +
+        '<span style="cursor:pointer;color:var(--text3)" onclick="quitarTarjetaRegaloMovil()">✕</span>' +
+      '</div>' +
       '<div style="font-size:12px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Forma de pago</div>' +
       '<div class="pago-grid">' +
         '<button class="pago-btn active" onclick="selFP(\'efectivo\',this)">💵 Efectivo</button>' +
@@ -1139,6 +1148,39 @@ function abrirCobro() {
 }
 
 function cerrarCobro() { document.getElementById('modalContainer').innerHTML = ''; clearInterval(window._mpPollTimer); }
+
+// Total efectivo a cobrar tras aplicar la tarjeta de regalo (si se aplicó)
+function _cobroTotalConTarjeta() {
+  var t = window._cobroTotal || 0;
+  if (window._cobroTarjeta) t = Math.max(t - window._cobroTarjeta.disponible, 0);
+  return t;
+}
+
+async function aplicarTarjetaRegaloMovil() {
+  var codigo = (document.getElementById('tgCodigoCobroMovil').value || '').trim().toUpperCase();
+  if (!codigo) { notif('Escribe el código de la tarjeta', 'err'); return; }
+  try {
+    var r = await apiFetch('/api/tarjetas-regalo/' + encodeURIComponent(codigo));
+    var d = await r.json();
+    if (!r.ok) { notif('❌ ' + (d.error || 'Tarjeta no encontrada'), 'err'); return; }
+    if (!d.activa || parseFloat(d.saldo_actual) <= 0) { notif('Esta tarjeta ya no tiene saldo disponible', 'err'); return; }
+    window._cobroTarjeta = { codigo: d.codigo, disponible: Math.min(parseFloat(d.saldo_actual), window._cobroTotal||0) };
+    document.getElementById('tgCobroInputRow').style.display = 'none';
+    document.getElementById('tgCobroAplicada').style.display = 'flex';
+    document.getElementById('tgCobroInfo').textContent = d.codigo + ' — se descuentan ' + fmt(window._cobroTarjeta.disponible);
+    var totalEl = document.getElementById('cobroTotalVal');
+    if (totalEl) totalEl.textContent = fmt(_cobroTotalConTarjeta());
+  } catch(e) { notif('❌ Error de conexión', 'err'); }
+}
+
+function quitarTarjetaRegaloMovil() {
+  window._cobroTarjeta = null;
+  document.getElementById('tgCobroInputRow').style.display = 'block';
+  document.getElementById('tgCobroAplicada').style.display = 'none';
+  document.getElementById('tgCodigoCobroMovil').value = '';
+  var totalEl = document.getElementById('cobroTotalVal');
+  if (totalEl) totalEl.textContent = fmt(window._cobroTotal||0);
+}
 
 function selFP(fp, btn) {
   formaPago = fp;
@@ -1270,13 +1312,15 @@ function numPad(val) {
   else { montoIngresado += val; }
   var num = parseFloat(montoIngresado || '0') / 100;
   document.getElementById('montoDisplay').textContent = fmt(num);
-  var cambio = num - window._cobroTotal;
+  var cambio = num - _cobroTotalConTarjeta();
   var cb = document.getElementById('cambioBox');
   if (cb) { cb.style.display = num > 0 ? 'flex' : 'none'; document.getElementById('cambioVal').textContent = fmt(Math.max(0, cambio)); }
 }
 
 async function confirmarVenta() {
-  var total = window._cobroTotal;
+  var totalOriginal = window._cobroTotal || 0;
+  var descuentoTarjeta = window._cobroTarjeta ? window._cobroTarjeta.disponible : 0;
+  var total = Math.max(totalOriginal - descuentoTarjeta, 0); // lo que realmente paga el cliente
   var monto = formaPago === 'efectivo' ? parseFloat(montoIngresado || '0') / 100 : total;
   if (formaPago === 'efectivo' && monto < total) { notif('El monto es menor al total', 'err'); return; }
   if (formaPago === 'credito' && !cobroCliente) { notif('Elige a qué cliente se le da el crédito', 'err'); abrirSelectorClienteCredito(); return; }
@@ -1288,7 +1332,10 @@ async function confirmarVenta() {
         ? { kit_id: c.kit_id, nombre: c.nombre, cantidad: c.qty, precio_unitario: precioU, subtotal: precioU * c.qty, componentes: c.componentes||[] }
         : { producto_id: c.id, nombre: c.nombre, cantidad: c.qty, precio_unitario: precioU, subtotal: precioU * c.qty };
     }),
-    total: parseFloat(total)||0, subtotal: parseFloat(total)||0, forma_pago: formaPago, monto_recibido: parseFloat(monto)||0, cambio: Math.max(0, monto - total),
+    // El backend recalcula subtotal a partir de items y total=subtotal-descuento+iva,
+    // así que "descuento" es el campo que de verdad reduce el cobro (igual que en PC).
+    total: parseFloat(total)||0, subtotal: parseFloat(totalOriginal)||0, descuento: parseFloat(descuentoTarjeta)||0,
+    forma_pago: formaPago, monto_recibido: parseFloat(monto)||0, cambio: Math.max(0, monto - total),
     giro: giro, usuario_id: usuario ? usuario.id : null, cajero: usuario ? usuario.nombre : 'App Móvil',
     cliente_id: cobroCliente ? cobroCliente.id : null,
   };
@@ -1296,6 +1343,14 @@ async function confirmarVenta() {
     var r = await apiFetch('/api/ventas', { method: 'POST', body: JSON.stringify(venta) });
     if (r && r.ok) {
       var d = await r.json();
+      // Redimir la tarjeta de regalo (si se aplicó) — solo después de que la venta ya se guardó
+      if (window._cobroTarjeta && descuentoTarjeta > 0) {
+        try {
+          await apiFetch('/api/tarjetas-regalo/' + encodeURIComponent(window._cobroTarjeta.codigo) + '/redimir', {
+            method: 'POST', body: JSON.stringify({ monto: descuentoTarjeta, venta_id: d.id })
+          });
+        } catch(eTg) {}
+      }
       cart = [];
       actualizarCartFab();
       cerrarCobro();
@@ -3164,6 +3219,86 @@ async function guardarTiendaConfigMovil() {
   }
 }
 
+// ══ TARJETAS DE REGALO ══ (código único, saldo redimible en cualquier sucursal)
+async function abrirTarjetasRegaloMovil() {
+  var html = '<div class="modal-overlay" id="modalTarjetasRegalo">' +
+    '<div class="modal-sheet">' +
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">' +
+        '<h3 style="margin:0">🎁 Tarjetas de regalo</h3>' +
+        '<span class="modal-close" onclick="document.getElementById(\'modalTarjetasRegalo\').remove()">✕</span>' +
+      '</div>' +
+      '<button class="btn-full primary" style="margin-bottom:14px" onclick="abrirVenderTarjetaMovil()">+ Vender tarjeta</button>' +
+      '<div class="form-field"><input id="tgBuscarMovil" placeholder="🔍 Buscar por código..." oninput="clearTimeout(window._tgTMovil);window._tgTMovil=setTimeout(cargarTarjetasRegaloMovil,250)"></div>' +
+      '<div id="tgListaMovil" style="margin-top:10px"></div>' +
+    '</div></div>';
+  document.getElementById('modalContainer').innerHTML = html;
+  cargarTarjetasRegaloMovil();
+}
+
+async function cargarTarjetasRegaloMovil() {
+  var cont = document.getElementById('tgListaMovil');
+  if (!cont) return;
+  var q = document.getElementById('tgBuscarMovil') ? document.getElementById('tgBuscarMovil').value : '';
+  try {
+    var r = await apiFetch('/api/tarjetas-regalo?q=' + encodeURIComponent(q));
+    var tarjetas = r && r.ok ? await r.json() : [];
+    if (!Array.isArray(tarjetas) || !tarjetas.length) {
+      cont.innerHTML = '<div style="text-align:center;padding:24px;color:var(--text3);font-size:13px">Sin tarjetas de regalo vendidas todavía</div>';
+      return;
+    }
+    cont.innerHTML = tarjetas.map(function(t) {
+      var activa = t.activa && parseFloat(t.saldo_actual) > 0;
+      return '<div class="card" style="margin-bottom:8px">' +
+        '<div class="card-row" style="justify-content:space-between">' +
+          '<div><div class="card-title" style="font-family:var(--fm)">' + t.codigo + '</div>' +
+          '<div class="card-sub">' + (t.creado_en||'').substring(0,10) + '</div></div>' +
+          '<div style="text-align:right">' +
+            '<div style="font-weight:900;color:' + (activa ? '#22c55e' : 'var(--text3)') + '">' + fmt(t.saldo_actual||0) + '</div>' +
+            '<div style="font-size:11px;color:var(--text3)">' + (activa ? 'Con saldo' : 'Agotada') + ' de ' + fmt(t.saldo_inicial||0) + '</div>' +
+          '</div>' +
+        '</div></div>';
+    }).join('');
+  } catch(e) { cont.innerHTML = '<div style="text-align:center;padding:24px;color:var(--danger);font-size:13px">Error cargando tarjetas</div>'; }
+}
+
+function abrirVenderTarjetaMovil() {
+  var html = '<div class="modal-overlay" id="modalVenderTarjeta">' +
+    '<div class="modal-sheet">' +
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">' +
+        '<h3 style="margin:0">🎁 Vender tarjeta</h3>' +
+        '<span class="modal-close" onclick="document.getElementById(\'modalVenderTarjeta\').remove()">✕</span>' +
+      '</div>' +
+      '<div class="form-field"><label>Monto a cargar</label><input id="tgMontoVentaMovil" type="number" step="0.01" placeholder="0.00"></div>' +
+      '<div class="form-field"><label>Notas (opcional)</label><input id="tgNotasVentaMovil" placeholder="Opcional"></div>' +
+      '<button class="btn-full primary" onclick="venderTarjetaRegaloMovil()">Generar y vender</button>' +
+    '</div></div>';
+  document.getElementById('modalContainer').innerHTML += html;
+}
+
+async function venderTarjetaRegaloMovil() {
+  var monto = parseFloat(document.getElementById('tgMontoVentaMovil').value) || 0;
+  if (monto <= 0) { notif('El monto debe ser mayor a 0', 'err'); return; }
+  try {
+    var r = await apiFetch('/api/tarjetas-regalo', {
+      method: 'POST',
+      body: JSON.stringify({ monto: monto, notas: document.getElementById('tgNotasVentaMovil').value.trim() })
+    });
+    var d = await r.json();
+    if (!r.ok) { notif('❌ ' + (d.error || 'No se pudo vender la tarjeta'), 'err'); return; }
+    document.getElementById('modalVenderTarjeta').remove();
+    var html = '<div class="modal-overlay" id="modalTarjetaCodigoMovil">' +
+      '<div class="modal-sheet" style="text-align:center">' +
+        '<h3>✅ Tarjeta vendida</h3>' +
+        '<p style="font-size:12px;color:var(--text3);margin-bottom:10px">Dale este código al cliente</p>' +
+        '<div style="font-size:22px;font-weight:900;letter-spacing:2px;font-family:var(--fm);background:var(--s1);border-radius:10px;padding:16px;margin-bottom:14px">' + d.codigo + '</div>' +
+        '<div style="font-size:14px;color:var(--accent);font-weight:800;margin-bottom:16px">Saldo: ' + fmt(d.saldo_actual||0) + '</div>' +
+        '<button class="btn-full primary" onclick="document.getElementById(\'modalTarjetaCodigoMovil\').remove()">Listo</button>' +
+      '</div></div>';
+    document.getElementById('modalContainer').innerHTML += html;
+    cargarTarjetasRegaloMovil();
+  } catch(e) { notif('❌ Error de conexión', 'err'); }
+}
+
 // ══ PEDIDOS ══
 var _pedidos = [];
 var _proveedores = [];
@@ -3387,6 +3522,7 @@ function loadMas() {
     { ico:'fileText', title:'Facturación CFDI', sub:'Timbrar facturas de tus ventas', screen:'cfdi' },
     { ico:'creditCard', title:'Pagos con tarjeta', sub:'Configura Mercado Pago', accion:'abrirPagosConfig' },
     { ico:'gift', title:'Kits y combos', sub:'Ver y vender paquetes armados', screen:'kits' },
+    { ico:'gift', title:'Tarjetas de regalo', sub:'Vender y consultar saldo', accion:'abrirTarjetasRegaloMovil' },
     { ico:'lightbulb', title:'Pedidos sugeridos', sub:'Productos con stock bajo por proveedor', screen:'sugeridos' },
     { ico:'image', title:'Mi tienda en línea', sub:'Imagen y descripción públicas', accion:'abrirTiendaConfig' },
     { ico:'receipt', title:'Ventas', sub:'Historial y devoluciones', screen:'ventas' },
