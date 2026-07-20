@@ -424,17 +424,17 @@ app.post('/api/sync/empleados', async (req, res) => {
           const activoEmp = (e.activo === false || e.activo === 0) ? false : true;
           await pool.query(
             `UPDATE empleados SET rol=$1, ultima_entrada=$2, ultima_salida=$3, sucursal_id=$4, activo=$5,
-               foto=COALESCE(NULLIF($6,''), foto) WHERE id=$7`,
-            [e.rol||'cajero', e.ultima_entrada||null, e.ultima_salida||null, e.sucursal_id||sucursal_id, activoEmp, e.foto||'', existe.rows[0].id]
+               foto=COALESCE(NULLIF($6,''), foto), comision_pct=$7 WHERE id=$8`,
+            [e.rol||'cajero', e.ultima_entrada||null, e.ultima_salida||null, e.sucursal_id||sucursal_id, activoEmp, e.foto||'', e.comision_pct||0, existe.rows[0].id]
           );
         } else {
           // Insertar nuevo
           await pool.query(
-            `INSERT INTO empleados (negocio_id, sucursal_id, nombre, rol, usuario, password, activo, ultima_entrada, ultima_salida, foto)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+            `INSERT INTO empleados (negocio_id, sucursal_id, nombre, rol, usuario, password, activo, ultima_entrada, ultima_salida, foto, comision_pct)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
             [negocio_id, e.sucursal_id||sucursal_id, e.nombre, e.rol||'cajero',
              e.usuario||null, e.password||null, e.activo!==false,
-             e.ultima_entrada||null, e.ultima_salida||null, e.foto||'']
+             e.ultima_entrada||null, e.ultima_salida||null, e.foto||'', e.comision_pct||0]
           );
         }
         sincronizados++;
@@ -546,6 +546,7 @@ async function ensureEmpleadosFoto() {
   if (_empleadosFotoListo) return;
   try {
     await pool.query(`ALTER TABLE empleados ADD COLUMN IF NOT EXISTS foto TEXT DEFAULT ''`);
+    await pool.query(`ALTER TABLE empleados ADD COLUMN IF NOT EXISTS comision_pct NUMERIC(5,2) DEFAULT 0`);
     _empleadosFotoListo = true;
   } catch(e) { console.error('⚠️ ensureEmpleadosFoto:', e.message); }
 }
