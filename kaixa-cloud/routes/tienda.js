@@ -248,7 +248,9 @@ router.get('/tienda/:slug/productos', async (req, res) => {
         [ids]
       );
       const porProducto = {};
-      vr.rows.forEach(v => { (porProducto[v.producto_id] = porProducto[v.producto_id] || []).push(v); });
+      // especificaciones es solo para consulta interna del negocio (ver
+      // routes/variantes.js) — no se manda a la tienda pública.
+      vr.rows.forEach(v => { delete v.especificaciones; (porProducto[v.producto_id] = porProducto[v.producto_id] || []).push(v); });
       productos.forEach(p => { if (p.tiene_variantes) p.variantes = porProducto[p.id] || []; });
     }
 

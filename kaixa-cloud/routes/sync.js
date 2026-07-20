@@ -251,15 +251,17 @@ router.post('/push', async (req, res) => {
         await client.query(`
           INSERT INTO producto_variantes
             (id, negocio_id, sucursal_id, producto_id, atributo1_nombre, atributo1_valor,
-             atributo2_nombre, atributo2_valor, sku, precio_extra, stock, stock_minimo, imagen_url, activo, actualizado_en)
-          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14, now())
+             atributo2_nombre, atributo2_valor, sku, precio_extra, stock, stock_minimo, imagen_url, activo, actualizado_en, especificaciones)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14, now(), $15)
           ON CONFLICT (id) DO UPDATE SET
             atributo1_nombre=$5, atributo1_valor=$6, atributo2_nombre=$7, atributo2_valor=$8,
             sku=$9, precio_extra=$10, stock=$11, stock_minimo=$12,
-            imagen_url=COALESCE(NULLIF($13,''), producto_variantes.imagen_url), activo=$14, actualizado_en=now()`,
+            imagen_url=COALESCE(NULLIF($13,''), producto_variantes.imagen_url), activo=$14, actualizado_en=now(),
+            especificaciones=$15`,
           [v.id, negocio_id, v.sucursal_id||sucursal_id, v.producto_uuid,
            v.atributo1_nombre||'', v.atributo1_valor||'', v.atributo2_nombre||'', v.atributo2_valor||'',
-           v.sku||'', v.precio_extra||0, v.stock||0, v.stock_minimo||0, v.imagen_url||'', v.activo!==false]
+           v.sku||'', v.precio_extra||0, v.stock||0, v.stock_minimo||0, v.imagen_url||'', v.activo!==false,
+           (typeof v.especificaciones === 'string' ? v.especificaciones : JSON.stringify(v.especificaciones||[]))]
         );
         if (v.producto_uuid) {
           await client.query(
