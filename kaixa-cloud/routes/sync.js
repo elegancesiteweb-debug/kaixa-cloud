@@ -9,6 +9,12 @@ async function ensureVentasFechaPagoColumn() {
   await pool.query(`ALTER TABLE ventas ADD COLUMN IF NOT EXISTS fecha_pago DATE`);
   _ventasFechaPagoColOk = true;
 }
+let _pedidoItemsRecepcionColOk = false;
+async function ensurePedidoItemsRecepcionColumn() {
+  if (_pedidoItemsRecepcionColOk) return;
+  await pool.query(`ALTER TABLE pedido_items ADD COLUMN IF NOT EXISTS cantidad_recibida INTEGER DEFAULT 0`);
+  _pedidoItemsRecepcionColOk = true;
+}
 let _autofacturaTokenColOk = false;
 async function ensureAutofacturaTokenColumn() {
   if (_autofacturaTokenColOk) return;
@@ -58,6 +64,7 @@ router.post('/push', async (req, res) => {
   try {
     await ensureVentasFechaPagoColumn();
     await ensureAutofacturaTokenColumn();
+    await ensurePedidoItemsRecepcionColumn();
     await ensureClientesFiadoColumns();
     await ensureCoberturaM2Column();
     await ensureDimensionesColumns();
@@ -297,28 +304,17 @@ router.post('/push', async (req, res) => {
           await client.query('DELETE FROM pedido_items WHERE pedido_id=$1', [p.id]);
           for (const item of p.items) {
             await client.query(`
-              INSERT INTO pedido_items (pedido_id, producto_id, nombre_producto, cantidad, costo_unitario, subtotal)
-              VALUES ($1,$2,$3,$4,$5,$6)`,
+              INSERT INTO pedido_items (pedido_id, producto_id, nombre_producto, cantidad, costo_unitario, subtotal, cantidad_recibida)
+              VALUES ($1,$2,$3,$4,$5,$6,$7)`,
               [p.id, item.producto_id||null, item.nombre_producto||'', item.cantidad||1, item.costo_unitario||0,
-               (item.cantidad||1)*(item.costo_unitario||0)]
+               (item.cantidad||1)*(item.costo_unitario||0), item.cantidad_recibida||0]
             );
           }
         }
-        // Si el pedido se marcó como recibido en la PC, aplicar el mismo
-        // aumento de stock aquí para que la nube/móvil queden en el mismo
-        // numero — la PC ya lo aplicó localmente, esto solo refleja el cambio.
-        if (p.estado === 'recibido' && p.aplicar_recepcion) {
-          const items = await client.query('SELECT * FROM pedido_items WHERE pedido_id=$1', [p.id]);
-          for (const item of items.rows) {
-            if (!item.producto_id) continue;
-            await client.query(
-              `INSERT INTO stock_movimientos (id, negocio_id, sucursal_id, producto_id, caja_id, cantidad, motivo)
-               VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,'recepcion')`,
-              [negocio_id, p.sucursal_id||sucursal_id, item.producto_id, caja_id, item.cantidad]
-            );
-            await client.query('UPDATE productos SET actualizado_en=now() WHERE id=$1', [item.producto_id]);
-          }
-        }
+        // El aumento de stock por recepción (total o parcial) ya viaja por el
+        // canal genérico de "movimientos" (motivo='recepcion') que la PC arma
+        // con el delta exacto — aquí solo se refleja cantidad_recibida arriba,
+        // sin volver a tocar stock_movimientos (evita duplicar el stock).
       } catch(e) { console.warn('Pedido push error:', e.message); }
     }
     await client.query('UPDATE cajas SET ultimo_sync = now() WHERE id = $1', [caja_id]);

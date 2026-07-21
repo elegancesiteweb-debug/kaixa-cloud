@@ -348,6 +348,16 @@ async function verificarLicenciaHandler(req, res) {
     let modulos = [];
     try { modulos = JSON.parse(lic.modulos || '[]'); } catch(e) {}
     if (!modulos.length && GIROS[lic.giro]) modulos = GIROS[lic.giro].modulos;
+    if (lic.negocio_id) {
+      try {
+        const { ensureModulosOpcionalesColumn, modulosDeOpcionales } = require('./routes/modulos-opcionales');
+        await ensureModulosOpcionalesColumn();
+        const n = await pool.query('SELECT modulos_opcionales FROM negocios WHERE id=$1', [lic.negocio_id]);
+        let opcionales = [];
+        try { opcionales = JSON.parse((n.rows[0] && n.rows[0].modulos_opcionales) || '[]'); } catch(e) {}
+        modulos = [...new Set([...modulos, ...modulosDeOpcionales(opcionales)])];
+      } catch(e) { /* si falla, seguimos con los módulos del giro/plan tal cual */ }
+    }
     await pool.query('UPDATE licencias SET ultima_verificacion=NOW() WHERE clave=$1', [clave]);
     res.json({ ok: true, mensaje: 'Licencia activa', licencia: { clave: lic.clave, cliente: lic.cliente_nombre, nombre_negocio: lic.negocio_nombre, negocio: lic.negocio_nombre, dias_restantes: diasRestantes, giro: lic.giro || 'tienda', plan: lic.plan || 'pro', modulos, max_usuarios: lic.max_usuarios, vence_en: lic.vence_en, estado: lic.estado } });
   } catch(e) { res.status(500).json({ ok: false, mensaje: e.message }); }
@@ -616,6 +626,7 @@ app.use('/api/dashboard', authCaja, require('./routes/dashboard'));
 app.use('/api/push',      authCaja, pushRouter);
 app.use('/api',           authCaja, require('./routes/variantes').router);
 app.use('/api',           authCaja, require('./routes/cfdi').router);
+app.use('/api',           authCaja, require('./routes/modulos-opcionales').router);
 app.use('/api',           authCaja, require('./routes/whatsapp').router);
 app.use('/api',           authCaja, require('./routes/pagos').router);
 app.use('/api',           authCaja, require('./routes/cotizaciones').router);

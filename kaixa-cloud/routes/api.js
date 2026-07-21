@@ -14,6 +14,13 @@ async function ensureClientesFiadoColumns() {
   _clientesFiadoColOk = true;
 }
 
+let _pedidoItemsRecepcionColOk = false;
+async function ensurePedidoItemsRecepcionColumn() {
+  if (_pedidoItemsRecepcionColOk) return;
+  await pool.query(`ALTER TABLE pedido_items ADD COLUMN IF NOT EXISTS cantidad_recibida INTEGER DEFAULT 0`);
+  _pedidoItemsRecepcionColOk = true;
+}
+
 let _ventasFechaPagoColOk = false;
 async function ensureVentasFechaPagoColumn() {
   if (_ventasFechaPagoColOk) return;
@@ -548,6 +555,7 @@ router.delete('/lotes/:id', async (req, res) => {
 router.get('/pedidos', async (req, res) => {
   try {
     const { negocio_id, sucursal_id } = req.caja;
+    await ensurePedidoItemsRecepcionColumn();
     const r = await pool.query(
       `SELECT p.*, json_agg(pi.*) FILTER(WHERE pi.id IS NOT NULL) as items
        FROM pedidos p LEFT JOIN pedido_items pi ON pi.pedido_id = p.id
@@ -577,21 +585,46 @@ router.post('/pedidos', async (req, res) => {
     res.json({ ok: true, id: pedidoId });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
+// PUT /pedidos/:id/recibir — recibir mercancía (total o parcial).
+// body opcional: { items: [{ id, cantidad_recibida }] } — sin body, recibe
+// todo de un jalón (comportamiento anterior). Solo mueve stock_movimientos
+// por el delta desde la última recepción de cada renglón, para no duplicar
+// el stock si el pedido se recibe en varias entregas.
 router.put('/pedidos/:id/recibir', async (req, res) => {
   try {
     const { negocio_id, sucursal_id, id: caja_id } = req.caja;
-    const items = await pool.query('SELECT * FROM pedido_items WHERE pedido_id=$1', [req.params.id]);
-    for (const item of items.rows) {
-      if (item.producto_id) {
+    await ensurePedidoItemsRecepcionColumn();
+    const pedido = await pool.query('SELECT estado FROM pedidos WHERE id=$1 AND negocio_id=$2', [req.params.id, negocio_id]);
+    if (!pedido.rows.length) return res.status(404).json({ error: 'Pedido no encontrado' });
+    if (pedido.rows[0].estado === 'recibido') return res.status(400).json({ error: 'Ya fue recibido' });
+
+    const detalle = await pool.query('SELECT * FROM pedido_items WHERE pedido_id=$1', [req.params.id]);
+    const { items } = req.body || {};
+    const cantidadPorId = {};
+    if (Array.isArray(items) && items.length) {
+      items.forEach(i => { cantidadPorId[i.id] = Math.max(0, parseInt(i.cantidad_recibida) || 0); });
+    } else {
+      detalle.rows.forEach(d => { cantidadPorId[d.id] = d.cantidad; });
+    }
+
+    let completo = true;
+    for (const item of detalle.rows) {
+      const nuevaRecibida = Math.min(item.cantidad, cantidadPorId.hasOwnProperty(item.id) ? cantidadPorId[item.id] : (item.cantidad_recibida || 0));
+      const delta = nuevaRecibida - (item.cantidad_recibida || 0);
+      if (delta !== 0 && item.producto_id) {
         await pool.query(
           `INSERT INTO stock_movimientos (id, negocio_id, sucursal_id, producto_id, caja_id, cantidad, motivo) VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,'recepcion')`,
-          [negocio_id, sucursal_id, item.producto_id, caja_id, item.cantidad]
+          [negocio_id, sucursal_id, item.producto_id, caja_id, delta]
         );
         await pool.query('UPDATE productos SET actualizado_en=now() WHERE id=$1', [item.producto_id]);
       }
+      await pool.query('UPDATE pedido_items SET cantidad_recibida=$1 WHERE id=$2', [nuevaRecibida, item.id]);
+      if (nuevaRecibida < item.cantidad) completo = false;
     }
-    await pool.query("UPDATE pedidos SET estado='recibido', actualizado_en=NOW() WHERE id=$1", [req.params.id]);
-    res.json({ ok: true });
+
+    const nuevoEstado = completo ? 'recibido' : 'parcial';
+    await pool.query("UPDATE pedidos SET estado=$1, actualizado_en=NOW() WHERE id=$2", [nuevoEstado, req.params.id]);
+    res.json({ ok: true, estado: nuevoEstado });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 

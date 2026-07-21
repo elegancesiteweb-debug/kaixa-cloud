@@ -220,13 +220,14 @@ CREATE TABLE IF NOT EXISTS pedidos (
   actualizado_en  TIMESTAMPTZ DEFAULT now()
 );
 CREATE TABLE IF NOT EXISTS pedido_items (
-  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  pedido_id       UUID NOT NULL REFERENCES pedidos(id) ON DELETE CASCADE,
-  producto_id     UUID REFERENCES productos(id),
-  nombre_producto TEXT DEFAULT '',
-  cantidad        INTEGER DEFAULT 1,
-  costo_unitario  NUMERIC(12,2) DEFAULT 0,
-  subtotal        NUMERIC(12,2) DEFAULT 0
+  id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  pedido_id         UUID NOT NULL REFERENCES pedidos(id) ON DELETE CASCADE,
+  producto_id       UUID REFERENCES productos(id),
+  nombre_producto   TEXT DEFAULT '',
+  cantidad          INTEGER DEFAULT 1,
+  costo_unitario    NUMERIC(12,2) DEFAULT 0,
+  subtotal          NUMERIC(12,2) DEFAULT 0,
+  cantidad_recibida INTEGER DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_pedidos_sucursal ON pedidos(sucursal_id);
 

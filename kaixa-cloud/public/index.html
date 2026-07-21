@@ -3452,7 +3452,7 @@ function renderPedidos() {
   var cont = document.getElementById('pedidosList');
   if (!_pedidos.length) { cont.innerHTML = '<div class="empty"><div class="ico">🚚</div><p>Sin pedidos</p></div>'; return; }
   cont.innerHTML = _pedidos.map(function(p) {
-    var cls = {pendiente:'warn',recibido:'ok',cancelado:'err'}[p.estado]||'accent';
+    var cls = {pendiente:'warn',parcial:'warn',recibido:'ok',cancelado:'err'}[p.estado]||'accent';
     return '<div class="card" style="cursor:pointer;margin:0 16px 8px" onclick="verDetallePedido(\'' + p.id + '\')">' +
       '<div class="card-row"><div class="card-ico">🚚</div>' +
       '<div class="card-info"><div class="card-title">' + (p.proveedor_nombre||'Sin proveedor') + '</div>' +
@@ -3465,12 +3465,22 @@ function verDetallePedido(id) {
   var p = _pedidos.find(function(x){return String(x.id)===String(id);});
   if (!p) return;
   var items = Array.isArray(p.items) ? p.items.filter(Boolean) : [];
+  var puedeRecibir = p.estado==='pendiente' || p.estado==='parcial';
   var html = '<div class="modal-overlay" id="modalPedido"><div class="modal-sheet">' +
     '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">' +
       '<h3 style="margin:0">🚚 Pedido</h3>' +
       '<span class="modal-close" onclick="document.getElementById(\'modalPedido\').remove()">✕</span></div>' +
-    (items.length ? items.map(function(it){return '<div style="display:flex;justify-content:space-between;font-size:12px;padding:7px 0;border-bottom:1px solid var(--border)"><span>'+(it.nombre_producto||'Producto')+' x'+it.cantidad+'</span><span style="font-weight:700;font-family:var(--fm)">'+fmt(it.subtotal||0)+'</span></div>';}).join('') : '<p style="color:var(--text3);font-size:12px">Sin detalle</p>') +
-    (p.estado==='pendiente'?'<button class="btn-full primary" style="margin-top:14px" onclick="recibirPedido(\'' + p.id + '\')">📦 Marcar como recibido</button>':'') +
+    (items.length ? items.map(function(it){
+      var yaRecibida = parseInt(it.cantidad_recibida||0);
+      var pendienteQty = Math.max(0, it.cantidad - yaRecibida);
+      return '<div data-item-id="'+it.id+'" data-cantidad="'+it.cantidad+'" data-ya-recibida="'+yaRecibida+'" style="display:flex;justify-content:space-between;align-items:center;font-size:12px;padding:7px 0;border-bottom:1px solid var(--border);gap:8px">' +
+        '<span>'+(it.nombre_producto||'Producto')+' x'+it.cantidad + (yaRecibida>0?' <span style="color:var(--warn)">(recibido '+yaRecibida+')</span>':'') + '</span>' +
+        (puedeRecibir
+          ? '<input type="number" class="recibirCantInpMovil" min="0" max="'+it.cantidad+'" value="'+pendienteQty+'" style="width:60px;text-align:center;padding:4px;border-radius:6px;border:1px solid var(--border);background:var(--bg2,var(--bg));color:inherit">'
+          : '<span style="font-weight:700;font-family:var(--fm)">'+fmt(it.subtotal||0)+'</span>') +
+        '</div>';
+    }).join('') : '<p style="color:var(--text3);font-size:12px">Sin detalle</p>') +
+    (puedeRecibir?'<button class="btn-full primary" style="margin-top:14px" onclick="recibirPedido(\'' + p.id + '\')">📦 Confirmar recepción</button>':'') +
     '<button class="btn-full sec" style="margin-top:8px" onclick="document.getElementById(\'modalPedido\').remove()">Cerrar</button>' +
     '</div></div>';
   document.getElementById('modalContainer').innerHTML = html;
@@ -3478,8 +3488,17 @@ function verDetallePedido(id) {
 
 async function recibirPedido(id) {
   if(!confirm('¿Confirmar recepción?')) return;
-  var r = await apiFetch('/api/pedidos/'+id+'/recibir',{method:'PUT',body:JSON.stringify({})});
-  if(r&&r.ok){notif('✅ Pedido recibido','ok');document.getElementById('modalContainer').innerHTML='';allProds=[];loadPedidos();}
+  var items = [];
+  document.querySelectorAll('#modalPedido [data-item-id]').forEach(function(row){
+    var itemId = row.getAttribute('data-item-id');
+    var cantidadPedida = parseInt(row.getAttribute('data-cantidad'))||0;
+    var yaRecibida = parseInt(row.getAttribute('data-ya-recibida'))||0;
+    var inp = row.querySelector('.recibirCantInpMovil');
+    var recibirAhora = inp ? Math.max(0, Math.min(cantidadPedida - yaRecibida, parseInt(inp.value)||0)) : 0;
+    items.push({ id: itemId, cantidad_recibida: yaRecibida + recibirAhora });
+  });
+  var r = await apiFetch('/api/pedidos/'+id+'/recibir',{method:'PUT',body:JSON.stringify({items:items})});
+  if(r&&r.ok){notif('✅ Recepción guardada','ok');document.getElementById('modalContainer').innerHTML='';allProds=[];loadPedidos();}
   else{notif('Error al recibir pedido','err');}
 }
 
