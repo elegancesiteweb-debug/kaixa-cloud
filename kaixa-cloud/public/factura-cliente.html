@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Facturar mi compra</title>
+<style>
+  :root{ --acc:#8b5cf6; --acc2:#d946ef; --bg:#f7f6fb; --s1:#fff; --text:#1a1a2e; --text2:#6b6b80; --text3:#9c9cb0; --border:#eae8f5; --maxw:480px; }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--text);padding:0 0 40px}
+  .hero{color:#fff;text-align:center;background:linear-gradient(135deg,var(--acc),#6d28d9);padding:26px 18px}
+  .hero h1{margin:0;font-size:19px;font-weight:900}
+  .hero p{margin:6px 0 0;font-size:12.5px;opacity:.9}
+  .wrap{max-width:var(--maxw);margin:0 auto;padding:16px}
+  .card{background:var(--s1);border-radius:14px;padding:16px;margin-bottom:14px;box-shadow:0 2px 10px rgba(0,0,0,.05)}
+  .card h2{margin:0 0 10px;font-size:14px}
+  .row{display:flex;justify-content:space-between;font-size:13px;padding:6px 0;border-bottom:1px solid var(--border)}
+  .row:last-child{border-bottom:none}
+  .row .k{color:var(--text2)}
+  .row .v{font-weight:700}
+  .total{font-size:17px;font-weight:900;color:var(--acc)}
+  label{font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:6px}
+  .field{margin-bottom:12px}
+  select,input{width:100%;padding:11px 12px;border-radius:10px;border:1.5px solid var(--border);font-size:14px;background:#fff;color:var(--text);font-family:inherit}
+  .btn{padding:13px;border-radius:10px;border:none;background:linear-gradient(135deg,var(--acc),var(--acc2));color:#fff;font-weight:800;font-size:14px;cursor:pointer;width:100%}
+  .btn:disabled{background:#d8d5e8;cursor:not-allowed}
+  .btn-o{background:transparent;border:1.5px solid var(--acc);color:var(--acc);margin-top:10px}
+  .msg{text-align:center;padding:40px 20px;color:var(--text3)}
+  .msg div{font-size:40px;margin-bottom:10px}
+  .err{color:#e11d48;font-size:12.5px;margin-top:8px;text-align:center}
+  .ok{text-align:center;padding:10px}
+  .ok div{font-size:44px;margin-bottom:10px}
+  .ok h2{margin:0 0 6px}
+  .hidden{display:none}
+</style>
+</head>
+<body>
+  <div class="hero">
+    <h1>Factura tu compra</h1>
+    <p id="heroSub">Cargando...</p>
+  </div>
+  <div class="wrap">
+    <div id="loading" class="msg"><div>⏳</div>Cargando tu compra...</div>
+
+    <div id="notFound" class="msg hidden"><div>🔍</div>No encontramos esta venta. Verifica el enlace o pide un nuevo ticket.</div>
+
+    <div id="yaFacturada" class="msg hidden"><div>✅</div>Esta venta ya fue facturada anteriormente. Solo se puede generar una factura por compra.</div>
+
+    <div id="content" class="hidden">
+      <div class="card">
+        <h2>Resumen de tu compra</h2>
+        <div class="row"><span class="k">Negocio</span><span class="v" id="rNegocio"></span></div>
+        <div class="row"><span class="k">Folio</span><span class="v" id="rFolio"></span></div>
+        <div class="row"><span class="k">Fecha</span><span class="v" id="rFecha"></span></div>
+        <div class="row"><span class="k">Total</span><span class="v total" id="rTotal"></span></div>
+      </div>
+
+      <div class="card">
+        <h2>Tus datos fiscales</h2>
+        <div class="field"><label>RFC</label><input id="fRfc" maxlength="13" placeholder="XAXX010101000" style="text-transform:uppercase"></div>
+        <div class="field"><label>Razón social / Nombre</label><input id="fNombre" placeholder="Como aparece en tu constancia"></div>
+        <div class="field"><label>Código postal</label><input id="fCp" maxlength="5" placeholder="44100"></div>
+        <div class="field">
+          <label>Régimen fiscal</label>
+          <select id="fRegimen">
+            <option value="616">616 - Sin obligaciones fiscales</option>
+            <option value="612">612 - Personas Físicas con Actividades Empresariales</option>
+            <option value="621">621 - Incorporación Fiscal</option>
+            <option value="626">626 - Régimen Simplificado de Confianza</option>
+            <option value="601">601 - General de Ley Personas Morales</option>
+            <option value="605">605 - Sueldos y Salarios</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Uso de CFDI</label>
+          <select id="fUso">
+            <option value="G03">G03 - Gastos en general</option>
+            <option value="G01">G01 - Adquisición de mercancías</option>
+            <option value="P01">P01 - Por definir</option>
+          </select>
+        </div>
+        <div class="field"><label>Correo (opcional, para recibir el PDF)</label><input id="fEmail" type="email" placeholder="tu@correo.com"></div>
+        <button class="btn" id="btnFacturar" onclick="generarFactura()">Generar factura</button>
+        <div class="err hidden" id="errMsg"></div>
+      </div>
+    </div>
+
+    <div id="exito" class="card hidden">
+      <div class="ok">
+        <div>🎉</div>
+        <h2>¡Factura generada!</h2>
+        <p id="exitoFolio" style="color:var(--text2);font-size:13px"></p>
+        <a class="btn" id="btnDescargar" style="text-decoration:none;display:block;box-sizing:border-box" download>Descargar PDF</a>
+      </div>
+    </div>
+  </div>
+
+<script>
+var token = location.pathname.split('/').filter(Boolean).pop();
+
+function money(n){ return '$' + Number(n||0).toFixed(2); }
+
+async function cargar() {
+  try {
+    var r = await fetch('/api/autofactura/' + encodeURIComponent(token));
+    var d = await r.json();
+    document.getElementById('loading').classList.add('hidden');
+    if (!r.ok || d.error) {
+      document.getElementById('notFound').classList.remove('hidden');
+      document.getElementById('heroSub').textContent = 'No disponible';
+      return;
+    }
+    if (d.ya_facturada) {
+      document.getElementById('yaFacturada').classList.remove('hidden');
+      document.getElementById('heroSub').textContent = 'Ya facturada';
+      return;
+    }
+    document.getElementById('heroSub').textContent = d.negocio_nombre || '';
+    document.getElementById('rNegocio').textContent = d.negocio_nombre || '';
+    document.getElementById('rFolio').textContent = d.folio || '';
+    document.getElementById('rFecha').textContent = d.fecha ? new Date(d.fecha).toLocaleDateString('es-MX') : '';
+    document.getElementById('rTotal').textContent = money(d.total);
+    document.getElementById('content').classList.remove('hidden');
+  } catch(e) {
+    document.getElementById('loading').classList.add('hidden');
+    document.getElementById('notFound').classList.remove('hidden');
+  }
+}
+
+async function generarFactura() {
+  var rfc = document.getElementById('fRfc').value.trim().toUpperCase();
+  var nombre = document.getElementById('fNombre').value.trim();
+  var errEl = document.getElementById('errMsg');
+  errEl.classList.add('hidden');
+  if (!rfc || rfc.length < 12) { errEl.textContent = 'Ingresa un RFC válido.'; errEl.classList.remove('hidden'); return; }
+  if (!nombre) { errEl.textContent = 'Ingresa tu razón social o nombre.'; errEl.classList.remove('hidden'); return; }
+
+  var btn = document.getElementById('btnFacturar');
+  btn.disabled = true; btn.textContent = 'Generando...';
+  try {
+    var r = await fetch('/api/autofactura/' + encodeURIComponent(token), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        rfc_receptor: rfc,
+        nombre_receptor: nombre,
+        cp_receptor: document.getElementById('fCp').value.trim(),
+        regimen_fiscal_receptor: document.getElementById('fRegimen').value,
+        uso_cfdi: document.getElementById('fUso').value,
+        email_receptor: document.getElementById('fEmail').value.trim() || undefined
+      })
+    });
+    var d = await r.json();
+    if (!r.ok || d.error) {
+      errEl.textContent = d.error || 'No se pudo generar la factura.';
+      errEl.classList.remove('hidden');
+      btn.disabled = false; btn.textContent = 'Generar factura';
+      return;
+    }
+    document.getElementById('content').classList.add('hidden');
+    document.getElementById('exito').classList.remove('hidden');
+    document.getElementById('exitoFolio').textContent = 'Folio ' + d.folio + ' · ' + money(d.total);
+    var a = document.getElementById('btnDescargar');
+    if (d.pdf_base64) {
+      a.href = 'data:application/pdf;base64,' + d.pdf_base64;
+      a.download = 'factura_' + d.folio + '.pdf';
+    } else {
+      a.classList.add('hidden');
+    }
+  } catch(e) {
+    errEl.textContent = 'Error de conexión. Intenta de nuevo.';
+    errEl.classList.remove('hidden');
+    btn.disabled = false; btn.textContent = 'Generar factura';
+  }
+}
+
+cargar();
+</script>
+</body>
+</html>

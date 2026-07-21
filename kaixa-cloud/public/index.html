@@ -3106,8 +3106,38 @@ function renderFacturas() {
         '</div>' +
         '<span class="tag ' + estCls + '">' + f.estado + '</span>' +
       '</div>' +
+      (f.facturaapi_id ? (
+      '<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">' +
+        '<button class="btn-sec" style="font-size:11px;padding:6px 10px" onclick="descargarCFDI(\'' + f.facturaapi_id + '\',\'pdf\')">📄 PDF</button>' +
+        '<button class="btn-sec" style="font-size:11px;padding:6px 10px" onclick="descargarCFDI(\'' + f.facturaapi_id + '\',\'xml\')">📋 XML</button>' +
+        '<button class="btn-sec" style="font-size:11px;padding:6px 10px" onclick="enviarCFDIPorCorreo(\'' + f.facturaapi_id + '\')">✉️ Correo</button>' +
+      '</div>') : '') +
     '</div>';
   }).join('');
+}
+
+async function descargarCFDI(facturaapiId, tipo) {
+  try {
+    var r = await apiFetch('/api/cfdi/descargar/' + facturaapiId + '/' + tipo);
+    if (!r || !r.ok) { notif('❌ No se pudo descargar', 'err'); return; }
+    var blob = await r.blob();
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url; a.download = 'factura_' + facturaapiId + '.' + tipo;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 5000);
+  } catch(e) { notif('❌ Error al descargar', 'err'); }
+}
+
+async function enviarCFDIPorCorreo(facturaapiId) {
+  var email = prompt('¿A qué correo enviamos la factura?', '');
+  if (!email) return;
+  try {
+    var r = await apiFetch('/api/cfdi/' + facturaapiId + '/enviar-correo', { method: 'POST', body: JSON.stringify({ email: email.trim() }) });
+    var d = r ? await r.json().catch(function(){return {};}) : {};
+    if (r && r.ok) notif('✅ Factura enviada a ' + email, 'ok');
+    else notif('❌ ' + (d.error || 'No se pudo enviar el correo'), 'err');
+  } catch(e) { notif('❌ Error de conexión', 'err'); }
 }
 
 async function abrirConfigCFDI() {
@@ -3124,6 +3154,9 @@ async function abrirConfigCFDI() {
     '<div class="field"><label>Razón social</label><input id="cfgRazonSocial" value="' + (cfg.razon_social_emisor||'') + '"></div>' +
     '<div class="field"><label>Régimen fiscal (clave SAT)</label><input id="cfgRegimen" value="' + (cfg.regimen_fiscal_emisor||'') + '" placeholder="Ej: 626"></div>' +
     '<div class="field"><label>Código postal</label><input id="cfgCp" value="' + (cfg.cp_emisor||'') + '"></div>' +
+    '<p style="font-size:12px;color:var(--text3);margin:14px 0 8px">✉️ Para enviar facturas por correo, crea una cuenta gratuita en <b>resend.com</b> y verifica un remitente.</p>' +
+    '<div class="field"><label>Correo remitente</label><input id="cfgResendFrom" value="' + (cfg.resend_from_email||'') + '" placeholder="facturas@tunegocio.com"></div>' +
+    '<div class="field"><label>API Key de Resend</label><input id="cfgResendKey" placeholder="' + (cfg.resend_api_key_preview || 're_...') + '"></div>' +
     '<button class="btn-sec" style="margin-bottom:8px" onclick="probarConexionCFDI()">🔌 Probar conexión</button>' +
     '<button class="btn-primary" onclick="guardarConfigCFDI()">💾 Guardar</button>' +
   '</div></div>';
@@ -3135,10 +3168,13 @@ async function guardarConfigCFDI() {
     rfc_emisor: (document.getElementById('cfgRfcEmisor').value||'').toUpperCase(),
     razon_social_emisor: document.getElementById('cfgRazonSocial').value,
     regimen_fiscal_emisor: document.getElementById('cfgRegimen').value,
-    cp_emisor: document.getElementById('cfgCp').value
+    cp_emisor: document.getElementById('cfgCp').value,
+    resend_from_email: document.getElementById('cfgResendFrom').value.trim()
   };
   var apiKey = document.getElementById('cfgApiKey').value.trim();
   if (apiKey) body.api_key = apiKey;
+  var resendKey = document.getElementById('cfgResendKey').value.trim();
+  if (resendKey) body.resend_api_key = resendKey;
   var r = await apiFetch('/api/cfdi/config', { method: 'PUT', body: JSON.stringify(body) });
   if (r && r.ok) { notif('✅ Configuración guardada', 'ok'); document.getElementById('modalConfigCFDI').remove(); loadFacturas(); }
   else { notif('❌ Error al guardar', 'err'); }
