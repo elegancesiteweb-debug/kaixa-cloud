@@ -2564,6 +2564,11 @@ function renderPedidosOnline() {
   }).join('');
 }
 
+// pg manda fecha_entrega (columna DATE) como ISO completo con hora/zona
+// ("2026-08-15T00:00:00.000Z"), no un simple "2026-08-15". Pegarle "T00:00:00"
+// directo daba "Invalid Date" — esto se queda solo con la parte de fecha.
+function _soloFecha(f){ return (f||'').toString().split('T')[0]; }
+
 function verDetallePedidoOnline(id) {
   var p = _pedidosOnline.find(function(x){ return x.id === id; })
     || (window._entregasProgramadasMovil||[]).find(function(x){ return x.id === id; });
@@ -2605,7 +2610,7 @@ function verDetallePedidoOnline(id) {
 
   var entregaBox = '';
   if (p.fecha_entrega) {
-    var fechaEntregaTxt = new Date(p.fecha_entrega+'T00:00:00').toLocaleDateString('es-MX', {weekday:'long', day:'numeric', month:'long'}) + (p.hora_entrega ? ' · ' + p.hora_entrega : '');
+    var fechaEntregaTxt = new Date(_soloFecha(p.fecha_entrega)+'T00:00:00').toLocaleDateString('es-MX', {weekday:'long', day:'numeric', month:'long'}) + (p.hora_entrega ? ' · ' + p.hora_entrega : '');
     var yaEntregado = !!p.entregado_en;
     var puedeEntregar = p.estado === 'confirmado' && !yaEntregado;
     var puedeAvisarCamino = p.estado === 'confirmado';
@@ -2713,7 +2718,7 @@ async function loadEntregasProgramadas() {
     entregas.sort(function(a,b){
       var pa = _pesoEntrega(a), pb = _pesoEntrega(b);
       if(pa !== pb) return pa - pb;
-      return (a.fecha_entrega+(a.hora_entrega||'')).localeCompare(b.fecha_entrega+(b.hora_entrega||''));
+      return (_soloFecha(a.fecha_entrega)+(a.hora_entrega||'')).localeCompare(_soloFecha(b.fecha_entrega)+(b.hora_entrega||''));
     });
     window._entregasProgramadasMovil = entregas;
     cont.innerHTML = entregas.map(function(p) {
@@ -2722,7 +2727,7 @@ async function loadEntregasProgramadas() {
       var puedeEntregar = p.estado === 'confirmado' && !yaEntregado;
       var puedeAvisarCamino = p.estado === 'confirmado';
       var telAviso = p.destinatario_telefono || p.cliente_telefono;
-      var fechaTxt = new Date(p.fecha_entrega+'T00:00:00').toLocaleDateString('es-MX', {weekday:'long', day:'numeric', month:'long'}) + (p.hora_entrega ? ' · ' + p.hora_entrega : '');
+      var fechaTxt = new Date(_soloFecha(p.fecha_entrega)+'T00:00:00').toLocaleDateString('es-MX', {weekday:'long', day:'numeric', month:'long'}) + (p.hora_entrega ? ' · ' + p.hora_entrega : '');
       return '<div class="card" style="margin:0 16px 8px;cursor:pointer" onclick="verDetallePedidoOnline(\''+p.id+'\')">' +
         '<div class="card-title" style="color:var(--accent)">📅 ' + fechaTxt + '</div>' +
         '<div class="card-title" style="margin-top:4px">' + (p.destinatario_nombre ? '🎁 Para: ' + p.destinatario_nombre : 'Cliente: ' + p.cliente_nombre) + '</div>' +
@@ -2753,7 +2758,7 @@ function _abrirWhatsAppEntregaMovil(id, mensajeFn){
 function avisarVaEnCaminoMovil(id){
   _abrirWhatsAppEntregaMovil(id, function(p){
     var nombre = p.destinatario_nombre || p.cliente_nombre;
-    var fechaTxt = new Date(p.fecha_entrega+'T00:00:00').toLocaleDateString('es-MX', {day:'numeric', month:'long'}) + (p.hora_entrega ? ' a las ' + p.hora_entrega : '');
+    var fechaTxt = new Date(_soloFecha(p.fecha_entrega)+'T00:00:00').toLocaleDateString('es-MX', {day:'numeric', month:'long'}) + (p.hora_entrega ? ' a las ' + p.hora_entrega : '');
     return 'Hola ' + nombre + ', tu pedido ' + p.folio + ' de ' + _negocioNombreActual + ' ya va en camino 🚚 Llega el ' + fechaTxt + '.';
   });
 }
