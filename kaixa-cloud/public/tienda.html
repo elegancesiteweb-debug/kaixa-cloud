@@ -200,6 +200,19 @@
       <div class="field"><label>Código postal</label><input id="ckCP" inputmode="numeric" maxlength="5"></div>
       <div class="field"><label>Referencias (opcional)</label><textarea id="ckReferencias" rows="2" placeholder="Ej: casa azul, portón negro"></textarea></div>
     </div>
+    <div id="ckEntregaProgramadaBox" style="display:none">
+      <div class="field" style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+        <input type="checkbox" id="ckEsRegalo" onchange="toggleEsRegalo()" style="width:auto">
+        <label style="margin:0;text-transform:none;font-size:13px;font-weight:600;color:var(--text)">🎁 Es para alguien más (regalo)</label>
+      </div>
+      <div id="ckDestinatarioBox" style="display:none">
+        <div class="field"><label>Nombre del destinatario</label><input id="ckDestNombre" placeholder="¿Para quién es?"></div>
+        <div class="field"><label>Teléfono del destinatario (opcional)</label><input id="ckDestTel" type="tel" placeholder="10 dígitos"></div>
+      </div>
+      <div class="field"><label>Fecha de entrega (opcional)</label><input id="ckFechaEntrega" type="date"></div>
+      <div class="field"><label>Hora aproximada (opcional)</label><input id="ckHoraEntrega" type="time"></div>
+      <div class="field"><label>Mensaje para la tarjeta (opcional)</label><textarea id="ckMensajeTarjeta" rows="2" placeholder="Ej: ¡Feliz cumpleaños!"></textarea></div>
+    </div>
     <div class="field"><label>Notas (opcional)</label><textarea id="ckNotas" rows="2" placeholder="Ej: recojo después de las 5pm"></textarea></div>
     <div class="field" style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
       <input type="checkbox" id="ckFactura" onchange="toggleFactura()" style="width:auto">
@@ -588,8 +601,13 @@ function irACheckout(){
   entregaBox.style.display = haySelect ? 'block' : 'none';
   document.getElementById('btnDomicilio').style.display = (negocio && negocio.domicilio_habilitado) ? 'inline-block' : 'none';
   document.getElementById('btnEnvio').style.display = (negocio && negocio.envio_habilitado) ? 'inline-block' : 'none';
+  document.getElementById('ckEntregaProgramadaBox').style.display = (negocio && negocio.entregas_habilitado) ? 'block' : 'none';
   setTipoEntrega('recoger');
   document.getElementById('ovCheckout').classList.add('show');
+}
+
+function toggleEsRegalo(){
+  document.getElementById('ckDestinatarioBox').style.display = document.getElementById('ckEsRegalo').checked ? 'block' : 'none';
 }
 
 var _tipoEntrega = 'recoger';
@@ -673,7 +691,12 @@ async function enviarPedido(){
         direccion_colonia: colonia,
         direccion_ciudad: document.getElementById('ckCiudad').value.trim(),
         direccion_cp: document.getElementById('ckCP').value.trim(),
-        direccion_referencias: document.getElementById('ckReferencias').value.trim()
+        direccion_referencias: document.getElementById('ckReferencias').value.trim(),
+        fecha_entrega: document.getElementById('ckFechaEntrega').value || null,
+        hora_entrega: document.getElementById('ckHoraEntrega').value,
+        destinatario_nombre: document.getElementById('ckEsRegalo').checked ? document.getElementById('ckDestNombre').value.trim() : '',
+        destinatario_telefono: document.getElementById('ckEsRegalo').checked ? document.getElementById('ckDestTel').value.trim() : '',
+        mensaje_tarjeta: document.getElementById('ckMensajeTarjeta').value.trim()
       })
     });
     var d = await r.json();

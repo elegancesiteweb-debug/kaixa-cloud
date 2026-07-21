@@ -99,6 +99,9 @@ async function ensureTiendaTables() {
   // Tarifa plana para arrancar; zonas/CP quedan para una pasada futura si se necesita.
   await pool.query(`ALTER TABLE negocios ADD COLUMN IF NOT EXISTS envio_habilitado BOOLEAN DEFAULT false`);
   await pool.query(`ALTER TABLE negocios ADD COLUMN IF NOT EXISTS envio_costo NUMERIC(10,2) DEFAULT 0`);
+  // Mismo interruptor de sub-funciones que routes/modulos-opcionales.js — se
+  // asegura aquí también para no depender del orden en que corren las rutas.
+  await pool.query(`ALTER TABLE negocios ADD COLUMN IF NOT EXISTS modulos_opcionales TEXT DEFAULT '[]'`);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS pedidos_online (
       id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -145,6 +148,15 @@ async function ensureTiendaTables() {
   await pool.query(`ALTER TABLE pedidos_online ADD COLUMN IF NOT EXISTS guia_rastreo TEXT DEFAULT ''`);
   await pool.query(`ALTER TABLE pedidos_online ADD COLUMN IF NOT EXISTS paqueteria TEXT DEFAULT ''`);
   await pool.query(`ALTER TABLE pedidos_online ADD COLUMN IF NOT EXISTS enviado_en TIMESTAMPTZ`);
+  // Entregas programadas (florería/regalos) — opcional, distinto del envío
+  // por paquetería de arriba: es la entrega propia del negocio en una fecha
+  // acordada, a veces para alguien distinto de quien compra.
+  await pool.query(`ALTER TABLE pedidos_online ADD COLUMN IF NOT EXISTS fecha_entrega DATE`);
+  await pool.query(`ALTER TABLE pedidos_online ADD COLUMN IF NOT EXISTS hora_entrega TEXT DEFAULT ''`);
+  await pool.query(`ALTER TABLE pedidos_online ADD COLUMN IF NOT EXISTS destinatario_nombre TEXT DEFAULT ''`);
+  await pool.query(`ALTER TABLE pedidos_online ADD COLUMN IF NOT EXISTS destinatario_telefono TEXT DEFAULT ''`);
+  await pool.query(`ALTER TABLE pedidos_online ADD COLUMN IF NOT EXISTS mensaje_tarjeta TEXT DEFAULT ''`);
+  await pool.query(`ALTER TABLE pedidos_online ADD COLUMN IF NOT EXISTS entregado_en TIMESTAMPTZ`);
   await pool.query(`ALTER TABLE pedido_online_items ADD COLUMN IF NOT EXISTS variante_id UUID`);
   await pool.query(`ALTER TABLE pedido_online_items ADD COLUMN IF NOT EXISTS variante_texto TEXT DEFAULT ''`);
   await pool.query(`ALTER TABLE pedido_online_items ADD COLUMN IF NOT EXISTS kit_id UUID`);
@@ -189,7 +201,8 @@ router.get('/tienda/:slug/info', async (req, res) => {
               COALESCE(domicilio_habilitado,false) AS domicilio_habilitado,
               COALESCE(envio_habilitado,false) AS envio_habilitado,
               COALESCE(envio_costo,0) AS envio_costo,
-              (mp_access_token IS NOT NULL AND mp_access_token != '') AS mp_habilitado
+              (mp_access_token IS NOT NULL AND mp_access_token != '') AS mp_habilitado,
+              COALESCE(modulos_opcionales::jsonb ? 'entregas_programadas', false) AS entregas_habilitado
        FROM negocios WHERE slug=$1 AND activo=true`,
       [req.params.slug]
     );
@@ -311,7 +324,8 @@ router.post('/tienda/:slug/pedidos', async (req, res) => {
       sucursal_id, cliente_nombre, cliente_telefono='', cliente_email='', notas='', items=[],
       requiere_factura=false, rfc_receptor='', razon_social_receptor='', uso_cfdi='G03',
       tipo_entrega='recoger', direccion_calle='', direccion_numero='', direccion_colonia='',
-      direccion_ciudad='', direccion_cp='', direccion_referencias=''
+      direccion_ciudad='', direccion_cp='', direccion_referencias='',
+      fecha_entrega=null, hora_entrega='', destinatario_nombre='', destinatario_telefono='', mensaje_tarjeta=''
     } = req.body;
     if (!sucursal_id) return res.status(400).json({ error: 'Falta la sucursal' });
     if (!cliente_nombre || !cliente_nombre.trim()) return res.status(400).json({ error: 'Falta tu nombre' });
@@ -414,11 +428,13 @@ router.post('/tienda/:slug/pedidos', async (req, res) => {
     const pedido = await client.query(
       `INSERT INTO pedidos_online (negocio_id, sucursal_id, folio, cliente_nombre, cliente_telefono, cliente_email, notas, subtotal,
         requiere_factura, rfc_receptor, razon_social_receptor, uso_cfdi,
-        tipo_entrega, direccion_calle, direccion_numero, direccion_colonia, direccion_ciudad, direccion_cp, direccion_referencias, costo_envio)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20) RETURNING id, folio`,
+        tipo_entrega, direccion_calle, direccion_numero, direccion_colonia, direccion_ciudad, direccion_cp, direccion_referencias, costo_envio,
+        fecha_entrega, hora_entrega, destinatario_nombre, destinatario_telefono, mensaje_tarjeta)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25) RETURNING id, folio`,
       [negocioId, sucursal_id, folio, cliente_nombre.trim(), cliente_telefono, cliente_email, notas, subtotal,
        !!requiere_factura, rfc_receptor, razon_social_receptor, uso_cfdi,
-       tipo_entrega, direccion_calle, direccion_numero, direccion_colonia, direccion_ciudad, direccion_cp, direccion_referencias, costoEnvio]
+       tipo_entrega, direccion_calle, direccion_numero, direccion_colonia, direccion_ciudad, direccion_cp, direccion_referencias, costoEnvio,
+       fecha_entrega || null, hora_entrega, destinatario_nombre, destinatario_telefono, mensaje_tarjeta]
     );
     const pedidoId = pedido.rows[0].id;
 

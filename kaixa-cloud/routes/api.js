@@ -910,6 +910,12 @@ async function ensureTraspasosTable() {
       notas                TEXT DEFAULT '',
       creado_en            TIMESTAMPTZ DEFAULT now()
     )`);
+  // 'recibido' como default preserva el histórico: los traspasos creados
+  // antes de este cambio ya eran atómicos (origen y destino aplicados de
+  // un jalón), así que ya están completos.
+  await pool.query(`ALTER TABLE traspasos ADD COLUMN IF NOT EXISTS estado TEXT DEFAULT 'recibido'`);
+  await pool.query(`ALTER TABLE traspasos ADD COLUMN IF NOT EXISTS cantidad_recibida NUMERIC(10,3)`);
+  await pool.query(`ALTER TABLE traspasos ADD COLUMN IF NOT EXISTS recibido_en TIMESTAMPTZ`);
 }
 
 // ── GET /api/traspasos — historial de la sucursal (enviados y recibidos) ──
@@ -973,10 +979,12 @@ router.post('/traspasos', async (req, res) => {
       nombreItem = l.nombre_producto || '';
       await client.query('UPDATE lotes SET cantidad = cantidad - $1, actualizado_en = now() WHERE id=$2', [cant, l.id]);
 
+      // El lote destino nace en 0 — su cantidad se llena hasta que la
+      // sucursal destino confirma la recepción (PUT /traspasos/:id/recibir).
       const nuevoLote = await client.query(
         `INSERT INTO lotes (negocio_id, sucursal_id, producto_id, nombre_producto, numero_lote, cantidad, fecha_caducidad)
-         VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
-        [negocio_id, sucursal_destino_id, l.producto_id, l.nombre_producto, l.numero_lote, cant, l.fecha_caducidad]
+         VALUES ($1,$2,$3,$4,$5,0,$6) RETURNING id`,
+        [negocio_id, sucursal_destino_id, l.producto_id, l.nombre_producto, l.numero_lote, l.fecha_caducidad]
       );
       loteDestinoId = nuevoLote.rows[0].id;
 
@@ -1017,15 +1025,13 @@ router.post('/traspasos', async (req, res) => {
         productoDestinoId = nuevoProd.rows[0].id;
       }
 
+      // Solo se resta en origen al enviar — la mercancía ya salió físicamente.
+      // El movimiento de entrada en destino se aplica hasta que se confirma
+      // la recepción (PUT /traspasos/:id/recibir), no aquí.
       await client.query(
         `INSERT INTO stock_movimientos (id, negocio_id, sucursal_id, producto_id, caja_id, cantidad, motivo)
          VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,'traspaso_salida')`,
         [negocio_id, sucursalOrigenId, productoOrigenId, cajaId, -cant]
-      );
-      await client.query(
-        `INSERT INTO stock_movimientos (id, negocio_id, sucursal_id, producto_id, caja_id, cantidad, motivo)
-         VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,'traspaso_entrada')`,
-        [negocio_id, sucursal_destino_id, productoDestinoId, cajaId, cant]
       );
       await client.query('UPDATE productos SET actualizado_en=now() WHERE id IN ($1,$2)', [productoOrigenId, productoDestinoId]);
     }
@@ -1033,8 +1039,8 @@ router.post('/traspasos', async (req, res) => {
     const traspaso = await client.query(
       `INSERT INTO traspasos (negocio_id, sucursal_origen_id, sucursal_destino_id, tipo,
          producto_origen_id, producto_destino_id, lote_origen_id, lote_destino_id,
-         nombre_item, cantidad, usuario_nombre, notas)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
+         nombre_item, cantidad, usuario_nombre, notas, estado)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'enviado') RETURNING *`,
       [negocio_id, sucursalOrigenId, sucursal_destino_id, tipo,
        productoOrigenId, productoDestinoId, loteOrigenId, loteDestinoId,
        nombreItem, cant, usuario_nombre, notas]
@@ -1049,6 +1055,86 @@ router.post('/traspasos', async (req, res) => {
   } catch (e) {
     await client.query('ROLLBACK');
     res.status(e.status || 500).json({ error: e.message });
+  } finally {
+    client.release();
+  }
+});
+
+// ── PUT /api/traspasos/:id/recibir — confirma recepción (total o parcial) ──
+// Solo la sucursal destino puede confirmar. body opcional {cantidad_recibida};
+// sin body, confirma la cantidad completa enviada (igual que pedidos.recibir).
+router.put('/traspasos/:id/recibir', async (req, res) => {
+  const { negocio_id, sucursal_id: miSucursalId, id: cajaId } = req.caja;
+  const client = await pool.connect();
+  try {
+    await ensureTraspasosTable();
+    const t = await client.query('SELECT * FROM traspasos WHERE id=$1 AND negocio_id=$2', [req.params.id, negocio_id]);
+    if (!t.rows.length) return res.status(404).json({ error: 'Traspaso no encontrado' });
+    const traspaso = t.rows[0];
+    if (traspaso.sucursal_destino_id !== miSucursalId) {
+      return res.status(403).json({ error: 'Solo la sucursal destino puede confirmar este traspaso' });
+    }
+    if (traspaso.estado !== 'enviado') return res.status(400).json({ error: 'Este traspaso ya fue ' + traspaso.estado });
+
+    const cantidadRecibida = req.body && req.body.cantidad_recibida != null
+      ? Math.max(0, Math.min(parseFloat(traspaso.cantidad), parseFloat(req.body.cantidad_recibida)))
+      : parseFloat(traspaso.cantidad);
+
+    await client.query('BEGIN');
+    if (traspaso.tipo === 'lote') {
+      await client.query('UPDATE lotes SET cantidad=$1, actualizado_en=now() WHERE id=$2', [cantidadRecibida, traspaso.lote_destino_id]);
+    } else {
+      await client.query(
+        `INSERT INTO stock_movimientos (id, negocio_id, sucursal_id, producto_id, caja_id, cantidad, motivo)
+         VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,'traspaso_entrada')`,
+        [negocio_id, miSucursalId, traspaso.producto_destino_id, cajaId, cantidadRecibida]
+      );
+      await client.query('UPDATE productos SET actualizado_en=now() WHERE id=$1', [traspaso.producto_destino_id]);
+    }
+    await client.query(
+      `UPDATE traspasos SET estado='recibido', cantidad_recibida=$1, recibido_en=now() WHERE id=$2`,
+      [cantidadRecibida, req.params.id]
+    );
+    await client.query('COMMIT');
+    res.json({ ok: true, cantidad_recibida: cantidadRecibida });
+  } catch (e) {
+    await client.query('ROLLBACK');
+    res.status(500).json({ error: e.message });
+  } finally {
+    client.release();
+  }
+});
+
+// ── PUT /api/traspasos/:id/rechazar — la sucursal destino rechaza, el stock regresa a origen ──
+router.put('/traspasos/:id/rechazar', async (req, res) => {
+  const { negocio_id, sucursal_id: miSucursalId, id: cajaId } = req.caja;
+  const client = await pool.connect();
+  try {
+    await ensureTraspasosTable();
+    const t = await client.query('SELECT * FROM traspasos WHERE id=$1 AND negocio_id=$2', [req.params.id, negocio_id]);
+    if (!t.rows.length) return res.status(404).json({ error: 'Traspaso no encontrado' });
+    const traspaso = t.rows[0];
+    if (traspaso.sucursal_destino_id !== miSucursalId) {
+      return res.status(403).json({ error: 'Solo la sucursal destino puede rechazar este traspaso' });
+    }
+    if (traspaso.estado !== 'enviado') return res.status(400).json({ error: 'Este traspaso ya fue ' + traspaso.estado });
+
+    await client.query('BEGIN');
+    if (traspaso.tipo === 'lote') {
+      await client.query('UPDATE lotes SET cantidad = cantidad + $1, actualizado_en=now() WHERE id=$2', [traspaso.cantidad, traspaso.lote_origen_id]);
+    } else {
+      await client.query(
+        `INSERT INTO stock_movimientos (id, negocio_id, sucursal_id, producto_id, caja_id, cantidad, motivo)
+         VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,'traspaso_salida')`,
+        [negocio_id, traspaso.sucursal_origen_id, traspaso.producto_origen_id, cajaId, traspaso.cantidad]
+      );
+    }
+    await client.query(`UPDATE traspasos SET estado='rechazado' WHERE id=$1`, [req.params.id]);
+    await client.query('COMMIT');
+    res.json({ ok: true });
+  } catch (e) {
+    await client.query('ROLLBACK');
+    res.status(500).json({ error: e.message });
   } finally {
     client.release();
   }
@@ -1255,6 +1341,20 @@ router.post('/pedidos-online/:id/confirmar', async (req, res) => {
     const io = req.app.get('io');
     if (io) io.to('negocio:' + negocio_id).emit('pedido_online:confirmado', { id: p.id });
 
+    // Aviso de entrega programada por WhatsApp — mejor esfuerzo, nunca lanza
+    // ni bloquea la confirmación si el negocio no tiene WhatsApp configurado.
+    if (p.fecha_entrega) {
+      try {
+        const { enviarWhatsapp } = require('./whatsapp');
+        const telefono = p.destinatario_telefono || p.cliente_telefono;
+        if (telefono) {
+          const mensaje = 'Tu pedido ' + p.folio + ' está confirmado, entrega programada para el '
+            + p.fecha_entrega + (p.hora_entrega ? ' a las ' + p.hora_entrega : '') + '.';
+          enviarWhatsapp(negocio_id, telefono, mensaje).catch(() => {});
+        }
+      } catch (e) {}
+    }
+
     res.json({ ok: true, venta_id: ventaId, folio_venta: folioVenta });
   } catch (e) {
     await client.query('ROLLBACK');
@@ -1262,6 +1362,19 @@ router.post('/pedidos-online/:id/confirmar', async (req, res) => {
   } finally {
     client.release();
   }
+});
+
+// ── POST /api/pedidos-online/:id/marcar-entregado — checkpoint de entrega propia (no toca stock/venta) ──
+router.post('/pedidos-online/:id/marcar-entregado', async (req, res) => {
+  try {
+    const { negocio_id, sucursal_id } = req.caja;
+    const r = await pool.query(
+      "UPDATE pedidos_online SET entregado_en=now() WHERE id=$1 AND negocio_id=$2 AND sucursal_id=$3 AND estado='confirmado' AND entregado_en IS NULL RETURNING id",
+      [req.params.id, negocio_id, sucursal_id]
+    );
+    if (!r.rows.length) return res.status(400).json({ error: 'No se puede marcar como entregado (no existe, no está confirmado, o ya se marcó)' });
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // ── POST /api/pedidos-online/:id/rechazar ──
