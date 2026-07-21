@@ -2608,6 +2608,8 @@ function verDetallePedidoOnline(id) {
     var fechaEntregaTxt = new Date(p.fecha_entrega+'T00:00:00').toLocaleDateString('es-MX', {weekday:'long', day:'numeric', month:'long'}) + (p.hora_entrega ? ' · ' + p.hora_entrega : '');
     var yaEntregado = !!p.entregado_en;
     var puedeEntregar = p.estado === 'confirmado' && !yaEntregado;
+    var puedeAvisarCamino = p.estado === 'confirmado';
+    var telAviso = p.destinatario_telefono || p.cliente_telefono;
     entregaBox = '<div style="font-size:12px;color:var(--text);background:rgba(34,197,94,.07);border:1px solid rgba(34,197,94,.2);border-radius:8px;padding:10px 12px;margin-bottom:8px">' +
       '<div style="font-weight:800;margin-bottom:3px">📅 Entrega programada · '+fechaEntregaTxt+'</div>' +
       (p.destinatario_nombre ? '<div>🎁 Para: <b>'+p.destinatario_nombre+'</b>'+(p.destinatario_telefono?' · 📞 '+p.destinatario_telefono:'')+'</div>' : '') +
@@ -2615,6 +2617,8 @@ function verDetallePedidoOnline(id) {
       '<div style="margin-top:4px;font-weight:700;color:'+(yaEntregado?'#22c55e':'var(--warn)')+'">' +
         (yaEntregado ? '✅ Entregado' : p.estado==='confirmado' ? '⏳ Falta entregar' : '⚠️ Aún sin confirmar') +
       '</div>' +
+      (puedeAvisarCamino && telAviso ? '<button class="btn-full" style="margin-top:8px;padding:8px;font-size:12px;color:#25d366;background:rgba(37,211,102,.08);border:1.5px solid #25d366" onclick="avisarVaEnCaminoMovil(\''+p.id+'\')">📲 Avisar que va en camino</button>' : '') +
+      (yaEntregado && telAviso ? '<button class="btn-full" style="margin-top:8px;padding:8px;font-size:12px;color:#25d366;background:rgba(37,211,102,.08);border:1.5px solid #25d366" onclick="avisarEntregaConfirmadaMovil(\''+p.id+'\')">📲 Avisar que se entregó</button>' : '') +
       (puedeEntregar ? '<button class="btn-full primary" style="margin-top:8px;padding:8px;font-size:12px" onclick="marcarEntregadoMovil(\''+p.id+'\')">✅ Marcar como entregado</button>' : '') +
     '</div>';
   }
@@ -2646,8 +2650,18 @@ async function marcarEnviadoPedidoOnline(id) {
     method: 'POST',
     body: JSON.stringify({ guia_rastreo: guiaEl ? guiaEl.value.trim() : '', paqueteria: paqEl ? paqEl.value.trim() : '' })
   });
-  if (r && r.ok) { notif('🚚 Pedido marcado como enviado', 'ok'); await loadPedidosOnline(); verDetallePedidoOnline(id); }
+  if (r && r.ok) { notif('🚚 Pedido marcado como enviado', 'ok'); await _refrescarPedidoOnlineEnTodosLados(id); }
   else { var err = r ? await r.json().catch(function(){return {};}) : {}; notif('❌ ' + (err.error || 'Error al marcar como enviado'), 'err'); }
+}
+
+// Refresca todo lo que pueda mostrar este pedido (lista de Pedidos, lista de
+// Entregas si tiene fecha_entrega, y el modal de detalle si está abierto) —
+// sin esto, confirmar/rechazar desde la lista dejaba el detalle y la pestaña
+// de Entregas con datos viejos.
+async function _refrescarPedidoOnlineEnTodosLados(id) {
+  await loadPedidosOnline();
+  try { await loadEntregasProgramadas(); } catch(e) {}
+  if (document.getElementById('modalPedidoOnlineDet')) verDetallePedidoOnline(id);
 }
 
 async function confirmarPedidoOnline(id) {
@@ -2656,14 +2670,14 @@ async function confirmarPedidoOnline(id) {
     method: 'POST',
     body: JSON.stringify({ cajero: usuario ? usuario.nombre : 'Pedido en línea' })
   });
-  if (r && r.ok) { notif('✅ Pedido confirmado y venta registrada', 'ok'); loadPedidosOnline(); }
+  if (r && r.ok) { notif('✅ Pedido confirmado y venta registrada', 'ok'); _refrescarPedidoOnlineEnTodosLados(id); }
   else { var err = r ? await r.json().catch(function(){return {};}) : {}; notif('❌ ' + (err.error || 'Error al confirmar'), 'err'); }
 }
 
 async function rechazarPedidoOnline(id) {
   var motivo = prompt('Motivo del rechazo (opcional):') || '';
   var r = await apiFetch('/api/pedidos-online/' + id + '/rechazar', { method: 'POST', body: JSON.stringify({ motivo: motivo }) });
-  if (r && r.ok) { notif('Pedido rechazado', 'ok'); loadPedidosOnline(); }
+  if (r && r.ok) { notif('Pedido rechazado', 'ok'); _refrescarPedidoOnlineEnTodosLados(id); }
   else { notif('❌ Error al rechazar', 'err'); }
 }
 
@@ -2691,12 +2705,23 @@ async function loadEntregasProgramadas() {
     if (!Array.isArray(pedidos)) pedidos = [];
     var entregas = pedidos.filter(function(p){ return p.fecha_entrega; });
     if (!entregas.length) { cont.innerHTML = '<div class="empty"><div class="ico">📅</div><p>Sin entregas programadas</p></div>'; return; }
-    entregas.sort(function(a,b){ return (a.fecha_entrega+(a.hora_entrega||'')).localeCompare(b.fecha_entrega+(b.hora_entrega||'')); });
+    // Prioridad: pendientes de confirmar arriba (necesitan acción), luego
+    // confirmadas sin entregar, y hasta abajo las ya entregadas — dentro de
+    // cada grupo, por fecha de entrega. Antes se ordenaba solo por fecha, y
+    // una entrega nueva con fecha lejana se enterraba debajo de confirmadas.
+    function _pesoEntrega(p){ return p.entregado_en ? 2 : (p.estado === 'confirmado' ? 1 : 0); }
+    entregas.sort(function(a,b){
+      var pa = _pesoEntrega(a), pb = _pesoEntrega(b);
+      if(pa !== pb) return pa - pb;
+      return (a.fecha_entrega+(a.hora_entrega||'')).localeCompare(b.fecha_entrega+(b.hora_entrega||''));
+    });
     window._entregasProgramadasMovil = entregas;
     cont.innerHTML = entregas.map(function(p) {
       var items = (p.items||[]).map(function(i){ return i.cantidad+'x '+i.nombre_producto; }).join(' • ');
       var yaEntregado = !!p.entregado_en;
       var puedeEntregar = p.estado === 'confirmado' && !yaEntregado;
+      var puedeAvisarCamino = p.estado === 'confirmado';
+      var telAviso = p.destinatario_telefono || p.cliente_telefono;
       var fechaTxt = new Date(p.fecha_entrega+'T00:00:00').toLocaleDateString('es-MX', {weekday:'long', day:'numeric', month:'long'}) + (p.hora_entrega ? ' · ' + p.hora_entrega : '');
       return '<div class="card" style="margin:0 16px 8px;cursor:pointer" onclick="verDetallePedidoOnline(\''+p.id+'\')">' +
         '<div class="card-title" style="color:var(--accent)">📅 ' + fechaTxt + '</div>' +
@@ -2706,19 +2731,43 @@ async function loadEntregasProgramadas() {
         '<div class="card-sub" style="font-weight:700;margin-top:4px">' +
           (yaEntregado ? '✅ Entregado' : p.estado==='confirmado' ? '⏳ Falta entregar' : '⚠️ Aún sin confirmar en Pedidos') +
         '</div>' +
+        (puedeAvisarCamino && telAviso ? '<button class="btn-full" style="margin-top:8px;padding:7px;font-size:12px;color:#25d366;background:rgba(37,211,102,.08);border:1.5px solid #25d366" onclick="event.stopPropagation();avisarVaEnCaminoMovil(\''+p.id+'\')">📲 Avisar que va en camino</button>' : '') +
+        (yaEntregado && telAviso ? '<button class="btn-full" style="margin-top:8px;padding:7px;font-size:12px;color:#25d366;background:rgba(37,211,102,.08);border:1.5px solid #25d366" onclick="event.stopPropagation();avisarEntregaConfirmadaMovil(\''+p.id+'\')">📲 Avisar que se entregó</button>' : '') +
         (puedeEntregar ? '<button class="btn-full primary" style="margin-top:8px" onclick="event.stopPropagation();marcarEntregadoMovil(\''+p.id+'\')">✅ Marcar como entregado</button>' : '') +
       '</div>';
     }).join('');
   } catch(e) { cont.innerHTML = '<div class="empty"><div class="ico">📅</div><p>Error al cargar</p></div>'; }
 }
 
+function _abrirWhatsAppEntregaMovil(id, mensajeFn){
+  var p = (_pedidosOnline||[]).find(function(x){ return x.id===id; })
+    || (window._entregasProgramadasMovil||[]).find(function(x){ return x.id===id; });
+  if(!p) return notif('Entrega no encontrada', 'err');
+  var telefono = p.destinatario_telefono || p.cliente_telefono;
+  if(!telefono){ notif('⚠️ Sin teléfono registrado', 'err'); return; }
+  var tel = telefono.replace(/[^0-9]/g,'');
+  if(tel.length === 10) tel = '52' + tel;
+  window.open('https://wa.me/' + tel + '?text=' + encodeURIComponent(mensajeFn(p)), '_blank');
+}
+
+function avisarVaEnCaminoMovil(id){
+  _abrirWhatsAppEntregaMovil(id, function(p){
+    var nombre = p.destinatario_nombre || p.cliente_nombre;
+    var fechaTxt = new Date(p.fecha_entrega+'T00:00:00').toLocaleDateString('es-MX', {day:'numeric', month:'long'}) + (p.hora_entrega ? ' a las ' + p.hora_entrega : '');
+    return 'Hola ' + nombre + ', tu pedido ' + p.folio + ' de ' + _negocioNombreActual + ' ya va en camino 🚚 Llega el ' + fechaTxt + '.';
+  });
+}
+
+function avisarEntregaConfirmadaMovil(id){
+  _abrirWhatsAppEntregaMovil(id, function(p){
+    var nombre = p.destinatario_nombre || p.cliente_nombre;
+    return 'Hola ' + nombre + ', tu pedido ' + p.folio + ' de ' + _negocioNombreActual + ' fue entregado ✅ ¡Gracias por tu compra!';
+  });
+}
+
 async function marcarEntregadoMovil(id) {
   var r = await apiFetch('/api/pedidos-online/' + id + '/marcar-entregado', { method: 'POST' });
-  if (r && r.ok) {
-    notif('✅ Marcado como entregado', 'ok');
-    await loadEntregasProgramadas();
-    if (document.getElementById('modalPedidoOnlineDet')) verDetallePedidoOnline(id);
-  }
+  if (r && r.ok) { notif('✅ Marcado como entregado', 'ok'); await _refrescarPedidoOnlineEnTodosLados(id); }
   else { var err = r ? await r.json().catch(function(){return {};}) : {}; notif('❌ ' + (err.error||'Error al marcar'), 'err'); }
 }
 
