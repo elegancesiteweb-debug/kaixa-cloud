@@ -353,7 +353,7 @@ router.get('/pull', async (req, res) => {
     await ensureCoberturaM2Column();
     await ensureDimensionesColumns();
     await ensureMonedaCostoColumns();
-    const [productos, clientes, ventas, movimientos, lotesPull, kitsPull, promocionesPull, divisasPull, variantesPull, proveedoresPull, pedidosPull] = await Promise.all([
+    const [productos, clientes, ventas, movimientos, lotesPull, kitsPull, promocionesPull, divisasPull, variantesPull, proveedoresPull, pedidosPull, empleadosPull] = await Promise.all([
       pool.query(
         `SELECT p.id, p.negocio_id, p.sucursal_id, p.nombre, p.emoji, p.codigo_barras,
                 p.precio, p.costo, p.stock_minimo, p.categoria_id, p.giro, p.por_peso,
@@ -454,6 +454,12 @@ router.get('/pull', async (req, res) => {
          WHERE p.negocio_id=$1 AND (p.sucursal_id=$2 OR p.sucursal_id IS NULL) AND p.actualizado_en > $3
          GROUP BY p.id ORDER BY p.actualizado_en`,
         [negocio_id, sucursal_id, since]
+      ).catch(() => ({ rows: [] })),
+      // Sin filtro incremental — igual que proveedores, una lista de
+      // empleados es chica y no vale la pena rastrear actualizado_en.
+      pool.query(
+        `SELECT nombre, rol, foto, activo FROM empleados WHERE negocio_id=$1`,
+        [negocio_id]
       ).catch(() => ({ rows: [] }))
     ]);
 
@@ -470,7 +476,8 @@ router.get('/pull', async (req, res) => {
       divisas: divisasPull.rows,
       variantes: variantesPull.rows,
       proveedores: proveedoresPull.rows,
-      pedidos: pedidosPull.rows
+      pedidos: pedidosPull.rows,
+      empleados: empleadosPull.rows
     });
   } catch (e) {
     res.status(500).json({ error: e.message });
