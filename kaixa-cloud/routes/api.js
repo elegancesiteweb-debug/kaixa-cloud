@@ -1415,6 +1415,149 @@ router.post('/pedidos-online/:id/enviar', async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── Entregas recurrentes de despensa — plantillas que generan un pedidos_online ──
+// real cada semana (ver generarPedidosRecurrentes en routes/tienda.js).
+router.get('/pedidos-recurrentes', async (req, res) => {
+  try {
+    await ensureTiendaTables();
+    const { negocio_id, sucursal_id } = req.caja;
+    const r = await pool.query(`
+      SELECT pr.*,
+        COALESCE(json_agg(json_build_object(
+          'producto_id', pri.producto_id, 'cantidad', pri.cantidad
+        )) FILTER (WHERE pri.id IS NOT NULL), '[]') AS items
+      FROM pedidos_recurrentes pr
+      LEFT JOIN pedido_recurrente_items pri ON pri.pedido_recurrente_id = pr.id
+      WHERE pr.negocio_id=$1 AND pr.sucursal_id=$2
+      GROUP BY pr.id ORDER BY pr.creado_en DESC`,
+      [negocio_id, sucursal_id]
+    );
+    res.json(r.rows);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+router.post('/pedidos-recurrentes', async (req, res) => {
+  const client = await pool.connect();
+  try {
+    await ensureTiendaTables();
+    const { negocio_id, sucursal_id } = req.caja;
+    const {
+      cliente_nombre, cliente_telefono = '', dia_semana, hora_entrega = '',
+      tipo_entrega = 'recoger', direccion_calle = '', direccion_numero = '', direccion_colonia = '',
+      direccion_ciudad = '', direccion_cp = '', direccion_referencias = '', notas = '', items = []
+    } = req.body;
+    if (!cliente_nombre || !cliente_nombre.trim()) return res.status(400).json({ error: 'Falta el nombre del cliente' });
+    if (dia_semana === undefined || dia_semana === null || dia_semana < 0 || dia_semana > 6) {
+      return res.status(400).json({ error: 'Día de la semana inválido' });
+    }
+    if (!items.length) return res.status(400).json({ error: 'Agrega al menos un producto' });
+
+    await client.query('BEGIN');
+    const itemsValidos = [];
+    for (const it of items) {
+      const prod = await client.query(
+        'SELECT id FROM productos WHERE id=$1 AND negocio_id=$2 AND sucursal_id=$3 AND activo=true',
+        [it.producto_id, negocio_id, sucursal_id]
+      );
+      if (!prod.rows.length) continue;
+      itemsValidos.push({ producto_id: it.producto_id, cantidad: Math.max(1, parseInt(it.cantidad) || 1) });
+    }
+    if (!itemsValidos.length) throw Object.assign(new Error('Ningún producto es válido'), { status: 400 });
+
+    const pl = await client.query(
+      `INSERT INTO pedidos_recurrentes (negocio_id, sucursal_id, cliente_nombre, cliente_telefono, dia_semana, hora_entrega,
+        tipo_entrega, direccion_calle, direccion_numero, direccion_colonia, direccion_ciudad, direccion_cp, direccion_referencias, notas)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING id`,
+      [negocio_id, sucursal_id, cliente_nombre.trim(), cliente_telefono, dia_semana, hora_entrega,
+       tipo_entrega, direccion_calle, direccion_numero, direccion_colonia, direccion_ciudad, direccion_cp, direccion_referencias, notas]
+    );
+    const plantillaId = pl.rows[0].id;
+    for (const it of itemsValidos) {
+      await client.query(
+        'INSERT INTO pedido_recurrente_items (pedido_recurrente_id, producto_id, cantidad) VALUES ($1,$2,$3)',
+        [plantillaId, it.producto_id, it.cantidad]
+      );
+    }
+    await client.query('COMMIT');
+    res.json({ ok: true, id: plantillaId });
+  } catch(e) {
+    await client.query('ROLLBACK');
+    res.status(e.status || 500).json({ error: e.message });
+  } finally {
+    client.release();
+  }
+});
+
+router.put('/pedidos-recurrentes/:id', async (req, res) => {
+  const client = await pool.connect();
+  try {
+    await ensureTiendaTables();
+    const { negocio_id, sucursal_id } = req.caja;
+    const existe = await client.query(
+      'SELECT id FROM pedidos_recurrentes WHERE id=$1 AND negocio_id=$2 AND sucursal_id=$3',
+      [req.params.id, negocio_id, sucursal_id]
+    );
+    if (!existe.rows.length) return res.status(404).json({ error: 'No encontrada' });
+
+    const b = req.body || {};
+    await client.query('BEGIN');
+    await client.query(
+      `UPDATE pedidos_recurrentes SET
+        cliente_nombre = COALESCE($1, cliente_nombre),
+        cliente_telefono = COALESCE($2, cliente_telefono),
+        dia_semana = COALESCE($3, dia_semana),
+        hora_entrega = COALESCE($4, hora_entrega),
+        tipo_entrega = COALESCE($5, tipo_entrega),
+        direccion_calle = COALESCE($6, direccion_calle),
+        direccion_numero = COALESCE($7, direccion_numero),
+        direccion_colonia = COALESCE($8, direccion_colonia),
+        direccion_ciudad = COALESCE($9, direccion_ciudad),
+        direccion_cp = COALESCE($10, direccion_cp),
+        direccion_referencias = COALESCE($11, direccion_referencias),
+        notas = COALESCE($12, notas),
+        activo = COALESCE($13, activo)
+       WHERE id=$14`,
+      [b.cliente_nombre, b.cliente_telefono, b.dia_semana, b.hora_entrega, b.tipo_entrega,
+       b.direccion_calle, b.direccion_numero, b.direccion_colonia, b.direccion_ciudad, b.direccion_cp, b.direccion_referencias,
+       b.notas, typeof b.activo === 'boolean' ? b.activo : null, req.params.id]
+    );
+    if (Array.isArray(b.items)) {
+      await client.query('DELETE FROM pedido_recurrente_items WHERE pedido_recurrente_id=$1', [req.params.id]);
+      for (const it of b.items) {
+        const prod = await client.query(
+          'SELECT id FROM productos WHERE id=$1 AND negocio_id=$2 AND sucursal_id=$3 AND activo=true',
+          [it.producto_id, negocio_id, sucursal_id]
+        );
+        if (!prod.rows.length) continue;
+        await client.query(
+          'INSERT INTO pedido_recurrente_items (pedido_recurrente_id, producto_id, cantidad) VALUES ($1,$2,$3)',
+          [req.params.id, it.producto_id, Math.max(1, parseInt(it.cantidad) || 1)]
+        );
+      }
+    }
+    await client.query('COMMIT');
+    res.json({ ok: true });
+  } catch(e) {
+    await client.query('ROLLBACK');
+    res.status(500).json({ error: e.message });
+  } finally {
+    client.release();
+  }
+});
+
+router.delete('/pedidos-recurrentes/:id', async (req, res) => {
+  try {
+    await ensureTiendaTables();
+    const { negocio_id, sucursal_id } = req.caja;
+    const r = await pool.query(
+      'DELETE FROM pedidos_recurrentes WHERE id=$1 AND negocio_id=$2 AND sucursal_id=$3 RETURNING id',
+      [req.params.id, negocio_id, sucursal_id]
+    );
+    if (!r.rows.length) return res.status(404).json({ error: 'No encontrada' });
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 // ── GET /api/carritos-abandonados — carritos que no se convirtieron en pedido ──
 router.get('/carritos-abandonados', async (req, res) => {
   try {

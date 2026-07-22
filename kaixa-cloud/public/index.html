@@ -369,6 +369,7 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:var(--ff);backgroun
         <div class="subtab" id="subtabVO-carritos" onclick="irTabVentasOnlineMovil('carritos')"><svg class="subtab-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg><span>Carritos</span></div>
         <div class="subtab" id="subtabVO-cotizaciones" onclick="irTabVentasOnlineMovil('cotizaciones')"><svg class="subtab-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg><span>Cotizaciones</span></div>
         <div class="subtab" id="subtabVO-entregas" onclick="irTabVentasOnlineMovil('entregas')"><svg class="subtab-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg><span>Entregas</span></div>
+        <div class="subtab" id="subtabVO-recurrentes" onclick="irTabVentasOnlineMovil('recurrentes')"><svg class="subtab-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg><span>Recurrentes</span></div>
         <div class="subtab" id="subtabVO-ajustes" onclick="irTabVentasOnlineMovil('ajustes')"><svg class="subtab-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg><span>Ajustes</span></div>
       </div>
       <div id="bodyVOMovil-pedidos"><div id="pedidosOnlineList"></div></div>
@@ -380,6 +381,12 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:var(--ff);backgroun
         <div id="cotizacionesListMovil"></div>
       </div>
       <div id="bodyVOMovil-entregas" style="display:none"><div id="entregasProgramadasListMovil"></div></div>
+      <div id="bodyVOMovil-recurrentes" style="display:none">
+        <div class="page-pad" style="padding-bottom:0">
+          <button class="btn-primary" onclick="abrirNuevaRecurrenteMovil()">+ Nueva despensa recurrente</button>
+        </div>
+        <div id="recurrentesListMovil"></div>
+      </div>
       <div id="bodyVOMovil-ajustes" style="display:none">
         <div class="page-pad">
           <div class="card" style="cursor:pointer;margin-bottom:8px" onclick="abrirTiendaConfig()">
@@ -2690,7 +2697,7 @@ async function rechazarPedidoOnline(id) {
 var _tabVOMovilActual = 'pedidos';
 function irTabVentasOnlineMovil(tab) {
   _tabVOMovilActual = tab;
-  ['pedidos','carritos','cotizaciones','entregas','ajustes'].forEach(function(t) {
+  ['pedidos','carritos','cotizaciones','entregas','recurrentes','ajustes'].forEach(function(t) {
     document.getElementById('subtabVO-'+t).classList.toggle('on', t === tab);
     document.getElementById('bodyVOMovil-'+t).style.display = t === tab ? 'block' : 'none';
   });
@@ -2698,6 +2705,7 @@ function irTabVentasOnlineMovil(tab) {
   else if (tab === 'carritos') loadCarritosAbandonados();
   else if (tab === 'cotizaciones') loadCotizacionesMovil();
   else if (tab === 'entregas') loadEntregasProgramadas();
+  else if (tab === 'recurrentes') loadRecurrentesMovil();
 }
 
 // ── Entregas programadas (florería/regalos) — misma fuente que Pedidos, ──
@@ -2742,6 +2750,184 @@ async function loadEntregasProgramadas() {
       '</div>';
     }).join('');
   } catch(e) { cont.innerHTML = '<div class="empty"><div class="ico">📅</div><p>Error al cargar</p></div>'; }
+}
+
+// ── Entregas recurrentes de despensa — plantillas que generan un pedido ──
+// online real cada semana (mismo flag entregas_programadas).
+var _recItemsMovil = [];
+var _recBuscarTimerMovil, _recBuscarProdsMovil = [];
+
+async function loadRecurrentesMovil() {
+  var cont = document.getElementById('recurrentesListMovil');
+  try {
+    var r = await apiFetch('/api/pedidos-recurrentes');
+    var plantillas = r && r.ok ? await r.json() : [];
+    if (!Array.isArray(plantillas)) plantillas = [];
+    window._recurrentesMovil = plantillas;
+    if (!plantillas.length) { cont.innerHTML = '<div class="empty"><div class="ico">🔁</div><p>Sin despensas recurrentes</p></div>'; return; }
+    var dias = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
+    cont.innerHTML = plantillas.map(function(p) {
+      var nItems = (p.items||[]).length;
+      return '<div class="card" style="margin:0 16px 8px' + (p.activo ? '' : ';opacity:.6') + '">' +
+        '<div class="card-title" style="color:var(--accent)">🔁 ' + dias[p.dia_semana] + (p.hora_entrega ? ' · ' + p.hora_entrega : '') + '</div>' +
+        '<div class="card-title" style="margin-top:4px">' + p.cliente_nombre + '</div>' +
+        (p.cliente_telefono ? '<div class="card-sub">Tel: ' + p.cliente_telefono + '</div>' : '') +
+        '<div class="card-sub">' + nItems + ' producto(s) · ' + (p.tipo_entrega==='domicilio'?'A domicilio':'Recoge en tienda') + '</div>' +
+        '<div class="card-sub" style="font-weight:700;margin-top:4px">' + (p.activo ? '▶️ Activa' : '⏸️ Pausada') + '</div>' +
+        '<div style="display:flex;gap:6px;margin-top:8px">' +
+          '<button class="btn-full" style="flex:1;padding:7px;font-size:12px" onclick="editarRecurrenteMovil(\''+p.id+'\')">✏️ Editar</button>' +
+          '<button class="btn-full" style="flex:1;padding:7px;font-size:12px" onclick="pausarReanudarRecurrenteMovil(\''+p.id+'\','+(!p.activo)+')">' + (p.activo?'⏸️ Pausar':'▶️ Reanudar') + '</button>' +
+          '<button class="btn-full" style="padding:7px 10px;font-size:12px;color:var(--danger);border-color:var(--danger)" onclick="eliminarRecurrenteMovil(\''+p.id+'\')">🗑️</button>' +
+        '</div>' +
+      '</div>';
+    }).join('');
+  } catch(e) { cont.innerHTML = '<div class="empty"><div class="ico">🔁</div><p>Error al cargar</p></div>'; }
+}
+
+function _formRecurrenteHtml(p) {
+  p = p || {};
+  var dias = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
+  var opciones = [1,2,3,4,5,6,0].map(function(d){ return '<option value="'+d+'"'+(p.dia_semana===d?' selected':'')+'>'+dias[d]+'</option>'; }).join('');
+  var esDomicilio = p.tipo_entrega === 'domicilio';
+  return '<div class="modal-overlay" id="modalRecurrente"><div class="modal-sheet">' +
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">' +
+      '<h3 style="margin:0">🔁 ' + (p.id ? 'Editar' : 'Nueva') + ' despensa recurrente</h3>' +
+      '<span class="modal-close" onclick="document.getElementById(\'modalRecurrente\').remove()">✕</span>' +
+    '</div>' +
+    '<input type="hidden" id="recIdM" value="' + (p.id||'') + '">' +
+    '<div class="field"><label>Cliente</label><input id="recCliNombreM" value="' + (p.cliente_nombre||'').replace(/"/g,'&quot;') + '" placeholder="Nombre del cliente"></div>' +
+    '<div class="field"><label>Teléfono</label><input id="recCliTelefonoM" value="' + (p.cliente_telefono||'') + '" placeholder="10 dígitos"></div>' +
+    '<div class="field"><label>Día de la semana</label><select id="recDiaSemanaM">' + opciones + '</select></div>' +
+    '<div class="field"><label>Hora aproximada</label><input id="recHoraEntregaM" type="time" value="' + (p.hora_entrega||'') + '"></div>' +
+    '<div class="field"><label>Tipo de entrega</label><select id="recTipoEntregaM" onchange="document.getElementById(\'recDomicilioBoxM\').style.display=this.value===\'recoger\'?\'none\':\'\'">' +
+      '<option value="recoger"' + (esDomicilio?'':' selected') + '>Recoge en tienda</option>' +
+      '<option value="domicilio"' + (esDomicilio?' selected':'') + '>A domicilio</option>' +
+    '</select></div>' +
+    '<div id="recDomicilioBoxM" style="display:' + (esDomicilio?'':'none') + '">' +
+      '<div class="field"><label>Calle y número</label><input id="recDirCalleM" value="' + (p.direccion_calle||'') + '" placeholder="Calle"><input id="recDirNumeroM" value="' + (p.direccion_numero||'') + '" placeholder="Número" style="margin-top:6px"></div>' +
+      '<div class="field"><label>Colonia</label><input id="recDirColoniaM" value="' + (p.direccion_colonia||'') + '"></div>' +
+      '<div class="field"><label>Ciudad / CP</label><input id="recDirCiudadM" value="' + (p.direccion_ciudad||'') + '" placeholder="Ciudad, CP"></div>' +
+    '</div>' +
+    '<div class="field"><label>Notas</label><input id="recNotasM" value="' + (p.notas||'').replace(/"/g,'&quot;') + '" placeholder="Ej. sin cebolla, tocar el timbre..."></div>' +
+    '<div class="field" style="position:relative">' +
+      '<label>Agregar producto</label>' +
+      '<input id="recSrchM" placeholder="Buscar producto..." oninput="buscarProdRecurrenteMovil(this.value)">' +
+      '<div id="recSrchResultadosM" style="position:absolute;z-index:20;top:100%;left:0;right:0;background:var(--s1,#fff);border:1px solid var(--border);border-radius:8px;max-height:200px;overflow-y:auto;display:none;box-shadow:0 8px 24px rgba(0,0,0,.15)"></div>' +
+    '</div>' +
+    '<div id="recItemsM" style="max-height:180px;overflow-y:auto;background:var(--s2);border-radius:8px;padding:8px;margin-bottom:10px"></div>' +
+    '<button class="btn-full primary" onclick="guardarRecurrenteMovil()">✅ Guardar</button>' +
+  '</div></div>';
+}
+
+function abrirNuevaRecurrenteMovil() {
+  _recItemsMovil = [];
+  document.getElementById('modalContainer').innerHTML = _formRecurrenteHtml();
+  renderItemsRecurrenteMovil();
+}
+
+function editarRecurrenteMovil(id) {
+  var p = (window._recurrentesMovil||[]).find(function(x){ return x.id===id; });
+  if (!p) return;
+  _recItemsMovil = (p.items||[]).map(function(it){ return { producto_id: it.producto_id, nombre: it.nombre_producto || ('Producto '+it.producto_id), cantidad: it.cantidad }; });
+  document.getElementById('modalContainer').innerHTML = _formRecurrenteHtml(p);
+  renderItemsRecurrenteMovil();
+}
+
+function buscarProdRecurrenteMovil(q) {
+  clearTimeout(_recBuscarTimerMovil);
+  var cont = document.getElementById('recSrchResultadosM');
+  if (!q || q.length < 2) { cont.style.display = 'none'; return; }
+  _recBuscarTimerMovil = setTimeout(async function() {
+    try {
+      var r = await apiFetch('/api/productos?q=' + encodeURIComponent(q));
+      var prods = r && r.ok ? await r.json() : [];
+      if (!Array.isArray(prods) || !prods.length) { cont.innerHTML = '<div style="padding:10px;font-size:12px;color:var(--text3)">Sin resultados</div>'; cont.style.display='block'; return; }
+      _recBuscarProdsMovil = prods;
+      cont.innerHTML = prods.slice(0,8).map(function(p) {
+        return '<div style="padding:10px 12px;cursor:pointer;border-bottom:1px solid var(--border);display:flex;justify-content:space-between" onmousedown="agregarProdARecurrenteMovil(\''+p.id+'\')">' +
+          '<span style="font-size:13px">'+p.nombre+'</span>' +
+          '<span style="font-size:12px;color:var(--text3)">$'+Number(p.precio||0).toFixed(2)+'</span>' +
+        '</div>';
+      }).join('');
+      cont.style.display = 'block';
+    } catch(e) { cont.style.display = 'none'; }
+  }, 300);
+}
+
+function agregarProdARecurrenteMovil(id) {
+  var p = (_recBuscarProdsMovil||[]).find(function(x){ return String(x.id)===String(id); });
+  if (!p) return;
+  var existe = _recItemsMovil.find(function(i){ return i.producto_id===id; });
+  if (existe) existe.cantidad++;
+  else _recItemsMovil.push({ producto_id: id, nombre: p.nombre, cantidad: 1 });
+  document.getElementById('recSrchM').value = '';
+  document.getElementById('recSrchResultadosM').style.display = 'none';
+  renderItemsRecurrenteMovil();
+}
+
+function cambiarCantRecurrenteMovil(idx, d) { _recItemsMovil[idx].cantidad = Math.max(1, _recItemsMovil[idx].cantidad+d); renderItemsRecurrenteMovil(); }
+function quitarItemRecurrenteMovil(idx) { _recItemsMovil.splice(idx,1); renderItemsRecurrenteMovil(); }
+
+function renderItemsRecurrenteMovil() {
+  var cont = document.getElementById('recItemsM');
+  if (!cont) return;
+  if (!_recItemsMovil.length) {
+    cont.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:8px;text-align:center">Sin productos agregados</div>';
+  } else {
+    cont.innerHTML = _recItemsMovil.map(function(it, idx) {
+      return '<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 4px;border-bottom:1px solid var(--border)">' +
+        '<div style="flex:1;min-width:0;font-size:12.5px;font-weight:700">'+it.nombre+'</div>' +
+        '<div style="display:flex;align-items:center;gap:6px">' +
+          '<button onclick="cambiarCantRecurrenteMovil('+idx+',-1)" style="width:26px;height:26px;border-radius:6px;border:1px solid var(--border);background:#fff">−</button>' +
+          '<span style="font-size:12px;font-weight:700;min-width:16px;text-align:center">'+it.cantidad+'</span>' +
+          '<button onclick="cambiarCantRecurrenteMovil('+idx+',1)" style="width:26px;height:26px;border-radius:6px;border:1px solid var(--border);background:#fff">+</button>' +
+          '<button onclick="quitarItemRecurrenteMovil('+idx+')" style="color:var(--danger);background:none;border:none;font-size:15px;margin-left:4px">✕</button>' +
+        '</div></div>';
+    }).join('');
+  }
+}
+
+async function guardarRecurrenteMovil() {
+  var id = document.getElementById('recIdM').value;
+  var cliente_nombre = document.getElementById('recCliNombreM').value.trim();
+  if (!cliente_nombre) { notif('Falta el nombre del cliente', 'err'); return; }
+  if (!_recItemsMovil.length) { notif('Agrega al menos un producto', 'err'); return; }
+  var body = {
+    cliente_nombre: cliente_nombre,
+    cliente_telefono: document.getElementById('recCliTelefonoM').value.trim(),
+    dia_semana: parseInt(document.getElementById('recDiaSemanaM').value),
+    hora_entrega: document.getElementById('recHoraEntregaM').value,
+    tipo_entrega: document.getElementById('recTipoEntregaM').value,
+    direccion_calle: document.getElementById('recDirCalleM').value.trim(),
+    direccion_numero: document.getElementById('recDirNumeroM').value.trim(),
+    direccion_colonia: document.getElementById('recDirColoniaM').value.trim(),
+    direccion_ciudad: document.getElementById('recDirCiudadM').value.trim(),
+    notas: document.getElementById('recNotasM').value.trim(),
+    items: _recItemsMovil.map(function(i){ return { producto_id: i.producto_id, cantidad: i.cantidad }; })
+  };
+  try {
+    var r = await apiFetch('/api/pedidos-recurrentes' + (id ? '/'+id : ''), { method: id ? 'PUT' : 'POST', body: JSON.stringify(body) });
+    var d = r ? await r.json().catch(function(){return {};}) : {};
+    if (!r || !r.ok) { notif('❌ ' + (d.error||'Error al guardar'), 'err'); return; }
+    notif('✅ Despensa recurrente guardada', 'ok');
+    var mo = document.getElementById('modalRecurrente'); if (mo) mo.remove();
+    loadRecurrentesMovil();
+  } catch(e) { notif('❌ Error de conexión', 'err'); }
+}
+
+async function pausarReanudarRecurrenteMovil(id, activo) {
+  try {
+    var r = await apiFetch('/api/pedidos-recurrentes/' + id, { method: 'PUT', body: JSON.stringify({ activo: activo }) });
+    if (r && r.ok) loadRecurrentesMovil(); else notif('❌ Error al actualizar', 'err');
+  } catch(e) { notif('❌ Error de conexión', 'err'); }
+}
+
+async function eliminarRecurrenteMovil(id) {
+  if (!confirm('¿Eliminar esta despensa recurrente? Ya no se generarán más pedidos de ella.')) return;
+  try {
+    var r = await apiFetch('/api/pedidos-recurrentes/' + id, { method: 'DELETE' });
+    if (r && r.ok) { notif('Eliminada', 'ok'); loadRecurrentesMovil(); } else { notif('❌ Error al eliminar', 'err'); }
+  } catch(e) { notif('❌ Error de conexión', 'err'); }
 }
 
 function _abrirWhatsAppEntregaMovil(id, mensajeFn){

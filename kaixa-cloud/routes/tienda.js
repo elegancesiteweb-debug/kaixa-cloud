@@ -177,8 +177,118 @@ async function ensureTiendaTables() {
     );
     CREATE INDEX IF NOT EXISTS idx_carritos_abandonados_negocio ON carritos_abandonados(negocio_id);
   `);
+  // Entregas recurrentes de despensa — extensión de "entregas programadas"
+  // (mismo flag SUBFUNCIONES.entregas_programadas). El pedido real se genera
+  // como una fila normal en pedidos_online cada semana (ver generarPedidosRecurrentes).
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS pedidos_recurrentes (
+      id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      negocio_id            UUID NOT NULL REFERENCES negocios(id) ON DELETE CASCADE,
+      sucursal_id           UUID NOT NULL REFERENCES sucursales(id),
+      cliente_nombre        TEXT NOT NULL,
+      cliente_telefono      TEXT DEFAULT '',
+      dia_semana            INTEGER NOT NULL,
+      hora_entrega          TEXT DEFAULT '',
+      tipo_entrega          TEXT DEFAULT 'recoger',
+      direccion_calle       TEXT DEFAULT '',
+      direccion_numero      TEXT DEFAULT '',
+      direccion_colonia     TEXT DEFAULT '',
+      direccion_ciudad      TEXT DEFAULT '',
+      direccion_cp          TEXT DEFAULT '',
+      direccion_referencias TEXT DEFAULT '',
+      notas                 TEXT DEFAULT '',
+      activo                BOOLEAN DEFAULT true,
+      ultima_generacion     DATE,
+      creado_en             TIMESTAMPTZ DEFAULT now()
+    );
+    CREATE TABLE IF NOT EXISTS pedido_recurrente_items (
+      id                     UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      pedido_recurrente_id   UUID NOT NULL REFERENCES pedidos_recurrentes(id) ON DELETE CASCADE,
+      producto_id            UUID NOT NULL REFERENCES productos(id),
+      cantidad               INTEGER DEFAULT 1
+    );
+    CREATE INDEX IF NOT EXISTS idx_pedidos_recurrentes_negocio ON pedidos_recurrentes(negocio_id, sucursal_id);
+  `);
   const sinSlug = await pool.query("SELECT id, nombre FROM negocios WHERE slug IS NULL OR slug=''");
   for (const n of sinSlug.rows) { await asignarSlug(n.id, n.nombre); }
+}
+
+// ── Genera los pedidos_online de la semana para cada plantilla recurrente ──
+// cuyo día_semana coincide con hoy (horario de México) y que no se haya
+// generado ya hoy. Se llama periódicamente desde server.js.
+async function generarPedidosRecurrentes(io) {
+  try {
+    await ensureTiendaTables();
+    const plantillas = await pool.query(`
+      SELECT * FROM pedidos_recurrentes
+      WHERE activo=true
+        AND dia_semana = EXTRACT(DOW FROM (now() AT TIME ZONE 'America/Mexico_City'))::int
+        AND (ultima_generacion IS NULL OR ultima_generacion < (now() AT TIME ZONE 'America/Mexico_City')::date)
+    `);
+    for (const pl of plantillas.rows) {
+      try {
+        const neg = await pool.query('SELECT modulos_opcionales FROM negocios WHERE id=$1', [pl.negocio_id]);
+        if (!neg.rows.length) continue;
+        let modulos = [];
+        try { modulos = JSON.parse(neg.rows[0].modulos_opcionales || '[]'); } catch(e) {}
+        if (!modulos.includes('entregas_programadas')) continue;
+
+        const itemsPlantilla = await pool.query(
+          'SELECT producto_id, cantidad FROM pedido_recurrente_items WHERE pedido_recurrente_id=$1',
+          [pl.id]
+        );
+        const itemsValidados = [];
+        let subtotal = 0;
+        for (const it of itemsPlantilla.rows) {
+          const prod = await pool.query(
+            'SELECT id, nombre, precio FROM productos WHERE id=$1 AND negocio_id=$2 AND sucursal_id=$3 AND activo=true',
+            [it.producto_id, pl.negocio_id, pl.sucursal_id]
+          );
+          if (!prod.rows.length) continue;
+          const p = prod.rows[0];
+          const precioUnit = parseFloat(p.precio);
+          subtotal += precioUnit * it.cantidad;
+          itemsValidados.push({ producto_id: p.id, nombre_producto: p.nombre, cantidad: it.cantidad, precio_unitario: precioUnit });
+        }
+        if (!itemsValidados.length) continue;
+
+        const folio = folioPedido();
+        const notas = 'Pedido recurrente automático' + (pl.notas ? ' — ' + pl.notas : '');
+        const pedido = await pool.query(
+          `INSERT INTO pedidos_online (negocio_id, sucursal_id, folio, cliente_nombre, cliente_telefono, notas, subtotal,
+            tipo_entrega, direccion_calle, direccion_numero, direccion_colonia, direccion_ciudad, direccion_cp, direccion_referencias,
+            fecha_entrega, hora_entrega)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,(now() AT TIME ZONE 'America/Mexico_City')::date,$15)
+           RETURNING id, folio`,
+          [pl.negocio_id, pl.sucursal_id, folio, pl.cliente_nombre, pl.cliente_telefono, notas, subtotal,
+           pl.tipo_entrega, pl.direccion_calle, pl.direccion_numero, pl.direccion_colonia, pl.direccion_ciudad, pl.direccion_cp, pl.direccion_referencias,
+           pl.hora_entrega]
+        );
+        const pedidoId = pedido.rows[0].id;
+        for (const it of itemsValidados) {
+          await pool.query(
+            `INSERT INTO pedido_online_items (pedido_id, producto_id, nombre_producto, cantidad, precio_unitario)
+             VALUES ($1,$2,$3,$4,$5)`,
+            [pedidoId, it.producto_id, it.nombre_producto, it.cantidad, it.precio_unitario]
+          );
+        }
+        await pool.query(
+          `UPDATE pedidos_recurrentes SET ultima_generacion = (now() AT TIME ZONE 'America/Mexico_City')::date WHERE id=$1`,
+          [pl.id]
+        );
+
+        if (io) io.to('negocio:' + pl.negocio_id).emit('pedido_online:nuevo', { id: pedidoId, folio, sucursal_id: pl.sucursal_id });
+        if (pl.cliente_telefono) {
+          try {
+            const { enviarWhatsapp } = require('./whatsapp');
+            enviarWhatsapp(pl.negocio_id, pl.cliente_telefono,
+              'Hola ' + pl.cliente_nombre + ', tu pedido recurrente de esta semana ya fue registrado — folio ' + folio
+            ).catch(() => {});
+          } catch(e) {}
+        }
+      } catch(e) { console.error('⚠️ generarPedidosRecurrentes (plantilla ' + pl.id + '):', e.message); }
+    }
+  } catch(e) { console.error('⚠️ generarPedidosRecurrentes:', e.message); }
 }
 
 function textoVariante(v) {
@@ -557,4 +667,4 @@ router.post('/tienda/:slug/carrito-abandonado', async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-module.exports = { router, ensureTiendaTables, asignarSlug };
+module.exports = { router, ensureTiendaTables, asignarSlug, generarPedidosRecurrentes };

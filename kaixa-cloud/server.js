@@ -671,4 +671,8 @@ aplicarEsquema().then(async () => {
   // Expira los tickets de caja de cobro que nadie fue a cobrar (ventana de 2h)
   setTimeout(expirarVentasPendientes, 20 * 1000);
   setInterval(expirarVentasPendientes, 5 * 60 * 1000);
+  // Genera los pedidos de la semana para cada entrega recurrente de despensa
+  const { generarPedidosRecurrentes } = require('./routes/tienda');
+  setTimeout(() => generarPedidosRecurrentes(io), 40 * 1000);
+  setInterval(() => generarPedidosRecurrentes(io), 60 * 60 * 1000);
 });
