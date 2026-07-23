@@ -11,6 +11,7 @@ async function ensureClientesFiadoColumns() {
   if (_clientesFiadoColOk) return;
   await pool.query(`ALTER TABLE clientes ADD COLUMN IF NOT EXISTS fecha_proximo_pago DATE`);
   await pool.query(`ALTER TABLE clientes ADD COLUMN IF NOT EXISTS frecuencia_pago TEXT DEFAULT 'mensual'`);
+  await pool.query(`ALTER TABLE clientes ADD COLUMN IF NOT EXISTS es_mayorista BOOLEAN DEFAULT false`);
   _clientesFiadoColOk = true;
 }
 
@@ -209,7 +210,7 @@ router.get('/clientes', async (req, res) => {
     const { negocio_id } = req.caja;
     const { q } = req.query;
     let sql = `SELECT id, negocio_id, nombre, telefono, email, rfc, giro, puntos, saldo, foto, activo,
-               fecha_proximo_pago, frecuencia_pago, creado_en, actualizado_en
+               fecha_proximo_pago, frecuencia_pago, es_mayorista, creado_en, actualizado_en
                FROM clientes WHERE negocio_id=$1 AND activo=true`;
     const params = [negocio_id];
     if (q) { params.push('%'+q+'%'); sql += ` AND nombre ILIKE $${params.length}`; }
@@ -232,13 +233,14 @@ router.get('/clientes/:id/foto', async (req, res) => {
 // ── POST /api/clientes ─────────────────────────────────────────
 router.post('/clientes', async (req, res) => {
   try {
+    await ensureClientesFiadoColumns();
     const { negocio_id } = req.caja;
     const c = req.body;
     const id = uuid();
     await pool.query(
-      `INSERT INTO clientes (id, negocio_id, nombre, telefono, email, rfc, giro, activo)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,true)`,
-      [id, negocio_id, c.nombre, c.telefono||'', c.email||'', c.rfc||'', c.giro||'tienda']
+      `INSERT INTO clientes (id, negocio_id, nombre, telefono, email, rfc, giro, activo, es_mayorista)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,true,$8)`,
+      [id, negocio_id, c.nombre, c.telefono||'', c.email||'', c.rfc||'', c.giro||'tienda', !!c.es_mayorista]
     );
     broadcast(req, 'clientes:nuevo', { id });
     res.json({ ok: true, id });
@@ -263,6 +265,10 @@ router.put('/clientes/:id', async (req, res) => {
     if (c.frecuencia_pago !== undefined) {
       updateFields.push(c.frecuencia_pago || 'mensual');
       updateSql += `, frecuencia_pago=$${updateFields.length}`;
+    }
+    if (c.es_mayorista !== undefined) {
+      updateFields.push(!!c.es_mayorista);
+      updateSql += `, es_mayorista=$${updateFields.length}`;
     }
     updateFields.push(req.params.id, req.caja.negocio_id);
     updateSql += `, actualizado_en=now() WHERE id=$${updateFields.length-1} AND negocio_id=$${updateFields.length}`;
@@ -422,67 +428,10 @@ function broadcast(req, evento, data) {
 // ═══════════════════════════════════════════════════════════
 // EMPLEADOS
 // ═══════════════════════════════════════════════════════════
-router.get('/empleados', async (req, res) => {
-  try {
-    const { negocio_id } = req.caja;
-    const { todos } = req.query;
-    let sql, params;
-    if (todos === '1') {
-      // Todos los empleados del negocio con nombre de sucursal
-      sql = `SELECT e.*,
-             COALESCE(s.nombre, 'Sin sucursal') AS sucursal_nombre
-             FROM empleados e
-             LEFT JOIN sucursales s ON s.id::text = e.sucursal_id::text
-             WHERE e.negocio_id=$1 AND e.activo=true
-             ORDER BY sucursal_nombre, e.nombre`;
-      params = [negocio_id];
-    } else {
-      const { sucursal_id } = req.caja;
-      sql = `SELECT e.*,
-             COALESCE(s.nombre, 'Sin sucursal') AS sucursal_nombre
-             FROM empleados e
-             LEFT JOIN sucursales s ON s.id::text = e.sucursal_id::text
-             WHERE e.negocio_id=$1 AND e.activo=true
-             ORDER BY e.nombre`;
-      params = [negocio_id];
-    }
-    const r = await pool.query(sql, params);
-    res.json(r.rows);
-  } catch(e) { res.status(500).json({ error: e.message }); }
-});
-router.get('/empleados/:id', async (req, res) => {
-  try {
-    const r = await pool.query('SELECT * FROM empleados WHERE id=$1 AND negocio_id=$2 LIMIT 1',
-      [req.params.id, req.caja.negocio_id]);
-    if (!r.rows.length) return res.status(404).json({ error: 'No encontrado' });
-    res.json(r.rows[0]);
-  } catch(e) { res.status(500).json({ error: e.message }); }
-});
-router.post('/empleados', async (req, res) => {
-  try {
-    const { negocio_id, sucursal_id } = req.caja;
-    const { nombre, rol='cajero', usuario, password } = req.body;
-    if (!nombre) return res.status(400).json({ error: 'Nombre requerido' });
-    const r = await pool.query(
-      `INSERT INTO empleados (negocio_id, sucursal_id, nombre, rol, usuario, password, activo)
-       VALUES ($1,$2,$3,$4,$5,$6,true) RETURNING *`,
-      [negocio_id, sucursal_id, nombre, rol, usuario||null, password||null]
-    );
-    res.json({ ok: true, empleado: r.rows[0] });
-  } catch(e) { res.status(500).json({ error: e.message }); }
-});
-router.put('/empleados/:id', async (req, res) => {
-  try {
-    const { nombre, rol, usuario, password } = req.body;
-    let sql = 'UPDATE empleados SET nombre=$1, rol=$2, usuario=$3';
-    const vals = [nombre, rol, usuario||null];
-    if (password) { sql += `, password=$${vals.length+1}`; vals.push(password); }
-    sql += ` WHERE id=$${vals.length+1} AND negocio_id=$${vals.length+2}`;
-    vals.push(req.params.id, req.caja.negocio_id);
-    await pool.query(sql, vals);
-    res.json({ ok: true });
-  } catch(e) { res.status(500).json({ error: e.message }); }
-});
+// GET /empleados, GET /empleados/:id, POST /empleados y PUT /empleados/:id
+// viven en server.js (registradas ahí antes de montar este router, así que
+// esas cuatro son las que realmente corren) — solo quedan aquí las rutas
+// de entrada/salida del checador, que no tienen equivalente en server.js.
 router.post('/empleados/:id/entrada', async (req, res) => {
   try {
     await pool.query('UPDATE empleados SET ultima_entrada=NOW(), ultima_salida=NULL WHERE id=$1 AND negocio_id=$2',
@@ -497,17 +446,8 @@ router.post('/empleados/:id/salida', async (req, res) => {
     res.json({ ok: true });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
-router.post('/auth/login', async (req, res) => {
-  try {
-    const { id, password } = req.body;
-    const r = await pool.query('SELECT * FROM empleados WHERE id=$1 AND negocio_id=$2 AND activo=true LIMIT 1',
-      [id, req.caja.negocio_id]);
-    if (!r.rows.length) return res.status(401).json({ ok: false, error: 'Empleado no encontrado' });
-    const e = r.rows[0];
-    if (password !== (e.password || '')) return res.status(401).json({ ok: false, error: 'Contraseña incorrecta' });
-    res.json({ ok: true, empleado: { id: e.id, nombre: e.nombre, rol: e.rol } });
-  } catch(e) { res.status(500).json({ ok: false, error: e.message }); }
-});
+// POST /auth/login vive en server.js (registrada ahí antes de montar este
+// router, es la que realmente corre) — se quitó la copia muerta de aquí.
 
 // ═══════════════════════════════════════════════════════════
 // LOTES
@@ -755,26 +695,9 @@ router.get('/pedidos/sugeridos', async (req, res) => {
 });
 
 // ── POST /api/vincular-licencia (protegido) ────────────────────
-router.post('/vincular-licencia', async (req, res) => {
-  try {
-    const { clave, negocio_id } = req.body;
-    if (!clave || !negocio_id) return res.status(400).json({ ok: false, error: 'Faltan datos' });
-    const lic = await pool.query('SELECT negocio_id FROM licencias WHERE clave=$1', [clave]);
-    if (!lic.rows.length) return res.status(404).json({ ok: false, error: 'Licencia no encontrada' });
-    const negocioActual = lic.rows[0].negocio_id;
-    if (negocioActual && negocioActual !== negocio_id) {
-      const prods = await pool.query('SELECT COUNT(*) as n FROM productos WHERE negocio_id=$1', [negocioActual]);
-      const ventas = await pool.query('SELECT COUNT(*) as n FROM ventas WHERE negocio_id=$1', [negocioActual]);
-      if (parseInt(prods.rows[0].n) > 0 || parseInt(ventas.rows[0].n) > 0) {
-        console.log('⚠️ Licencia', clave, 'ya tiene negocio con datos — no se cambia');
-        return res.json({ ok: true, sin_cambio: true });
-      }
-    }
-    await pool.query('UPDATE licencias SET negocio_id=$1 WHERE clave=$2', [negocio_id, clave]);
-    console.log('✅ Licencia', clave, 'vinculada a negocio', negocio_id);
-    res.json({ ok: true });
-  } catch(e) { res.status(500).json({ ok: false, error: e.message }); }
-});
+// POST /vincular-licencia vive en server.js (registrada ahí antes de montar
+// este router, es la que realmente corre — valida estado/vencimiento de la
+// licencia, esta copia no lo hacía y nunca se ejecutaba) — se quitó de aquí.
 
 // ── POST /api/productos/:uuid/copiar-sucursal ──────────────────
 router.post('/productos/:uuid/copiar-sucursal', async (req, res) => {

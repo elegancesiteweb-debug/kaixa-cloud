@@ -1371,17 +1371,19 @@ async function confirmarVenta() {
     if (r && r.ok) {
       var d = await r.json();
       // Redimir la tarjeta de regalo (si se aplicó) — solo después de que la venta ya se guardó
+      var avisoTarjeta = '';
       if (window._cobroTarjeta && descuentoTarjeta > 0) {
         try {
-          await apiFetch('/api/tarjetas-regalo/' + encodeURIComponent(window._cobroTarjeta.codigo) + '/redimir', {
+          var rTg = await apiFetch('/api/tarjetas-regalo/' + encodeURIComponent(window._cobroTarjeta.codigo) + '/redimir', {
             method: 'POST', body: JSON.stringify({ monto: descuentoTarjeta, venta_id: d.id })
           });
-        } catch(eTg) {}
+          if (!rTg || !rTg.ok) avisoTarjeta = ' ⚠️ No se pudo descontar el saldo de la tarjeta de regalo';
+        } catch(eTg) { avisoTarjeta = ' ⚠️ No se pudo descontar el saldo de la tarjeta de regalo'; }
       }
       cart = [];
       actualizarCartFab();
       cerrarCobro();
-      notif('✅ Venta registrada — ' + fmt(total), 'ok');
+      notif('✅ Venta registrada — ' + fmt(total) + avisoTarjeta, avisoTarjeta ? 'err' : 'ok');
       // Recargar productos se hace al cerrar el ticket
       mostrarTicketMobile(d, venta);
     } else {
@@ -3283,12 +3285,17 @@ function abrirConfirmarCotizacionMovil() {
 
 async function cambiarEstadoCotizacionMovil(id, estado) {
   if (estado === 'cancelada' && !confirm('¿Cancelar esta cotización?')) return;
-  var r = await apiFetch('/api/cotizaciones/' + id + '/estado', { method: 'PUT', body: JSON.stringify({ estado: estado }) });
-  if (r && r.ok) {
-    notif('Cotización actualizada', 'ok');
-    var m = document.getElementById('modalDetCot'); if (m) m.remove();
-    loadCotizacionesMovil();
-  }
+  try {
+    var r = await apiFetch('/api/cotizaciones/' + id + '/estado', { method: 'PUT', body: JSON.stringify({ estado: estado }) });
+    if (r && r.ok) {
+      notif('Cotización actualizada', 'ok');
+      var m = document.getElementById('modalDetCot'); if (m) m.remove();
+      loadCotizacionesMovil();
+    } else {
+      var d = r ? await r.json().catch(function(){return {};}) : {};
+      notif('❌ ' + (d.error||'Error al actualizar'), 'err');
+    }
+  } catch(e) { notif('❌ Error de conexión', 'err'); }
 }
 
 async function confirmarCotizacionMovil(id, formaPago) {
