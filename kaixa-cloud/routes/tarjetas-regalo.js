@@ -98,6 +98,23 @@ router.get('/tarjetas-regalo/:codigo', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── GET /api/tarjetas-regalo/:codigo/movimientos — bitácora (venta/redención) ──
+router.get('/tarjetas-regalo/:codigo/movimientos', async (req, res) => {
+  try {
+    await ensureTarjetasRegaloTables();
+    const t = await pool.query(
+      `SELECT id FROM tarjetas_regalo WHERE negocio_id=$1 AND codigo=$2`,
+      [req.caja.negocio_id, req.params.codigo.trim().toUpperCase()]
+    );
+    if (!t.rows.length) return res.status(404).json({ error: 'Tarjeta no encontrada' });
+    const r = await pool.query(
+      `SELECT * FROM tarjeta_regalo_movimientos WHERE tarjeta_id=$1 ORDER BY creado_en DESC`,
+      [t.rows[0].id]
+    );
+    res.json(r.rows);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ── POST /api/tarjetas-regalo/:codigo/redimir — usar saldo en una venta ──
 router.post('/tarjetas-regalo/:codigo/redimir', async (req, res) => {
   const client = await pool.connect();
@@ -115,6 +132,21 @@ router.post('/tarjetas-regalo/:codigo/redimir', async (req, res) => {
     if (!r.rows.length) throw Object.assign(new Error('Tarjeta no encontrada'), { status: 404 });
     const tarjeta = r.rows[0];
     if (!tarjeta.activa) throw Object.assign(new Error('Tarjeta inactiva'), { status: 400 });
+
+    // Idempotencia: si esta venta ya redimió saldo de esta tarjeta (reintento
+    // de red, doble clic, etc.), no volver a descontar — regresar el mismo
+    // resultado que la primera vez.
+    if (venta_id) {
+      const yaAplicado = await client.query(
+        `SELECT id FROM tarjeta_regalo_movimientos WHERE tarjeta_id=$1 AND venta_id=$2 AND tipo='redencion'`,
+        [tarjeta.id, venta_id]
+      );
+      if (yaAplicado.rows.length) {
+        await client.query('COMMIT');
+        return res.json({ ok: true, saldo_actual: tarjeta.saldo_actual, ya_aplicado: true });
+      }
+    }
+
     if (parseFloat(tarjeta.saldo_actual) < montoNum) {
       throw Object.assign(new Error('Saldo insuficiente (disponible $' + tarjeta.saldo_actual + ')'), { status: 400 });
     }
