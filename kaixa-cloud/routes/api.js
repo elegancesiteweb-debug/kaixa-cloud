@@ -1362,10 +1362,11 @@ router.get('/pedidos-recurrentes', async (req, res) => {
     const r = await pool.query(`
       SELECT pr.*,
         COALESCE(json_agg(json_build_object(
-          'producto_id', pri.producto_id, 'cantidad', pri.cantidad
+          'producto_id', pri.producto_id, 'cantidad', pri.cantidad, 'nombre_producto', p.nombre
         )) FILTER (WHERE pri.id IS NOT NULL), '[]') AS items
       FROM pedidos_recurrentes pr
       LEFT JOIN pedido_recurrente_items pri ON pri.pedido_recurrente_id = pr.id
+      LEFT JOIN productos p ON p.id = pri.producto_id
       WHERE pr.negocio_id=$1 AND pr.sucursal_id=$2
       GROUP BY pr.id ORDER BY pr.creado_en DESC`,
       [negocio_id, sucursal_id]
