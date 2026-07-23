@@ -70,6 +70,14 @@
   .kit-carousel .slide span{font-size:44px}
   .kit-dots{display:flex;justify-content:center;gap:5px;padding:6px 0 0}
   .kit-dots span{width:5px;height:5px;border-radius:50%;background:var(--border)}
+
+  /* ── Galería de fotos del producto (lightbox) ── */
+  .lightbox-carousel{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;width:100%;height:100%}
+  .lightbox-carousel::-webkit-scrollbar{display:none}
+  .lightbox-carousel .slide{flex:0 0 100%;scroll-snap-align:start;display:flex;align-items:center;justify-content:center}
+  .lightbox-carousel .slide img{max-width:100%;max-height:100%;object-fit:contain}
+  .lightbox-dots{position:absolute;bottom:20px;left:0;right:0;display:flex;justify-content:center;gap:6px}
+  .lightbox-dots span{width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,.4)}
   .kit-body{padding:12px 14px 14px}
   .kit-nm{font-size:14px;font-weight:800;margin-bottom:2px}
   .kit-desc{font-size:11.5px;color:var(--text2);margin-bottom:6px}
@@ -156,6 +164,14 @@
   <div class="cartbar-inner">
     <span id="cartTxt">0 productos</span>
     <span id="cartTotal" style="font-weight:900">$0.00</span>
+  </div>
+</div>
+
+<div class="overlay" id="ovGaleria" style="background:rgba(0,0,0,.92);align-items:center" onclick="if(event.target===this)cerrar('ovGaleria')">
+  <button class="close" style="position:fixed;top:16px;right:16px;background:rgba(255,255,255,.15);color:#fff;z-index:301" onclick="cerrar('ovGaleria')">✕</button>
+  <div style="position:relative;width:100%;height:100%">
+    <div class="lightbox-carousel" id="lightboxCarousel"></div>
+    <div class="lightbox-dots" id="lightboxDots"></div>
   </div>
 </div>
 
@@ -456,8 +472,9 @@ function renderProductos(){
     var precioHtml = p.precio_original
       ? '<span style="text-decoration:line-through;color:var(--text3);font-size:12px;margin-right:4px">$'+Number(p.precio_original).toFixed(2)+'</span>$'+Number(p.precio).toFixed(2)+(tieneVar?'+':'')
       : '$'+Number(p.precio).toFixed(2)+(tieneVar?'+':'');
+    var tieneImg = p.imagen_url && p.imagen_url.startsWith('data:');
     return '<div class="p">' +
-      '<div class="p-imgwrap">'+img+'</div>' +
+      '<div class="p-imgwrap"'+(tieneImg?' style="cursor:pointer" onclick="abrirGaleria(\''+p.id+'\')"':'')+'>'+img+'</div>' +
       '<div class="p-body">' +
       promoBadge +
       '<div class="p-nm">'+p.nombre+'</div>' +
@@ -466,6 +483,21 @@ function renderProductos(){
       accion +
       '</div></div>';
   }).join('') + '</div>';
+}
+
+function abrirGaleria(id){
+  var p = productos.find(function(x){ return x.id === id; });
+  if (!p) return;
+  var extra = [];
+  try { extra = JSON.parse(p.imagenes_extra||'[]'); } catch(e){ extra = []; }
+  var fotos = [p.imagen_url].concat(extra).filter(function(f){ return f && f.startsWith('data:'); });
+  if (!fotos.length) return;
+  document.getElementById('lightboxCarousel').innerHTML = fotos.map(function(f){
+    return '<div class="slide"><img src="'+f+'"></div>';
+  }).join('');
+  document.getElementById('lightboxDots').innerHTML = fotos.length > 1
+    ? fotos.map(function(){ return '<span></span>'; }).join('') : '';
+  document.getElementById('ovGaleria').classList.add('show');
 }
 
 function agregarCarrito(id){

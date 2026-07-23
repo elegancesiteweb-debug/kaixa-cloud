@@ -64,7 +64,7 @@ router.get('/productos', async (req, res) => {
              p.precio, p.costo, p.stock_minimo, p.categoria_id, p.giro, p.por_peso,
              p.unidad_peso, p.tiene_prescripcion, p.activo, p.creado_en, p.actualizado_en,
              CASE WHEN p.imagen_url IS NOT NULL AND p.imagen_url != '' THEN true ELSE false END as tiene_imagen,
-             p.imagen_url,
+             p.imagen_url, p.imagenes_extra,
              COALESCE(s.stock,0) AS stock, c.nombre AS categoria_nombre, c.emoji AS categoria_emoji
       FROM productos p
       LEFT JOIN stock_actual s ON s.producto_id = p.id AND s.sucursal_id = $2
@@ -131,6 +131,21 @@ router.put('/productos/:id/imagen', async (req, res) => {
     await pool.query(
       'UPDATE productos SET imagen_url=$1, actualizado_en=now() WHERE id=$2 AND negocio_id=$3',
       [imagen_url, req.params.id, req.caja.negocio_id]
+    );
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── PUT /api/productos/:id/imagenes-extra — fotos adicionales del producto ──
+// (imagen_url sigue siendo la portada; este arreglo son las fotos extra que
+// se ven al deslizar/abrir la galería, tope de 4 validado también en el cliente)
+router.put('/productos/:id/imagenes-extra', async (req, res) => {
+  try {
+    const { imagenes_extra } = req.body;
+    if (!Array.isArray(imagenes_extra)) return res.status(400).json({ error: 'imagenes_extra debe ser un arreglo' });
+    await pool.query(
+      'UPDATE productos SET imagenes_extra=$1, actualizado_en=now() WHERE id=$2 AND negocio_id=$3',
+      [JSON.stringify(imagenes_extra.slice(0,4)), req.params.id, req.caja.negocio_id]
     );
     res.json({ ok: true });
   } catch(e) { res.status(500).json({ error: e.message }); }

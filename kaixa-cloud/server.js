@@ -80,6 +80,10 @@ async function aplicarEsquema() {
     console.log('✅ productos.proveedor_id listo');
   } catch(e) { console.error('⚠️ Migración proveedor_id:', e.message); }
   try {
+    await pool.query(`ALTER TABLE productos ADD COLUMN IF NOT EXISTS imagenes_extra TEXT DEFAULT '[]'`);
+    console.log('✅ productos.imagenes_extra listo');
+  } catch(e) { console.error('⚠️ Migración imagenes_extra:', e.message); }
+  try {
     await pool.query(`ALTER TABLE empleados ADD COLUMN IF NOT EXISTS foto TEXT DEFAULT ''`);
     console.log('✅ empleados.foto listo');
   } catch(e) { console.error('⚠️ Migración empleados.foto:', e.message); }

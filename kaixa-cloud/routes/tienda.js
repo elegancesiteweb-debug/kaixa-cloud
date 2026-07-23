@@ -334,7 +334,7 @@ router.get('/tienda/:slug/productos', async (req, res) => {
     const neg = await pool.query('SELECT id FROM negocios WHERE slug=$1 AND activo=true', [req.params.slug]);
     if (!neg.rows.length) return res.status(404).json({ error: 'Tienda no encontrada' });
     const r = await pool.query(`
-      SELECT p.id, p.nombre, p.emoji, p.imagen_url, p.precio, p.categoria_id, c.nombre AS categoria_nombre,
+      SELECT p.id, p.nombre, p.emoji, p.imagen_url, p.imagenes_extra, p.precio, p.categoria_id, c.nombre AS categoria_nombre,
              COALESCE(p.tiene_variantes,false) AS tiene_variantes,
              COALESCE(s.stock,0) AS stock
       FROM productos p

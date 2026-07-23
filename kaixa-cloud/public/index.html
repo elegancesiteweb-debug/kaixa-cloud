@@ -1492,6 +1492,11 @@ async function abrirEditProd(id) {
     setTimeout(function() {
       var inp = document.getElementById('pFotoInput');
       if (inp) inp.onchange = function() { subirFotoProd(this, id); };
+      try { _prodImagenesExtraMovil = JSON.parse(p.imagenes_extra||'[]'); } catch(e){ _prodImagenesExtraMovil = []; }
+      _prodImagenesExtraId = id;
+      renderImagenesExtraMovil();
+      var inpExtra = document.getElementById('pFotoExtraInput');
+      if (inpExtra) inpExtra.onchange = function() { agregarImagenExtraMovil(this); };
     }, 100);
     // Cargar imagen si tiene foto
     if (p.tiene_imagen) {
@@ -1529,6 +1534,11 @@ function abrirModalProd(p) {
           '<input type="file" id="pFotoInput" accept="image/*" style="display:none">' +
           '</label></div>';
       })() : '') +
+      (p ? '<div class="form-field">' +
+        '<label>Fotos adicionales (hasta 4) — se ven deslizando en la tienda</label>' +
+        '<div id="pFotosExtraStrip" style="display:flex;gap:8px;overflow-x:auto;padding-bottom:4px"></div>' +
+        '<input type="file" id="pFotoExtraInput" accept="image/*" style="display:none">' +
+      '</div>' : '') +
       '<div class="form-field"><label>Nombre</label><input id="pNombre" value="' + (p ? p.nombre : '') + '"></div>' +
       '<div class="form-row">' +
         '<div class="form-field"><label>Precio</label><input id="pPrecio" type="number" step="0.01" value="' + (p ? p.precio : '') + '"></div>' +
@@ -4266,6 +4276,59 @@ async function subirFotoProd(input, id) {
     if (r && r.ok) { notif('✅ Foto guardada', 'ok'); }
     else { notif('Error al guardar foto', 'err'); }
   } catch(err) { notif('Error: ' + err.message, 'err'); }
+}
+
+// ── Fotos adicionales del producto (galería de la tienda en línea) ──────
+var _prodImagenesExtraMovil = [];
+var _prodImagenesExtraId = null;
+async function agregarImagenExtraMovil(input) {
+  if (!input || !input.files || !input.files[0]) return;
+  var file = input.files[0];
+  input.value = '';
+  if (_prodImagenesExtraMovil.length >= 4) { notif('Máximo 4 fotos adicionales', 'err'); return; }
+  var base64;
+  try {
+    base64 = await comprimirImagen(file, 600, 600, 0.7);
+  } catch(err) {
+    notif('❌ No se pudo procesar la foto: ' + err.message, 'err');
+    return;
+  }
+  _prodImagenesExtraMovil.push(base64);
+  renderImagenesExtraMovil();
+  await guardarImagenesExtraMovil();
+}
+function quitarImagenExtraMovil(idx) {
+  _prodImagenesExtraMovil.splice(idx, 1);
+  renderImagenesExtraMovil();
+  guardarImagenesExtraMovil();
+}
+async function guardarImagenesExtraMovil() {
+  if (!_prodImagenesExtraId) return;
+  try {
+    var r = await apiFetch('/api/productos/' + _prodImagenesExtraId + '/imagenes-extra', {
+      method: 'PUT',
+      body: JSON.stringify({ imagenes_extra: _prodImagenesExtraMovil })
+    });
+    if (r && r.ok) {
+      var prod = allProds.find(function(x){ return String(x.id)===String(_prodImagenesExtraId); });
+      if (prod) prod.imagenes_extra = JSON.stringify(_prodImagenesExtraMovil);
+      notif('✅ Fotos guardadas', 'ok');
+    } else { notif('Error al guardar fotos', 'err'); }
+  } catch(err) { notif('Error: ' + err.message, 'err'); }
+}
+function renderImagenesExtraMovil() {
+  var strip = document.getElementById('pFotosExtraStrip');
+  if (!strip) return;
+  var html = _prodImagenesExtraMovil.map(function(src, idx) {
+    return '<div style="position:relative;flex:0 0 64px;width:64px;height:64px;border-radius:8px;overflow:hidden;border:1px solid var(--border)">' +
+      '<img src="' + src + '" style="width:100%;height:100%;object-fit:cover">' +
+      '<button onclick="quitarImagenExtraMovil(' + idx + ')" style="position:absolute;top:2px;right:2px;width:18px;height:18px;border-radius:50%;border:none;background:rgba(0,0,0,.6);color:#fff;font-size:11px;cursor:pointer;line-height:1">✕</button>' +
+    '</div>';
+  }).join('');
+  if (_prodImagenesExtraMovil.length < 4) {
+    html += '<div onclick="document.getElementById(\'pFotoExtraInput\').click()" style="flex:0 0 64px;width:64px;height:64px;border-radius:8px;border:1.5px dashed var(--border);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:20px;color:var(--text3)">+</div>';
+  }
+  strip.innerHTML = html;
 }
 
 // ── Subir foto de cliente desde la app ───────────────────────────────────
