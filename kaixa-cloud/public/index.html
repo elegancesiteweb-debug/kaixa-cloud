@@ -3763,7 +3763,7 @@ async function verMovimientosTarjetaMovil(codigo) {
       '<h3 style="margin:0;font-family:var(--fm)">' + codigo + '</h3>' +
       '<span class="modal-close" onclick="document.getElementById(\'modalMovTarjeta\').remove()">✕</span>' +
     '</div>' +
-    '<button class="btn-full sec" style="margin-bottom:12px" onclick="recargarTarjetaMovil(\'' + codigo + '\')">💰 Recargar saldo</button>' +
+    '<button class="btn-full sec" style="margin-bottom:12px" onclick="abrirRecargarTarjetaMovil(\'' + codigo + '\')">💰 Recargar saldo</button>' +
     '<div id="tgMovLista">Cargando...</div>' +
   '</div></div>';
   document.getElementById('modalContainer').innerHTML += html;
@@ -3795,18 +3795,57 @@ async function cargarMovimientosTarjetaMovil(codigo) {
   }
 }
 
+// Registra la venta/recarga de una tarjeta de regalo como una venta más del
+// negocio (renglón virtual, sin producto de inventario) para que el dashboard
+// y los reportes de ventas la incluyan — antes esto solo tocaba las tablas de
+// tarjetas de regalo y el dinero cobrado no aparecía en ningún lado.
+async function registrarVentaTarjetaMovil(nombre, monto, formaPagoSel) {
+  try {
+    var r = await apiFetch('/api/ventas', {
+      method: 'POST',
+      body: JSON.stringify({
+        items: [{ producto_id: null, nombre: nombre, cantidad: 1, precio_unitario: monto, subtotal: monto }],
+        total: monto, subtotal: monto, descuento: 0,
+        forma_pago: formaPagoSel || 'efectivo', monto_recibido: monto, cambio: 0,
+        usuario_id: usuario ? usuario.id : null, cajero: usuario ? usuario.nombre : 'App Móvil'
+      })
+    });
+    return !!(r && r.ok);
+  } catch(e) { return false; }
+}
+
+function abrirRecargarTarjetaMovil(codigo) {
+  var html = '<div class="modal-overlay" id="modalRecargarTarjeta">' +
+    '<div class="modal-sheet">' +
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">' +
+        '<h3 style="margin:0">💰 Recargar ' + codigo + '</h3>' +
+        '<span class="modal-close" onclick="document.getElementById(\'modalRecargarTarjeta\').remove()">✕</span>' +
+      '</div>' +
+      '<div class="form-field"><label>Monto a recargar</label><input id="tgMontoRecargaMovil" type="number" step="0.01" placeholder="0.00"></div>' +
+      '<div class="form-field"><label>Forma de pago</label><select id="tgFormaPagoRecargaMovil">' +
+        '<option value="efectivo">💵 Efectivo</option><option value="tarjeta">💳 Tarjeta</option><option value="transferencia">📲 Transferencia</option>' +
+      '</select></div>' +
+      '<button class="btn-full primary" onclick="recargarTarjetaMovil(\'' + codigo + '\')">Confirmar recarga</button>' +
+    '</div></div>';
+  document.getElementById('modalContainer').innerHTML += html;
+}
+
 async function recargarTarjetaMovil(codigo) {
-  var montoStr = prompt('Monto a recargar:');
-  if (montoStr === null) return;
-  var monto = parseFloat(montoStr) || 0;
+  var monto = parseFloat(document.getElementById('tgMontoRecargaMovil').value) || 0;
   if (monto <= 0) { notif('El monto debe ser mayor a 0', 'err'); return; }
+  var formaPagoSel = document.getElementById('tgFormaPagoRecargaMovil').value;
   try {
     var r = await apiFetch('/api/tarjetas-regalo/' + encodeURIComponent(codigo) + '/recargar', {
       method: 'POST', body: JSON.stringify({ monto: monto })
     });
     var d = await r.json();
     if (!r.ok) { notif('❌ ' + (d.error || 'No se pudo recargar la tarjeta'), 'err'); return; }
-    notif('✅ Saldo recargado, ahora: ' + fmt(d.saldo_actual||0), 'ok');
+    var modalR = document.getElementById('modalRecargarTarjeta');
+    if (modalR) modalR.remove();
+    var ventaOk = await registrarVentaTarjetaMovil('💰 Recarga tarjeta de regalo ' + codigo, monto, formaPagoSel);
+    notif(ventaOk
+      ? '✅ Saldo recargado, ahora: ' + fmt(d.saldo_actual||0)
+      : '✅ Saldo recargado, pero no se registró como venta — anótalo manualmente', 'ok');
     await cargarMovimientosTarjetaMovil(codigo);
     cargarTarjetasRegaloMovil();
   } catch(e) { notif('❌ Error de conexión', 'err'); }
@@ -3820,6 +3859,9 @@ function abrirVenderTarjetaMovil() {
         '<span class="modal-close" onclick="document.getElementById(\'modalVenderTarjeta\').remove()">✕</span>' +
       '</div>' +
       '<div class="form-field"><label>Monto a cargar</label><input id="tgMontoVentaMovil" type="number" step="0.01" placeholder="0.00"></div>' +
+      '<div class="form-field"><label>Forma de pago</label><select id="tgFormaPagoVentaMovil">' +
+        '<option value="efectivo">💵 Efectivo</option><option value="tarjeta">💳 Tarjeta</option><option value="transferencia">📲 Transferencia</option>' +
+      '</select></div>' +
       '<div class="form-field"><label>Notas (opcional)</label><input id="tgNotasVentaMovil" placeholder="Opcional"></div>' +
       '<button class="btn-full primary" onclick="venderTarjetaRegaloMovil()">Generar y vender</button>' +
     '</div></div>';
@@ -3829,6 +3871,7 @@ function abrirVenderTarjetaMovil() {
 async function venderTarjetaRegaloMovil() {
   var monto = parseFloat(document.getElementById('tgMontoVentaMovil').value) || 0;
   if (monto <= 0) { notif('El monto debe ser mayor a 0', 'err'); return; }
+  var formaPagoSel = document.getElementById('tgFormaPagoVentaMovil').value;
   try {
     var r = await apiFetch('/api/tarjetas-regalo', {
       method: 'POST',
@@ -3837,12 +3880,13 @@ async function venderTarjetaRegaloMovil() {
     var d = await r.json();
     if (!r.ok) { notif('❌ ' + (d.error || 'No se pudo vender la tarjeta'), 'err'); return; }
     document.getElementById('modalVenderTarjeta').remove();
+    var ventaOk = await registrarVentaTarjetaMovil('🎁 Venta tarjeta de regalo ' + d.codigo, monto, formaPagoSel);
     var html = '<div class="modal-overlay" id="modalTarjetaCodigoMovil">' +
       '<div class="modal-sheet" style="text-align:center">' +
         '<h3>✅ Tarjeta vendida</h3>' +
         '<p style="font-size:12px;color:var(--text3);margin-bottom:10px">Dale este código al cliente</p>' +
         '<div style="font-size:22px;font-weight:900;letter-spacing:2px;font-family:var(--fm);background:var(--s1);border-radius:10px;padding:16px;margin-bottom:14px">' + d.codigo + '</div>' +
-        '<div style="font-size:14px;color:var(--accent);font-weight:800;margin-bottom:16px">Saldo: ' + fmt(d.saldo_actual||0) + '</div>' +
+        '<div style="font-size:14px;color:var(--accent);font-weight:800;margin-bottom:16px">Saldo: ' + fmt(d.saldo_actual||0) + (ventaOk ? '' : ' ⚠️ No se registró como venta') + '</div>' +
         '<button class="btn-full primary" onclick="document.getElementById(\'modalTarjetaCodigoMovil\').remove()">Listo</button>' +
       '</div></div>';
     document.getElementById('modalContainer').innerHTML += html;
