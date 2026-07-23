@@ -278,10 +278,16 @@ async function generarPedidosRecurrentes(io) {
         );
 
         if (io) io.to('negocio:' + pl.negocio_id).emit('pedido_online:nuevo', { id: pedidoId, folio, sucursal_id: pl.sucursal_id });
+        const resumenItems = itemsValidados.map(it => it.cantidad + 'x ' + it.nombre_producto).join(', ');
+        try {
+          const { crearNotificacion } = require('./push');
+          if (crearNotificacion) {
+            await crearNotificacion(pl.negocio_id, pl.sucursal_id, 'pedido_nuevo', '🛍️ Nuevo pedido', pl.cliente_nombre + ' — ' + resumenItems + ' (folio ' + folio + ')', pedidoId);
+          }
+        } catch(e) {}
         if (pl.cliente_telefono) {
           try {
             const { enviarWhatsapp } = require('./whatsapp');
-            const resumenItems = itemsValidados.map(it => it.cantidad + 'x ' + it.nombre_producto).join(', ');
             enviarWhatsapp(pl.negocio_id, pl.cliente_telefono,
               'Hola ' + pl.cliente_nombre + ', tu pedido recurrente de esta semana ya fue registrado — ' + resumenItems + ' (folio ' + folio + ')'
             ).catch(() => {});
@@ -565,13 +571,16 @@ router.post('/tienda/:slug/pedidos', async (req, res) => {
 
     // Notificación push (mismo mecanismo de stock bajo / lotes)
     try {
-      const { enviarASucursal } = require('./push');
+      const { enviarASucursal, crearNotificacion } = require('./push');
       if (enviarASucursal) {
         await enviarASucursal(sucursal_id, negocioId, {
           title: '🛍️ Nuevo pedido en línea',
           body: cliente_nombre.trim() + ' — folio ' + folio,
           tag: 'pedido_online'
         });
+      }
+      if (crearNotificacion) {
+        await crearNotificacion(negocioId, sucursal_id, 'pedido_nuevo', '🛍️ Nuevo pedido', cliente_nombre.trim() + ' — folio ' + folio, pedidoId);
       }
     } catch(e) {}
 

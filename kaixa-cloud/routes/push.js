@@ -28,6 +28,18 @@ async function crearTablasPush() {
         enviado_en  TIMESTAMPTZ DEFAULT now(),
         UNIQUE(sucursal_id, tipo, clave)
       );
+      CREATE TABLE IF NOT EXISTS notificaciones (
+        id            SERIAL PRIMARY KEY,
+        negocio_id    UUID NOT NULL REFERENCES negocios(id) ON DELETE CASCADE,
+        sucursal_id   UUID REFERENCES sucursales(id) ON DELETE CASCADE,
+        tipo          TEXT NOT NULL,
+        titulo        TEXT NOT NULL,
+        cuerpo        TEXT DEFAULT '',
+        referencia_id TEXT,
+        leida         BOOLEAN DEFAULT false,
+        creado_en     TIMESTAMPTZ DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS idx_notificaciones_sucursal ON notificaciones(sucursal_id, leida);
     `);
     console.log('✅ Tablas de push listas');
   } catch(e) { console.error('⚠️ Error creando tablas de push:', e.message); }
@@ -111,6 +123,19 @@ async function marcarAvisado(sucursalId, tipo, clave) {
   );
 }
 
+// ── Centro de notificaciones dentro de la app (independiente del push del ──
+// navegador de arriba, que requiere permiso/instalación) — usado por la
+// campana 🔔 de la PWA.
+async function crearNotificacion(negocioId, sucursalId, tipo, titulo, cuerpo, referenciaId) {
+  try {
+    await pool.query(
+      `INSERT INTO notificaciones (negocio_id, sucursal_id, tipo, titulo, cuerpo, referencia_id)
+       VALUES ($1,$2,$3,$4,$5,$6)`,
+      [negocioId, sucursalId, tipo, titulo, cuerpo || '', referenciaId != null ? String(referenciaId) : null]
+    );
+  } catch(e) { console.error('⚠️ crearNotificacion:', e.message); }
+}
+
 // ── Chequeo periódico: stock bajo + lotes por caducar (llamado desde server.js) ──
 async function revisarAlertas() {
   try {
@@ -125,11 +150,9 @@ async function revisarAlertas() {
     `);
     for (const p of bajos.rows) {
       if (await yaSeAviso(p.sucursal_id, 'stock_bajo', p.id)) continue;
-      await enviarASucursal(p.sucursal_id, p.negocio_id, {
-        title: '📉 Stock bajo',
-        body: (p.nombre) + ': quedan ' + p.stock + ' (mínimo ' + p.stock_minimo + ')',
-        tag: 'stock_bajo'
-      });
+      const cuerpo = p.nombre + ': quedan ' + p.stock + ' (mínimo ' + p.stock_minimo + ')';
+      await enviarASucursal(p.sucursal_id, p.negocio_id, { title: '📉 Stock bajo', body: cuerpo, tag: 'stock_bajo' });
+      await crearNotificacion(p.negocio_id, p.sucursal_id, 'stock_bajo', '📉 Stock bajo', cuerpo, p.id);
       await marcarAvisado(p.sucursal_id, 'stock_bajo', p.id);
     }
 
@@ -143,11 +166,9 @@ async function revisarAlertas() {
     `);
     for (const l of lotes.rows) {
       if (await yaSeAviso(l.sucursal_id, 'lote_caduca', l.id)) continue;
-      await enviarASucursal(l.sucursal_id, l.negocio_id, {
-        title: '⏳ Lote por caducar',
-        body: (l.nombre_producto || 'Producto') + ' (lote ' + l.numero_lote + '): caduca en ' + l.dias + ' día(s)',
-        tag: 'lote_caduca'
-      });
+      const cuerpo = (l.nombre_producto || 'Producto') + ' (lote ' + l.numero_lote + '): caduca en ' + l.dias + ' día(s)';
+      await enviarASucursal(l.sucursal_id, l.negocio_id, { title: '⏳ Lote por caducar', body: cuerpo, tag: 'lote_caduca' });
+      await crearNotificacion(l.negocio_id, l.sucursal_id, 'lote_caduca', '⏳ Lote por caducar', cuerpo, l.id);
       await marcarAvisado(l.sucursal_id, 'lote_caduca', l.id);
     }
     // Fiado (venta a crédito) con fecha de pago vencida — se avisa al CLIENTE por WhatsApp
@@ -188,4 +209,4 @@ async function revisarAlertas() {
   }
 }
 
-module.exports = { router, revisarAlertas, crearTablasPush, enviarASucursal };
+module.exports = { router, revisarAlertas, crearTablasPush, enviarASucursal, crearNotificacion };

@@ -450,6 +450,36 @@ router.post('/empleados/:id/salida', async (req, res) => {
 // router, es la que realmente corre) — se quitó la copia muerta de aquí.
 
 // ═══════════════════════════════════════════════════════════
+// NOTIFICACIONES (campana dentro de la app)
+// ═══════════════════════════════════════════════════════════
+router.get('/notificaciones', async (req, res) => {
+  try {
+    const { sucursal_id } = req.caja;
+    const r = await pool.query(
+      `SELECT * FROM notificaciones WHERE sucursal_id=$1 ORDER BY creado_en DESC LIMIT 50`,
+      [sucursal_id]
+    );
+    res.json(r.rows);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+router.put('/notificaciones/:id/leida', async (req, res) => {
+  try {
+    await pool.query('UPDATE notificaciones SET leida=true WHERE id=$1 AND sucursal_id=$2',
+      [req.params.id, req.caja.sucursal_id]);
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+router.put('/notificaciones/marcar-todas-leidas', async (req, res) => {
+  try {
+    await pool.query('UPDATE notificaciones SET leida=true WHERE sucursal_id=$1 AND leida=false',
+      [req.caja.sucursal_id]);
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ═══════════════════════════════════════════════════════════
 // LOTES
 // ═══════════════════════════════════════════════════════════
 router.get('/lotes', async (req, res) => {

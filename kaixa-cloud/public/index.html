@@ -52,7 +52,19 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:var(--ff);backgroun
 .topbar{height:calc(56px + env(safe-area-inset-top));background:#fff;border-bottom:1px solid var(--border);display:flex;align-items:center;padding:env(safe-area-inset-top) 16px 0;gap:12px;flex-shrink:0;box-shadow:0 1px 8px rgba(139,92,246,.06)}
 .topbar-logo{font-size:22px;font-weight:900;background:var(--grad);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
 .topbar-title{flex:1;font-size:15px;font-weight:800;color:var(--text)}
-.topbar-btn{width:36px;height:36px;border-radius:10px;border:none;background:var(--s2);display:flex;align-items:center;justify-content:center;font-size:16px;cursor:pointer;flex-shrink:0}
+.topbar-btn{width:36px;height:36px;border-radius:10px;border:none;background:var(--s2);display:flex;align-items:center;justify-content:center;font-size:16px;cursor:pointer;flex-shrink:0;position:relative}
+.notif-badge{position:absolute;top:-4px;right:-4px;min-width:16px;height:16px;padding:0 3px;border-radius:8px;background:#ef4444;color:#fff;font-size:10px;font-weight:800;display:flex;align-items:center;justify-content:center;line-height:1}
+@keyframes notif-shake{0%,100%{transform:rotate(0)}10%,30%,50%{transform:rotate(-14deg)}20%,40%,60%{transform:rotate(14deg)}70%{transform:rotate(0)}}
+.notif-shake{animation:notif-shake .6s ease}
+.notif-panel-overlay{position:fixed;inset:0;background:rgba(0,0,0,.3);z-index:250;display:none}
+.notif-panel-overlay.show{display:block}
+.notif-panel{position:fixed;top:60px;right:12px;left:12px;max-width:380px;margin-left:auto;background:var(--s1,#fff);border-radius:14px;box-shadow:0 10px 30px rgba(0,0,0,.2);max-height:70vh;overflow-y:auto;z-index:251}
+.notif-item{padding:12px 14px;border-bottom:1px solid var(--border);cursor:pointer;display:flex;gap:10px;align-items:flex-start}
+.notif-item.unread{background:rgba(139,92,246,.06)}
+.notif-item .ico{font-size:18px;flex-shrink:0}
+.notif-item .tit{font-size:12.5px;font-weight:800}
+.notif-item .cuerpo{font-size:11.5px;color:var(--text2);margin-top:2px}
+.notif-item .hace{font-size:10px;color:var(--text3);margin-top:3px}
 .content{flex:1;overflow-y:auto;overflow-x:hidden;padding-bottom:calc(var(--nav-h) + env(safe-area-inset-bottom) + 16px)}
 .content::-webkit-scrollbar{display:none}
 .bottomnav{height:calc(var(--nav-h) + env(safe-area-inset-bottom));background:#fff;border-top:1px solid var(--border);display:flex;align-items:center;flex-shrink:0;box-shadow:0 -2px 12px rgba(139,92,246,.08);padding-bottom:env(safe-area-inset-bottom)}
@@ -287,6 +299,7 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:var(--ff);backgroun
     <span class="topbar-logo">K</span>
     <span class="topbar-title" id="topTitle">Dashboard</span>
     <button class="topbar-btn" id="topBtn1" style="display:none" onclick="topBtn1Action()">⊕</button>
+    <button class="topbar-btn" id="btnNotifCampana" onclick="toggleNotifPanel()">🔔<span id="notifBadge" class="notif-badge" style="display:none">0</span></button>
     <button class="topbar-btn" onclick="abrirPerfil()">👤</button>
   </div>
   <div class="content" id="mainContent">
@@ -493,6 +506,9 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:var(--ff);backgroun
   <button class="btn-cobrar" onclick="abrirCobro()">💳 Proceder al cobro</button>
 </div>
 <div id="modalContainer"></div>
+<div class="notif-panel-overlay" id="notifPanelOverlay" onclick="if(event.target===this)toggleNotifPanel()">
+  <div class="notif-panel" id="notifPanel"></div>
+</div>
 <script>
 var API = localStorage.getItem('kaixa_api') || '';
 var TOKEN = localStorage.getItem('kaixa_token') || '';
@@ -4066,6 +4082,101 @@ function KICON(name) {
   return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:20px;height:20px">' + inner + '</svg>';
 }
 
+// ── Campana de notificaciones ─────────────────────────────────────────
+var _notifsMovil = [];
+var _notifsMovilNoLeidasPrev = 0;
+var _notifsMovilCargadas = false;
+
+function _iconoNotif(tipo) {
+  return tipo === 'pedido_nuevo' ? '🛍️' : tipo === 'stock_bajo' ? '📉' : tipo === 'lote_caduca' ? '⏳' : '🔔';
+}
+function _haceTiempoNotif(fechaISO) {
+  var seg = Math.max(0, Math.floor((Date.now() - new Date(fechaISO).getTime()) / 1000));
+  if (seg < 60) return 'hace un momento';
+  if (seg < 3600) return 'hace ' + Math.floor(seg/60) + ' min';
+  if (seg < 86400) return 'hace ' + Math.floor(seg/3600) + ' h';
+  return 'hace ' + Math.floor(seg/86400) + ' d';
+}
+
+async function cargarNotificacionesMovil() {
+  try {
+    var r = await apiFetch('/api/notificaciones');
+    if (!r || !r.ok) return;
+    _notifsMovil = await r.json();
+    _notifsMovilCargadas = true;
+    var noLeidas = _notifsMovil.filter(function(n){ return !n.leida; }).length;
+    var badge = document.getElementById('notifBadge');
+    if (badge) {
+      badge.style.display = noLeidas > 0 ? 'flex' : 'none';
+      badge.textContent = noLeidas > 99 ? '99+' : noLeidas;
+    }
+    if (noLeidas > _notifsMovilNoLeidasPrev) {
+      var campana = document.getElementById('btnNotifCampana');
+      if (campana) {
+        campana.classList.remove('notif-shake');
+        void campana.offsetWidth; // reinicia la animación si ya estaba corriendo
+        campana.classList.add('notif-shake');
+      }
+    }
+    _notifsMovilNoLeidasPrev = noLeidas;
+    var overlay = document.getElementById('notifPanelOverlay');
+    if (overlay && overlay.classList.contains('show')) renderNotifPanelMovil();
+  } catch(e) {}
+}
+
+async function toggleNotifPanel() {
+  var overlay = document.getElementById('notifPanelOverlay');
+  if (!overlay) return;
+  var abrir = !overlay.classList.contains('show');
+  overlay.classList.toggle('show', abrir);
+  if (abrir) {
+    if (!_notifsMovilCargadas) await cargarNotificacionesMovil();
+    renderNotifPanelMovil();
+  }
+}
+
+function renderNotifPanelMovil() {
+  var panel = document.getElementById('notifPanel');
+  if (!panel) return;
+  if (!_notifsMovil.length) {
+    panel.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text3);font-size:12px">Sin notificaciones por ahora</div>';
+    return;
+  }
+  panel.innerHTML = _notifsMovil.map(function(n) {
+    return '<div class="notif-item' + (n.leida ? '' : ' unread') + '" onclick="clickNotifMovil(\'' + n.id + '\')">' +
+      '<span class="ico">' + _iconoNotif(n.tipo) + '</span>' +
+      '<div style="flex:1;min-width:0">' +
+        '<div class="tit">' + n.titulo + '</div>' +
+        (n.cuerpo ? '<div class="cuerpo">' + n.cuerpo + '</div>' : '') +
+        '<div class="hace">' + _haceTiempoNotif(n.creado_en) + '</div>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+}
+
+async function clickNotifMovil(id) {
+  var n = _notifsMovil.find(function(x){ return String(x.id) === String(id); });
+  if (!n) return;
+  toggleNotifPanel();
+  try { await apiFetch('/api/notificaciones/' + id + '/leida', { method: 'PUT' }); } catch(e) {}
+  n.leida = true;
+  cargarNotificacionesMovil();
+  var refId = n.referencia_id;
+  if (n.tipo === 'pedido_nuevo') {
+    navTo('ventasonline');
+    irTabVentasOnlineMovil('pedidos');
+    await loadPedidosOnline();
+    verDetallePedidoOnline(refId);
+  } else if (n.tipo === 'stock_bajo') {
+    navTo('inv');
+    await loadInv();
+    abrirEditProd(refId);
+  } else if (n.tipo === 'lote_caduca') {
+    navTo('lotes');
+    abrirEditLote(refId);
+  }
+}
+
 function abrirPerfil() {
   if (!usuario) return;
   var html = '<div class="modal-overlay" id="modalPerfil"><div class="modal-sheet">' +
@@ -4375,6 +4486,10 @@ setInterval(function() {
   else if (currentScreen === 'clientes') loadCli();
   else if (currentScreen === 'empleados') loadEmpleados();
 }, 30000);
+
+// ── Campana de notificaciones — corre sin importar la pantalla actual ──
+setInterval(cargarNotificacionesMovil, 30000);
+setTimeout(cargarNotificacionesMovil, 3000);
 </script>
 </body>
 </html>
