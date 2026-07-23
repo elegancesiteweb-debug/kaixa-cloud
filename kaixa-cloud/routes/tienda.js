@@ -281,8 +281,9 @@ async function generarPedidosRecurrentes(io) {
         if (pl.cliente_telefono) {
           try {
             const { enviarWhatsapp } = require('./whatsapp');
+            const resumenItems = itemsValidados.map(it => it.cantidad + 'x ' + it.nombre_producto).join(', ');
             enviarWhatsapp(pl.negocio_id, pl.cliente_telefono,
-              'Hola ' + pl.cliente_nombre + ', tu pedido recurrente de esta semana ya fue registrado — folio ' + folio
+              'Hola ' + pl.cliente_nombre + ', tu pedido recurrente de esta semana ya fue registrado — ' + resumenItems + ' (folio ' + folio + ')'
             ).catch(() => {});
           } catch(e) {}
         }
