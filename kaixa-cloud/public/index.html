@@ -3763,9 +3763,14 @@ async function verMovimientosTarjetaMovil(codigo) {
       '<h3 style="margin:0;font-family:var(--fm)">' + codigo + '</h3>' +
       '<span class="modal-close" onclick="document.getElementById(\'modalMovTarjeta\').remove()">✕</span>' +
     '</div>' +
+    '<button class="btn-full sec" style="margin-bottom:12px" onclick="recargarTarjetaMovil(\'' + codigo + '\')">💰 Recargar saldo</button>' +
     '<div id="tgMovLista">Cargando...</div>' +
   '</div></div>';
   document.getElementById('modalContainer').innerHTML += html;
+  await cargarMovimientosTarjetaMovil(codigo);
+}
+
+async function cargarMovimientosTarjetaMovil(codigo) {
   try {
     var r = await apiFetch('/api/tarjetas-regalo/' + encodeURIComponent(codigo) + '/movimientos');
     var movs = r && r.ok ? await r.json() : [];
@@ -3776,17 +3781,35 @@ async function verMovimientosTarjetaMovil(codigo) {
       return;
     }
     cont.innerHTML = movs.map(function(m) {
-      var esVenta = m.tipo === 'venta';
+      var esIngreso = m.tipo === 'venta' || m.tipo === 'recarga';
+      var etiqueta = m.tipo === 'venta' ? '🎁 Venta (carga inicial)' : (m.tipo === 'recarga' ? '💰 Recarga' : '💳 Redención');
       return '<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)">' +
-        '<div><div style="font-size:12px;font-weight:700">' + (esVenta ? '🎁 Venta (carga inicial)' : '💳 Redención') + '</div>' +
+        '<div><div style="font-size:12px;font-weight:700">' + etiqueta + '</div>' +
         '<div style="font-size:11px;color:var(--text3)">' + (m.creado_en||'').replace('T',' ').substring(0,16) + (m.venta_id ? ' · venta ' + String(m.venta_id).substring(0,8) : '') + '</div></div>' +
-        '<div style="font-weight:800;color:' + (esVenta ? '#22c55e' : '#ef4444') + '">' + (esVenta ? '+' : '−') + fmt(m.monto||0) + '</div>' +
+        '<div style="font-weight:800;color:' + (esIngreso ? '#22c55e' : '#ef4444') + '">' + (esIngreso ? '+' : '−') + fmt(m.monto||0) + '</div>' +
       '</div>';
     }).join('');
   } catch(e) {
     var cont2 = document.getElementById('tgMovLista');
     if (cont2) cont2.innerHTML = '<div style="text-align:center;padding:16px;color:var(--danger);font-size:12px">Error al cargar movimientos</div>';
   }
+}
+
+async function recargarTarjetaMovil(codigo) {
+  var montoStr = prompt('Monto a recargar:');
+  if (montoStr === null) return;
+  var monto = parseFloat(montoStr) || 0;
+  if (monto <= 0) { notif('El monto debe ser mayor a 0', 'err'); return; }
+  try {
+    var r = await apiFetch('/api/tarjetas-regalo/' + encodeURIComponent(codigo) + '/recargar', {
+      method: 'POST', body: JSON.stringify({ monto: monto })
+    });
+    var d = await r.json();
+    if (!r.ok) { notif('❌ ' + (d.error || 'No se pudo recargar la tarjeta'), 'err'); return; }
+    notif('✅ Saldo recargado, ahora: ' + fmt(d.saldo_actual||0), 'ok');
+    await cargarMovimientosTarjetaMovil(codigo);
+    cargarTarjetasRegaloMovil();
+  } catch(e) { notif('❌ Error de conexión', 'err'); }
 }
 
 function abrirVenderTarjetaMovil() {

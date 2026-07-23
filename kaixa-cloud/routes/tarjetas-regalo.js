@@ -24,13 +24,18 @@ async function ensureTarjetasRegaloTables() {
     CREATE TABLE IF NOT EXISTS tarjeta_regalo_movimientos (
       id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       tarjeta_id  UUID NOT NULL REFERENCES tarjetas_regalo(id) ON DELETE CASCADE,
-      tipo        TEXT NOT NULL, -- 'venta' | 'redencion'
+      tipo        TEXT NOT NULL, -- 'venta' | 'redencion' | 'recarga'
       monto       NUMERIC(12,2) DEFAULT 0,
-      venta_id    UUID,
+      venta_id    TEXT,
       creado_en   TIMESTAMPTZ DEFAULT now()
     );
     CREATE INDEX IF NOT EXISTS idx_tarjetas_regalo_negocio ON tarjetas_regalo(negocio_id);
   `);
+  // Migración: venta_id era UUID, pero pos-mexico (PC) usa IDs de venta
+  // enteros locales (SQLite autoincrement) — con UUID, esas redenciones
+  // fallaban con "invalid input syntax for type uuid" y se revertía TODA
+  // la transacción, incluyendo el descuento de saldo. TEXT acepta ambos.
+  await pool.query(`ALTER TABLE tarjeta_regalo_movimientos ALTER COLUMN venta_id TYPE TEXT`);
 }
 
 function generarCodigo() {
@@ -158,6 +163,42 @@ router.post('/tarjetas-regalo/:codigo/redimir', async (req, res) => {
     await client.query(
       `INSERT INTO tarjeta_regalo_movimientos (tarjeta_id, tipo, monto, venta_id) VALUES ($1,'redencion',$2,$3)`,
       [tarjeta.id, montoNum, venta_id]
+    );
+    await client.query('COMMIT');
+    res.json({ ok: true, saldo_actual: upd.rows[0].saldo_actual });
+  } catch (e) {
+    await client.query('ROLLBACK');
+    res.status(e.status || 500).json({ error: e.message });
+  } finally {
+    client.release();
+  }
+});
+
+// ── POST /api/tarjetas-regalo/:codigo/recargar — agregar saldo a una tarjeta existente ──
+router.post('/tarjetas-regalo/:codigo/recargar', async (req, res) => {
+  const client = await pool.connect();
+  try {
+    await ensureTarjetasRegaloTables();
+    const { monto } = req.body;
+    const montoNum = parseFloat(monto);
+    if (!montoNum || montoNum <= 0) return res.status(400).json({ error: 'Monto inválido' });
+
+    await client.query('BEGIN');
+    const r = await client.query(
+      `SELECT * FROM tarjetas_regalo WHERE negocio_id=$1 AND codigo=$2 FOR UPDATE`,
+      [req.caja.negocio_id, req.params.codigo.trim().toUpperCase()]
+    );
+    if (!r.rows.length) throw Object.assign(new Error('Tarjeta no encontrada'), { status: 404 });
+    const tarjeta = r.rows[0];
+    if (!tarjeta.activa) throw Object.assign(new Error('Tarjeta inactiva'), { status: 400 });
+
+    const upd = await client.query(
+      `UPDATE tarjetas_regalo SET saldo_actual = saldo_actual + $1, saldo_inicial = saldo_inicial + $1 WHERE id=$2 RETURNING saldo_actual`,
+      [montoNum, tarjeta.id]
+    );
+    await client.query(
+      `INSERT INTO tarjeta_regalo_movimientos (tarjeta_id, tipo, monto) VALUES ($1,'recarga',$2)`,
+      [tarjeta.id, montoNum]
     );
     await client.query('COMMIT');
     res.json({ ok: true, saldo_actual: upd.rows[0].saldo_actual });
