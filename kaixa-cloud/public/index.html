@@ -3813,8 +3813,18 @@ async function abrirHorariosConfig() {
         '<div style="font-size:12px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin:14px 0 8px">Días y horas</div>' +
         filasDias +
         '<button class="btn-full primary" style="margin-bottom:14px" onclick="guardarHorariosConfig()">💾 Guardar horarios</button>' +
+        '<div style="border-top:1px solid var(--border);padding-top:14px;margin-bottom:14px">' +
+          '<div style="font-size:12px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Cerrar un día completo</div>' +
+          '<p style="font-size:11px;color:var(--text3);margin:0 0 8px">Ese día no se podrá agendar ni para recoger ni a domicilio/envío — aplica siempre, sin importar el modo de arriba.</p>' +
+          '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">' +
+            '<input type="date" id="horDiaCerrarFecha" style="flex:1;min-width:130px">' +
+            '<input type="text" id="horDiaCerrarMotivo" placeholder="Motivo (opcional, ej. Día festivo)" style="flex:2;min-width:140px">' +
+          '</div>' +
+          '<button class="btn-full sec" style="margin-bottom:14px" onclick="agregarDiaCerradoMovil()">🚫 Cerrar ese día</button>' +
+          '<div id="diasCerradosLista"></div>' +
+        '</div>' +
         '<div id="horBloqueosWrapMovil" style="display:none">' +
-          '<div style="font-size:12px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Bloquear un horario manualmente</div>' +
+          '<div style="font-size:12px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Bloquear un horario específico</div>' +
           '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">' +
             '<input type="date" id="horBloqFecha" style="flex:1;min-width:130px" onchange="cargarBloqueosMovil()">' +
             '<input type="time" id="horBloqHora" style="flex:1;min-width:100px">' +
@@ -3845,6 +3855,7 @@ async function abrirHorariosConfig() {
         document.getElementById('horDiaIntervalo' + i).value = fila.intervalo_minutos || 30;
       });
       _toggleHorariosCamposMovil();
+      cargarDiasCerradosMovil();
       if (d.modo === 'manual') cargarBloqueosMovil();
     }
   } catch(e) {}
@@ -3882,6 +3893,43 @@ async function guardarHorariosConfig() {
   else notif('❌ Error al guardar', 'err');
 }
 
+async function cargarDiasCerradosMovil() {
+  var cont = document.getElementById('diasCerradosLista');
+  if (!cont) return;
+  cont.innerHTML = 'Cargando...';
+  try {
+    var r = await apiFetch('/api/negocio/tienda/horarios-bloqueados');
+    var lista = r && r.ok ? await r.json() : [];
+    lista = lista.filter(function(b){ return !b.hora; });
+    if (!lista.length) { cont.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:8px 0">Sin días cerrados próximamente</div>'; return; }
+    cont.innerHTML = lista.map(function(b) {
+      var fechaTxt = new Date(b.fecha.split('T')[0]+'T00:00:00').toLocaleDateString('es-MX', {weekday:'long', day:'numeric', month:'long'});
+      return '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)">' +
+        '<div><div style="font-size:13px;font-weight:700;text-transform:capitalize">' + fechaTxt + '</div>' +
+        (b.motivo ? '<div style="font-size:11px;color:var(--text3)">' + b.motivo + '</div>' : '') + '</div>' +
+        '<span style="cursor:pointer;color:var(--danger)" onclick="quitarDiaCerradoMovil(\'' + b.id + '\')">✕ Quitar</span>' +
+      '</div>';
+    }).join('');
+  } catch(e) { cont.innerHTML = '<div style="font-size:12px;color:var(--danger)">Error al cargar</div>'; }
+}
+
+async function agregarDiaCerradoMovil() {
+  var fecha = document.getElementById('horDiaCerrarFecha').value;
+  if (!fecha) { notif('Elige una fecha', 'err'); return; }
+  var motivo = document.getElementById('horDiaCerrarMotivo').value.trim();
+  var r = await apiFetch('/api/negocio/tienda/horarios-bloqueados', {
+    method: 'POST', body: JSON.stringify({ fecha: fecha, hora: '', motivo: motivo })
+  });
+  if (r && r.ok) { notif('✅ Día cerrado', 'ok'); document.getElementById('horDiaCerrarMotivo').value = ''; cargarDiasCerradosMovil(); }
+  else notif('❌ Error al cerrar el día', 'err');
+}
+
+async function quitarDiaCerradoMovil(id) {
+  var r = await apiFetch('/api/negocio/tienda/horarios-bloqueados/' + id, { method: 'DELETE' });
+  if (r && r.ok) cargarDiasCerradosMovil();
+  else notif('❌ Error al quitar', 'err');
+}
+
 async function cargarBloqueosMovil() {
   var fecha = document.getElementById('horBloqFecha').value;
   var cont = document.getElementById('horBloqueosLista');
@@ -3890,6 +3938,7 @@ async function cargarBloqueosMovil() {
   try {
     var r = await apiFetch('/api/negocio/tienda/horarios-bloqueados?fecha=' + encodeURIComponent(fecha));
     var lista = r && r.ok ? await r.json() : [];
+    lista = lista.filter(function(b){ return b.hora; });
     if (!lista.length) { cont.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:8px 0">Sin horarios bloqueados ese día</div>'; return; }
     cont.innerHTML = lista.map(function(b) {
       return '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)">' +

@@ -231,7 +231,7 @@ async function ensureTiendaTables() {
       id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       negocio_id  UUID NOT NULL REFERENCES negocios(id) ON DELETE CASCADE,
       fecha       DATE NOT NULL,
-      hora        TEXT NOT NULL,
+      hora        TEXT NOT NULL, -- '' = día cerrado por completo (aplica siempre); si no, bloqueo de una hora (solo modo manual)
       motivo      TEXT DEFAULT '',
       creado_en   TIMESTAMPTZ DEFAULT now(),
       UNIQUE(negocio_id, fecha, hora)
@@ -296,11 +296,21 @@ async function calcularHorariosDisponibles(negocioId, tipoEntrega, dias) {
   const hoy = new Date(hoyStr + 'T00:00:00Z');
   const fechaFin = fechaAISO(new Date(hoy.getTime() + (numDias - 1) * 86400000));
 
+  // Días cerrados por completo (hora='' en tienda_horarios_bloqueados) — a
+  // diferencia del bloqueo por hora (que solo aplica en modo manual), esto
+  // aplica SIEMPRE, en cualquier modo, y a cualquier tipo de entrega: es "el
+  // negocio no abre ese día", no un tema de cupo.
+  const cerradosRes = await pool.query(
+    `SELECT fecha FROM tienda_horarios_bloqueados WHERE negocio_id=$1 AND hora='' AND fecha BETWEEN $2 AND $3`,
+    [negocioId, hoyStr, fechaFin]
+  );
+  const diasCerrados = new Set(cerradosRes.rows.map(r => fechaAISO(r.fecha)));
+
   let bloqueadasPorFecha = {};
   let ocupadasPorFechaHora = {};
   if (modo === 'manual') {
     const r = await pool.query(
-      `SELECT fecha, hora FROM tienda_horarios_bloqueados WHERE negocio_id=$1 AND fecha BETWEEN $2 AND $3`,
+      `SELECT fecha, hora FROM tienda_horarios_bloqueados WHERE negocio_id=$1 AND hora<>'' AND fecha BETWEEN $2 AND $3`,
       [negocioId, hoyStr, fechaFin]
     );
     r.rows.forEach(b => {
@@ -321,6 +331,7 @@ async function calcularHorariosDisponibles(negocioId, tipoEntrega, dias) {
   const resultado = [];
   for (let i = 0; i < numDias; i++) {
     const fechaStr = fechaAISO(new Date(hoy.getTime() + i * 86400000));
+    if (diasCerrados.has(fechaStr)) continue;
     const cfgDia = porDiaSemana[new Date(fechaStr + 'T00:00:00Z').getUTCDay()];
     if (!cfgDia) continue;
     let horas = generarHorasEntreRango(cfgDia.hora_apertura, cfgDia.hora_cierre, cfgDia.intervalo_minutos);

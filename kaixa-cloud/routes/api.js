@@ -1224,14 +1224,16 @@ router.put('/negocio/tienda/horarios', async (req, res) => {
   }
 });
 
-// ── Bloqueo manual de horarios (modo manual) ──
+// ── Bloqueo de horarios: hora='' = día cerrado por completo (aplica siempre, ──
+// cualquier modo); hora específica = bloqueo puntual (solo aplica en modo manual).
 router.get('/negocio/tienda/horarios-bloqueados', async (req, res) => {
   try {
     await ensureTiendaTables();
     const { fecha } = req.query;
     const params = [req.caja.negocio_id];
-    let filtroFecha = '';
+    let filtroFecha;
     if (fecha) { params.push(fecha); filtroFecha = ' AND fecha=$2'; }
+    else { filtroFecha = " AND fecha >= (now() AT TIME ZONE 'America/Mexico_City')::date"; }
     const r = await pool.query(
       `SELECT id, fecha, hora, motivo FROM tienda_horarios_bloqueados WHERE negocio_id=$1${filtroFecha} ORDER BY fecha, hora`,
       params
@@ -1243,8 +1245,8 @@ router.get('/negocio/tienda/horarios-bloqueados', async (req, res) => {
 router.post('/negocio/tienda/horarios-bloqueados', async (req, res) => {
   try {
     await ensureTiendaTables();
-    const { fecha, hora, motivo = '' } = req.body;
-    if (!fecha || !hora) return res.status(400).json({ error: 'Falta fecha y hora' });
+    const { fecha, hora = '', motivo = '' } = req.body;
+    if (!fecha) return res.status(400).json({ error: 'Falta la fecha' });
     const r = await pool.query(
       `INSERT INTO tienda_horarios_bloqueados (negocio_id, fecha, hora, motivo) VALUES ($1,$2,$3,$4)
        ON CONFLICT (negocio_id, fecha, hora) DO UPDATE SET motivo=EXCLUDED.motivo
