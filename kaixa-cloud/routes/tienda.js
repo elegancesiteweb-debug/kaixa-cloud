@@ -209,8 +209,131 @@ async function ensureTiendaTables() {
     );
     CREATE INDEX IF NOT EXISTS idx_pedidos_recurrentes_negocio ON pedidos_recurrentes(negocio_id, sucursal_id);
   `);
+
+  // ── Horarios programables para pedidos (recoger/domicilio/envío) ──
+  // Distinto de "Entregas programadas" (florería/regalos, arriba) — esto
+  // aplica a cualquier pedido, no solo a regalos para un tercero.
+  await pool.query(`ALTER TABLE negocios ADD COLUMN IF NOT EXISTS horarios_pedido_activo BOOLEAN DEFAULT false`);
+  await pool.query(`ALTER TABLE negocios ADD COLUMN IF NOT EXISTS horarios_pedido_modo TEXT DEFAULT 'automatico'`);
+  await pool.query(`ALTER TABLE negocios ADD COLUMN IF NOT EXISTS horarios_pedido_capacidad INTEGER DEFAULT 1`);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS tienda_horarios (
+      id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      negocio_id        UUID NOT NULL REFERENCES negocios(id) ON DELETE CASCADE,
+      dia_semana        INTEGER NOT NULL, -- 0=domingo...6=sábado (EXTRACT(DOW), mismo criterio que pedidos_recurrentes)
+      hora_apertura     TEXT NOT NULL,
+      hora_cierre       TEXT NOT NULL,
+      intervalo_minutos INTEGER DEFAULT 30,
+      activo            BOOLEAN DEFAULT true,
+      creado_en         TIMESTAMPTZ DEFAULT now()
+    );
+    CREATE TABLE IF NOT EXISTS tienda_horarios_bloqueados (
+      id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      negocio_id  UUID NOT NULL REFERENCES negocios(id) ON DELETE CASCADE,
+      fecha       DATE NOT NULL,
+      hora        TEXT NOT NULL,
+      motivo      TEXT DEFAULT '',
+      creado_en   TIMESTAMPTZ DEFAULT now(),
+      UNIQUE(negocio_id, fecha, hora)
+    );
+    CREATE INDEX IF NOT EXISTS idx_tienda_horarios_negocio ON tienda_horarios(negocio_id);
+    CREATE INDEX IF NOT EXISTS idx_tienda_horarios_bloqueados_negocio_fecha ON tienda_horarios_bloqueados(negocio_id, fecha);
+  `);
+
   const sinSlug = await pool.query("SELECT id, nombre FROM negocios WHERE slug IS NULL OR slug=''");
   for (const n of sinSlug.rows) { await asignarSlug(n.id, n.nombre); }
+}
+
+// ── Horarios disponibles para agendar un pedido (recoger/domicilio/envío) ──
+// Genera, para los próximos `dias` días, las horas configuradas en
+// tienda_horarios entre apertura y cierre cada intervalo_minutos, quitando
+// las que ya no estén disponibles según el modo:
+//  - automático: domicilio/envío respetan el cupo (horarios_pedido_capacidad)
+//    contando pedidos_online ya agendados en esa fecha+hora; "recoger" nunca
+//    se limita por cupo, solo por el horario configurado.
+//  - manual: se quitan las horas que el negocio bloqueó a mano
+//    (tienda_horarios_bloqueados) — aplica parejo a cualquier tipo de entrega.
+function generarHorasEntreRango(apertura, cierre, intervaloMin) {
+  const horas = [];
+  const [ha, ma] = apertura.split(':').map(Number);
+  const [hc, mc] = cierre.split(':').map(Number);
+  let actual = ha * 60 + ma;
+  const fin = hc * 60 + mc;
+  while (actual < fin) {
+    horas.push(String(Math.floor(actual / 60)).padStart(2, '0') + ':' + String(actual % 60).padStart(2, '0'));
+    actual += (intervaloMin || 30);
+  }
+  return horas;
+}
+
+function fechaAISO(valor) {
+  if (!valor) return '';
+  return valor.toISOString ? valor.toISOString().slice(0, 10) : String(valor).slice(0, 10);
+}
+
+async function calcularHorariosDisponibles(negocioId, tipoEntrega, dias) {
+  const negRes = await pool.query(
+    `SELECT horarios_pedido_activo, horarios_pedido_modo, horarios_pedido_capacidad FROM negocios WHERE id=$1`,
+    [negocioId]
+  );
+  if (!negRes.rows.length || !negRes.rows[0].horarios_pedido_activo) return { activo: false, dias: [] };
+  const modo = negRes.rows[0].horarios_pedido_modo || 'automatico';
+  const capacidad = parseInt(negRes.rows[0].horarios_pedido_capacidad) || 1;
+
+  const filasHorario = await pool.query(
+    `SELECT dia_semana, hora_apertura, hora_cierre, intervalo_minutos FROM tienda_horarios WHERE negocio_id=$1 AND activo=true`,
+    [negocioId]
+  );
+  if (!filasHorario.rows.length) return { activo: true, modo, capacidad, dias: [] };
+  const porDiaSemana = {};
+  filasHorario.rows.forEach(f => { porDiaSemana[f.dia_semana] = f; });
+
+  const numDias = dias || 14;
+  // "Hoy" en horario de México, calculado en la BD (no en el reloj del server)
+  // para no depender de en qué zona horaria corre el proceso de Node.
+  const hoyRes = await pool.query(`SELECT (now() AT TIME ZONE 'America/Mexico_City')::date as hoy`);
+  const hoyStr = fechaAISO(hoyRes.rows[0].hoy);
+  const hoy = new Date(hoyStr + 'T00:00:00Z');
+  const fechaFin = fechaAISO(new Date(hoy.getTime() + (numDias - 1) * 86400000));
+
+  let bloqueadasPorFecha = {};
+  let ocupadasPorFechaHora = {};
+  if (modo === 'manual') {
+    const r = await pool.query(
+      `SELECT fecha, hora FROM tienda_horarios_bloqueados WHERE negocio_id=$1 AND fecha BETWEEN $2 AND $3`,
+      [negocioId, hoyStr, fechaFin]
+    );
+    r.rows.forEach(b => {
+      const f = fechaAISO(b.fecha);
+      (bloqueadasPorFecha[f] = bloqueadasPorFecha[f] || new Set()).add(b.hora);
+    });
+  } else if (tipoEntrega !== 'recoger') {
+    const r = await pool.query(
+      `SELECT fecha_entrega, hora_entrega, COUNT(*) as total FROM pedidos_online
+       WHERE negocio_id=$1 AND fecha_entrega BETWEEN $2 AND $3 AND tipo_entrega IN ('domicilio','envio')
+         AND estado NOT IN ('rechazado','cancelado')
+       GROUP BY fecha_entrega, hora_entrega`,
+      [negocioId, hoyStr, fechaFin]
+    );
+    r.rows.forEach(o => { ocupadasPorFechaHora[fechaAISO(o.fecha_entrega) + '|' + o.hora_entrega] = parseInt(o.total); });
+  }
+
+  const resultado = [];
+  for (let i = 0; i < numDias; i++) {
+    const fechaStr = fechaAISO(new Date(hoy.getTime() + i * 86400000));
+    const cfgDia = porDiaSemana[new Date(fechaStr + 'T00:00:00Z').getUTCDay()];
+    if (!cfgDia) continue;
+    let horas = generarHorasEntreRango(cfgDia.hora_apertura, cfgDia.hora_cierre, cfgDia.intervalo_minutos);
+    if (modo === 'manual') {
+      const set = bloqueadasPorFecha[fechaStr];
+      if (set) horas = horas.filter(h => !set.has(h));
+    } else if (tipoEntrega !== 'recoger') {
+      horas = horas.filter(h => (ocupadasPorFechaHora[fechaStr + '|' + h] || 0) < capacidad);
+    }
+    if (horas.length) resultado.push({ fecha: fechaStr, horas });
+  }
+
+  return { activo: true, modo, capacidad, dias: resultado };
 }
 
 // ── Genera los pedidos_online de la semana para cada plantilla recurrente ──
@@ -319,7 +442,8 @@ router.get('/tienda/:slug/info', async (req, res) => {
               COALESCE(envio_habilitado,false) AS envio_habilitado,
               COALESCE(envio_costo,0) AS envio_costo,
               (mp_access_token IS NOT NULL AND mp_access_token != '') AS mp_habilitado,
-              COALESCE(modulos_opcionales::jsonb ? 'entregas_programadas', false) AS entregas_habilitado
+              COALESCE(modulos_opcionales::jsonb ? 'entregas_programadas', false) AS entregas_habilitado,
+              COALESCE(horarios_pedido_activo,false) AS horarios_pedido_activo
        FROM negocios WHERE slug=$1 AND activo=true`,
       [req.params.slug]
     );
@@ -329,6 +453,19 @@ router.get('/tienda/:slug/info', async (req, res) => {
       [neg.rows[0].id]
     );
     res.json({ negocio: neg.rows[0], sucursales: sucs.rows });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── GET /api/tienda/:slug/horarios-disponibles?tipo_entrega=recoger|domicilio|envio&dias=14 ──
+router.get('/tienda/:slug/horarios-disponibles', async (req, res) => {
+  try {
+    await ensureTiendaTables();
+    const neg = await pool.query('SELECT id FROM negocios WHERE slug=$1 AND activo=true', [req.params.slug]);
+    if (!neg.rows.length) return res.status(404).json({ error: 'Tienda no encontrada' });
+    const tipoEntrega = ['recoger', 'domicilio', 'envio'].includes(req.query.tipo_entrega) ? req.query.tipo_entrega : 'recoger';
+    const dias = Math.min(parseInt(req.query.dias) || 14, 60);
+    const resultado = await calcularHorariosDisponibles(neg.rows[0].id, tipoEntrega, dias);
+    res.json(resultado);
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -464,6 +601,20 @@ router.post('/tienda/:slug/pedidos', async (req, res) => {
       [sucursal_id, negocioId]
     );
     if (!suc.rows.length) return res.status(404).json({ error: 'Sucursal no válida' });
+
+    // Revalidar el horario elegido justo antes de guardar (no confiar en que
+    // siga disponible desde que el cliente lo vio en el checkout — alguien
+    // más pudo haber reservado ese mismo día/hora mientras tanto).
+    if (fecha_entrega && hora_entrega) {
+      const negHorarios = await pool.query('SELECT horarios_pedido_activo FROM negocios WHERE id=$1', [negocioId]);
+      if (negHorarios.rows[0] && negHorarios.rows[0].horarios_pedido_activo) {
+        const disponibilidad = await calcularHorariosDisponibles(negocioId, tipo_entrega, 60);
+        const diaDisponible = disponibilidad.dias.find(d => d.fecha === fecha_entrega);
+        if (!diaDisponible || !diaDisponible.horas.includes(hora_entrega)) {
+          return res.status(409).json({ error: 'Ese horario ya no está disponible, elige otro.' });
+        }
+      }
+    }
 
     await client.query('BEGIN');
 

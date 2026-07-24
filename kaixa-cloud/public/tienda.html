@@ -208,6 +208,10 @@
         <button type="button" id="btnEnvio" class="seg-btn" onclick="setTipoEntrega('envio')" style="display:none">📦 Envío</button>
       </div>
     </div>
+    <div id="ckHorariosBox" style="display:none">
+      <div class="field"><label>¿Qué día?</label><div id="ckHorDias" style="display:flex;gap:6px;overflow-x:auto;padding-bottom:4px"></div></div>
+      <div class="field" id="ckHorHorasWrap" style="display:none"><label>¿A qué hora?</label><div id="ckHorHoras" style="display:flex;gap:6px;flex-wrap:wrap"></div></div>
+    </div>
     <div id="ckDomicilioBox" style="display:none">
       <div class="field"><label>Calle *</label><input id="ckCalle" placeholder="Nombre de la calle"></div>
       <div class="field"><label>Número *</label><input id="ckNumero" placeholder="Ej: 123"></div>
@@ -653,6 +657,70 @@ function setTipoEntrega(tipo){
   var totalMostrar = totalCarrito() + (tipo === 'envio' ? envioCosto : 0);
   document.getElementById('ckTotal').textContent = '$' + totalMostrar.toFixed(2) + (tipo === 'envio' && envioCosto ? ' (incluye $'+envioCosto.toFixed(2)+' de envío)' : '');
   document.getElementById('ckTotalLbl').textContent = tipo === 'domicilio' ? 'Total a pagar al recibir' : tipo === 'envio' ? 'Total a pagar (envío incluido)' : 'Total a pagar en tienda';
+  _horFechaElegida = null;
+  cargarHorariosDisponibles();
+}
+
+// ── Horarios para agendar pedidos (recoger/domicilio/envío) — independiente ──
+// del flujo de "Entregas programadas" (florería/regalos) que ya existe;
+// cuando el negocio activa esto, llena los mismos campos ckFechaEntrega/
+// ckHoraEntrega que ya lee enviarPedido(), pero con opciones validadas contra
+// el horario real del negocio en vez de un date/time libre.
+var _horariosDisponibles = null;
+var _horFechaElegida = null;
+
+async function cargarHorariosDisponibles(){
+  var box = document.getElementById('ckHorariosBox');
+  if (!negocio || !negocio.horarios_pedido_activo) { box.style.display = 'none'; return; }
+  try {
+    var r = await fetch('/api/tienda/' + slug + '/horarios-disponibles?tipo_entrega=' + _tipoEntrega + '&dias=14');
+    var d = await r.json();
+    if (!d.activo || !d.dias || !d.dias.length) {
+      box.style.display = 'none';
+      document.getElementById('ckFechaEntrega').value = '';
+      document.getElementById('ckHoraEntrega').value = '';
+      return;
+    }
+    _horariosDisponibles = d;
+    box.style.display = 'block';
+    renderHorDias();
+  } catch(e) { box.style.display = 'none'; }
+}
+
+function renderHorDias(){
+  var cont = document.getElementById('ckHorDias');
+  if (!_horFechaElegida && _horariosDisponibles.dias.length) _horFechaElegida = _horariosDisponibles.dias[0].fecha;
+  cont.innerHTML = _horariosDisponibles.dias.map(function(dia){
+    var f = new Date(dia.fecha + 'T00:00:00');
+    var etiqueta = f.toLocaleDateString('es-MX', { weekday: 'short', day: 'numeric', month: 'short' });
+    var activo = dia.fecha === _horFechaElegida;
+    return '<button type="button" class="seg-btn' + (activo ? ' active' : '') + '" style="flex-shrink:0" onclick="elegirHorDia(\''+dia.fecha+'\')">'+etiqueta+'</button>';
+  }).join('');
+  elegirHorDia(_horFechaElegida);
+}
+
+function elegirHorDia(fecha){
+  _horFechaElegida = fecha;
+  document.getElementById('ckFechaEntrega').value = fecha;
+  document.getElementById('ckHoraEntrega').value = '';
+  Array.prototype.forEach.call(document.getElementById('ckHorDias').children, function(btn, i){
+    btn.classList.toggle('active', _horariosDisponibles.dias[i].fecha === fecha);
+  });
+  var dia = _horariosDisponibles.dias.find(function(d){ return d.fecha === fecha; });
+  var wrap = document.getElementById('ckHorHorasWrap');
+  var cont = document.getElementById('ckHorHoras');
+  if (!dia || !dia.horas.length) { wrap.style.display = 'none'; cont.innerHTML=''; return; }
+  wrap.style.display = 'block';
+  cont.innerHTML = dia.horas.map(function(h){
+    return '<button type="button" class="seg-btn" onclick="elegirHorHora(\''+h+'\')">'+h+'</button>';
+  }).join('');
+}
+
+function elegirHorHora(hora){
+  document.getElementById('ckHoraEntrega').value = hora;
+  Array.prototype.forEach.call(document.getElementById('ckHorHoras').children, function(btn){
+    btn.classList.toggle('active', btn.textContent === hora);
+  });
 }
 
 function toggleFactura(){

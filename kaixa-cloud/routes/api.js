@@ -1169,6 +1169,100 @@ router.put('/negocio/tienda', async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── GET /api/negocio/tienda/horarios — configuración de horarios para agendar pedidos ──
+router.get('/negocio/tienda/horarios', async (req, res) => {
+  try {
+    await ensureTiendaTables();
+    const neg = await pool.query(
+      `SELECT COALESCE(horarios_pedido_activo,false) AS activo, COALESCE(horarios_pedido_modo,'automatico') AS modo,
+              COALESCE(horarios_pedido_capacidad,1) AS capacidad
+       FROM negocios WHERE id=$1`,
+      [req.caja.negocio_id]
+    );
+    const dias = await pool.query(
+      `SELECT id, dia_semana, hora_apertura, hora_cierre, intervalo_minutos, activo
+       FROM tienda_horarios WHERE negocio_id=$1 ORDER BY dia_semana`,
+      [req.caja.negocio_id]
+    );
+    res.json({ ...neg.rows[0], dias: dias.rows });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── PUT /api/negocio/tienda/horarios — reemplaza toda la configuración de una vez ──
+router.put('/negocio/tienda/horarios', async (req, res) => {
+  const client = await pool.connect();
+  try {
+    await ensureTiendaTables();
+    const { activo, modo, capacidad, dias = [] } = req.body;
+    if (modo && !['automatico', 'manual'].includes(modo)) return res.status(400).json({ error: 'Modo inválido' });
+
+    await client.query('BEGIN');
+    await client.query(
+      `UPDATE negocios SET
+         horarios_pedido_activo=COALESCE($1, horarios_pedido_activo),
+         horarios_pedido_modo=COALESCE($2, horarios_pedido_modo),
+         horarios_pedido_capacidad=COALESCE($3, horarios_pedido_capacidad)
+       WHERE id=$4`,
+      [activo === undefined ? null : !!activo, modo || null, capacidad ? parseInt(capacidad) : null, req.caja.negocio_id]
+    );
+    await client.query('DELETE FROM tienda_horarios WHERE negocio_id=$1', [req.caja.negocio_id]);
+    for (const d of dias) {
+      if (!d.activo || !d.hora_apertura || !d.hora_cierre) continue;
+      await client.query(
+        `INSERT INTO tienda_horarios (negocio_id, dia_semana, hora_apertura, hora_cierre, intervalo_minutos, activo)
+         VALUES ($1,$2,$3,$4,$5,true)`,
+        [req.caja.negocio_id, parseInt(d.dia_semana), d.hora_apertura, d.hora_cierre, parseInt(d.intervalo_minutos) || 30]
+      );
+    }
+    await client.query('COMMIT');
+    res.json({ ok: true });
+  } catch(e) {
+    await client.query('ROLLBACK');
+    res.status(500).json({ error: e.message });
+  } finally {
+    client.release();
+  }
+});
+
+// ── Bloqueo manual de horarios (modo manual) ──
+router.get('/negocio/tienda/horarios-bloqueados', async (req, res) => {
+  try {
+    await ensureTiendaTables();
+    const { fecha } = req.query;
+    const params = [req.caja.negocio_id];
+    let filtroFecha = '';
+    if (fecha) { params.push(fecha); filtroFecha = ' AND fecha=$2'; }
+    const r = await pool.query(
+      `SELECT id, fecha, hora, motivo FROM tienda_horarios_bloqueados WHERE negocio_id=$1${filtroFecha} ORDER BY fecha, hora`,
+      params
+    );
+    res.json(r.rows);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+router.post('/negocio/tienda/horarios-bloqueados', async (req, res) => {
+  try {
+    await ensureTiendaTables();
+    const { fecha, hora, motivo = '' } = req.body;
+    if (!fecha || !hora) return res.status(400).json({ error: 'Falta fecha y hora' });
+    const r = await pool.query(
+      `INSERT INTO tienda_horarios_bloqueados (negocio_id, fecha, hora, motivo) VALUES ($1,$2,$3,$4)
+       ON CONFLICT (negocio_id, fecha, hora) DO UPDATE SET motivo=EXCLUDED.motivo
+       RETURNING id, fecha, hora, motivo`,
+      [req.caja.negocio_id, fecha, hora, motivo]
+    );
+    res.json({ ok: true, ...r.rows[0] });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+router.delete('/negocio/tienda/horarios-bloqueados/:id', async (req, res) => {
+  try {
+    await ensureTiendaTables();
+    await pool.query('DELETE FROM tienda_horarios_bloqueados WHERE id=$1 AND negocio_id=$2', [req.params.id, req.caja.negocio_id]);
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 // ── GET /api/pedidos-online — historial de esta sucursal ──
 router.get('/pedidos-online', async (req, res) => {
   try {
