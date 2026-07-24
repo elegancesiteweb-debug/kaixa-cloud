@@ -1264,10 +1264,15 @@ router.delete('/negocio/tienda/horarios-bloqueados/:id', async (req, res) => {
 });
 
 // ── GET /api/pedidos-online — historial de esta sucursal ──
+// Con ?desde=&hasta= (YYYY-MM-DD) trae TODOS los pedidos con fecha_entrega en
+// ese rango (para el calendario) en vez de los últimos 100 por creación —
+// un pedido agendado a futuro podría no estar entre los 100 más recientes.
 router.get('/pedidos-online', async (req, res) => {
   try {
     await ensureTiendaTables();
     const { negocio_id, sucursal_id } = req.caja;
+    const { desde, hasta } = req.query;
+    const rangoFecha = (desde && hasta);
     const r = await pool.query(`
       SELECT po.*,
         COALESCE(json_agg(json_build_object(
@@ -1279,8 +1284,11 @@ router.get('/pedidos-online', async (req, res) => {
       FROM pedidos_online po
       LEFT JOIN pedido_online_items poi ON poi.pedido_id = po.id
       WHERE po.negocio_id=$1 AND po.sucursal_id=$2
-      GROUP BY po.id ORDER BY po.creado_en DESC LIMIT 100`,
-      [negocio_id, sucursal_id]
+        ${rangoFecha ? 'AND po.fecha_entrega BETWEEN $3 AND $4' : ''}
+      GROUP BY po.id
+      ORDER BY ${rangoFecha ? 'po.fecha_entrega, po.hora_entrega' : 'po.creado_en DESC'}
+      ${rangoFecha ? '' : 'LIMIT 100'}`,
+      rangoFecha ? [negocio_id, sucursal_id, desde, hasta] : [negocio_id, sucursal_id]
     );
     res.json(r.rows);
   } catch(e) { res.status(500).json({ error: e.message }); }

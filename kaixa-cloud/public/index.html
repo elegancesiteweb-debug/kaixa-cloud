@@ -382,6 +382,7 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:var(--ff);backgroun
         <div class="subtab" id="subtabVO-carritos" onclick="irTabVentasOnlineMovil('carritos')"><svg class="subtab-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg><span>Carritos</span></div>
         <div class="subtab" id="subtabVO-cotizaciones" onclick="irTabVentasOnlineMovil('cotizaciones')"><svg class="subtab-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg><span>Cotizaciones</span></div>
         <div class="subtab" id="subtabVO-entregas" onclick="irTabVentasOnlineMovil('entregas')"><svg class="subtab-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg><span>Entregas</span></div>
+        <div class="subtab" id="subtabVO-calendario" onclick="irTabVentasOnlineMovil('calendario')"><svg class="subtab-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg><span>Calendario</span></div>
         <div class="subtab" id="subtabVO-recurrentes" onclick="irTabVentasOnlineMovil('recurrentes')"><svg class="subtab-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg><span>Recurrentes</span></div>
         <div class="subtab" id="subtabVO-ajustes" onclick="irTabVentasOnlineMovil('ajustes')"><svg class="subtab-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg><span>Ajustes</span></div>
       </div>
@@ -394,6 +395,17 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:var(--ff);backgroun
         <div id="cotizacionesListMovil"></div>
       </div>
       <div id="bodyVOMovil-entregas" style="display:none"><div id="entregasProgramadasListMovil"></div></div>
+      <div id="bodyVOMovil-calendario" style="display:none">
+        <div class="page-pad" style="padding-bottom:0">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+            <button class="btn-sec" style="width:auto;padding:6px 12px;font-size:16px" onclick="cambiarMesCalendarioMovil(-1)">‹</button>
+            <div id="calMesTituloMovil" style="font-size:14px;font-weight:800;text-transform:capitalize"></div>
+            <button class="btn-sec" style="width:auto;padding:6px 12px;font-size:16px" onclick="cambiarMesCalendarioMovil(1)">›</button>
+          </div>
+          <div id="calGridMovil" style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:14px"></div>
+        </div>
+        <div id="calDiaDetalleMovil"></div>
+      </div>
       <div id="bodyVOMovil-recurrentes" style="display:none">
         <div class="page-pad" style="padding-bottom:0">
           <button class="btn-primary" onclick="abrirNuevaRecurrenteMovil()">+ Nueva despensa recurrente</button>
@@ -2616,7 +2628,8 @@ function _soloFecha(f){ return (f||'').toString().split('T')[0]; }
 
 function verDetallePedidoOnline(id) {
   var p = _pedidosOnline.find(function(x){ return x.id === id; })
-    || (window._entregasProgramadasMovil||[]).find(function(x){ return x.id === id; });
+    || (window._entregasProgramadasMovil||[]).find(function(x){ return x.id === id; })
+    || (window._calendarioPedidosMovil||[]).find(function(x){ return x.id === id; });
   if (!p) { notif('Pedido no encontrado', 'err'); return; }
   var fecha = p.creado_en ? new Date(p.creado_en).toLocaleString('es-MX', {day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit',timeZone:'America/Mexico_City'}) : '';
   var estTxt = p.estado === 'pendiente' ? '⏳ Pendiente' : p.estado === 'confirmado' ? '✅ Confirmado' : '❌ Rechazado';
@@ -2735,7 +2748,7 @@ async function rechazarPedidoOnline(id) {
 var _tabVOMovilActual = 'pedidos';
 function irTabVentasOnlineMovil(tab) {
   _tabVOMovilActual = tab;
-  ['pedidos','carritos','cotizaciones','entregas','recurrentes','ajustes'].forEach(function(t) {
+  ['pedidos','carritos','cotizaciones','entregas','calendario','recurrentes','ajustes'].forEach(function(t) {
     document.getElementById('subtabVO-'+t).classList.toggle('on', t === tab);
     document.getElementById('bodyVOMovil-'+t).style.display = t === tab ? 'block' : 'none';
   });
@@ -2743,6 +2756,7 @@ function irTabVentasOnlineMovil(tab) {
   else if (tab === 'carritos') loadCarritosAbandonados();
   else if (tab === 'cotizaciones') loadCotizacionesMovil();
   else if (tab === 'entregas') loadEntregasProgramadas();
+  else if (tab === 'calendario') cargarCalendarioMovil();
   else if (tab === 'recurrentes') loadRecurrentesMovil();
 }
 
@@ -2788,6 +2802,84 @@ async function loadEntregasProgramadas() {
       '</div>';
     }).join('');
   } catch(e) { cont.innerHTML = '<div class="empty"><div class="ico">📅</div><p>Error al cargar</p></div>'; }
+}
+
+// ── Calendario de pedidos — vista de mes aparte de "Entregas" (que sigue ──
+// siendo la lista plana de siempre). Usa GET /api/pedidos-online?desde=&hasta=
+// para traer TODOS los pedidos con fecha_entrega en el mes, sin el límite de
+// los 100 más recientes que aplica cuando no se manda ese rango.
+function _fechaYMD(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+
+var _calMesMovil = new Date(); _calMesMovil.setDate(1);
+var _calPorDiaMovil = {};
+var _calDiaSeleccionadoMovil = null;
+
+async function cargarCalendarioMovil(){
+  document.getElementById('calMesTituloMovil').textContent = _calMesMovil.toLocaleDateString('es-MX', {month:'long', year:'numeric'});
+  var anio = _calMesMovil.getFullYear(), mes = _calMesMovil.getMonth();
+  var desde = _fechaYMD(new Date(anio, mes, 1));
+  var hasta = _fechaYMD(new Date(anio, mes+1, 0));
+  try {
+    var r = await apiFetch('/api/pedidos-online?desde='+desde+'&hasta='+hasta);
+    var pedidos = r && r.ok ? await r.json() : [];
+    if (!Array.isArray(pedidos)) pedidos = [];
+    window._calendarioPedidosMovil = pedidos;
+    _calPorDiaMovil = {};
+    pedidos.forEach(function(p){
+      var f = _soloFecha(p.fecha_entrega);
+      if (!f) return;
+      (_calPorDiaMovil[f] = _calPorDiaMovil[f] || []).push(p);
+    });
+  } catch(e) { _calPorDiaMovil = {}; }
+  _calDiaSeleccionadoMovil = null;
+  document.getElementById('calDiaDetalleMovil').innerHTML = '';
+  renderCalendarioMovil();
+}
+
+function cambiarMesCalendarioMovil(delta){
+  _calMesMovil.setMonth(_calMesMovil.getMonth() + delta);
+  cargarCalendarioMovil();
+}
+
+function renderCalendarioMovil(){
+  var cont = document.getElementById('calGridMovil');
+  var anio = _calMesMovil.getFullYear(), mes = _calMesMovil.getMonth();
+  var primerDiaSemana = new Date(anio, mes, 1).getDay();
+  var diasEnMes = new Date(anio, mes+1, 0).getDate();
+  var hoyStr = _fechaYMD(new Date());
+  var html = ['D','L','M','M','J','V','S'].map(function(d){
+    return '<div style="text-align:center;font-size:10px;font-weight:800;color:var(--text3);padding:4px 0">'+d+'</div>';
+  }).join('');
+  for (var i=0; i<primerDiaSemana; i++) html += '<div></div>';
+  for (var dia=1; dia<=diasEnMes; dia++){
+    var fecha = _fechaYMD(new Date(anio, mes, dia));
+    var pedidosDia = _calPorDiaMovil[fecha] || [];
+    var esHoy = fecha === hoyStr;
+    var seleccionado = fecha === _calDiaSeleccionadoMovil;
+    html += '<div onclick="verDiaCalendarioMovil(\''+fecha+'\')" style="aspect-ratio:1;border-radius:8px;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;background:'+(seleccionado?'var(--accent)':(pedidosDia.length?'var(--s2)':'transparent'))+';border:1.5px solid '+(esHoy?'var(--accent)':'var(--border)')+';color:'+(seleccionado?'#fff':'var(--text)')+'">' +
+      '<span style="font-size:12px;font-weight:'+(esHoy?'900':'600')+'">'+dia+'</span>' +
+      (pedidosDia.length ? '<span style="font-size:9px;font-weight:800;margin-top:1px;color:'+(seleccionado?'#fff':'var(--accent)')+'">'+pedidosDia.length+'</span>' : '') +
+    '</div>';
+  }
+  cont.innerHTML = html;
+}
+
+function verDiaCalendarioMovil(fecha){
+  _calDiaSeleccionadoMovil = fecha;
+  renderCalendarioMovil();
+  var pedidosDia = (_calPorDiaMovil[fecha] || []).slice().sort(function(a,b){ return (a.hora_entrega||'').localeCompare(b.hora_entrega||''); });
+  var cont = document.getElementById('calDiaDetalleMovil');
+  if (!pedidosDia.length) { cont.innerHTML = '<div class="empty"><div class="ico">🗓️</div><p>Sin pedidos ese día</p></div>'; return; }
+  var fechaTxt = new Date(fecha+'T00:00:00').toLocaleDateString('es-MX', {weekday:'long', day:'numeric', month:'long'});
+  var iconos = { recoger:'🏪', domicilio:'🚚', envio:'📦' };
+  cont.innerHTML = '<div style="padding:0 16px 4px;font-size:12px;font-weight:800;color:var(--text2);text-transform:capitalize">'+fechaTxt+'</div>' +
+    pedidosDia.map(function(p){
+      var estTxt = p.entregado_en ? '✅ Entregado' : p.estado==='confirmado' ? '⏳ Falta entregar' : p.estado==='rechazado' ? '❌ Rechazado' : '⚠️ Sin confirmar';
+      return '<div class="card" style="margin:0 16px 8px;cursor:pointer" onclick="verDetallePedidoOnline(\''+p.id+'\')">' +
+        '<div class="card-title">'+(iconos[p.tipo_entrega]||'🏪')+' '+(p.hora_entrega||'—')+' · '+(p.destinatario_nombre||p.cliente_nombre)+'</div>' +
+        '<div class="card-sub" style="font-weight:700">'+estTxt+'</div>' +
+      '</div>';
+    }).join('');
 }
 
 // ── Entregas recurrentes de despensa — plantillas que generan un pedido ──

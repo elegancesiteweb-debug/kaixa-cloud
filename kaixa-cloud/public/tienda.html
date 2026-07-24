@@ -699,26 +699,61 @@ function renderHorDias(){
   elegirHorDia(_horFechaElegida);
 }
 
-function elegirHorDia(fecha){
+// Refresca _horariosDisponibles contra el servidor — se llama cada vez que el
+// cliente elige día u hora, para no confiar en la lista que se cargó al abrir
+// el checkout (alguien más pudo haber tomado ese horario mientras decidía).
+async function _refrescarHorariosDisponibles(){
+  try {
+    var r = await fetch('/api/tienda/' + slug + '/horarios-disponibles?tipo_entrega=' + _tipoEntrega + '&dias=14');
+    var d = await r.json();
+    if (d.activo) _horariosDisponibles = d;
+  } catch(e) {}
+}
+
+async function elegirHorDia(fecha){
   _horFechaElegida = fecha;
   document.getElementById('ckFechaEntrega').value = fecha;
   document.getElementById('ckHoraEntrega').value = '';
   Array.prototype.forEach.call(document.getElementById('ckHorDias').children, function(btn, i){
-    btn.classList.toggle('active', _horariosDisponibles.dias[i].fecha === fecha);
+    btn.classList.toggle('active', _horariosDisponibles.dias[i] && _horariosDisponibles.dias[i].fecha === fecha);
   });
-  var dia = _horariosDisponibles.dias.find(function(d){ return d.fecha === fecha; });
   var wrap = document.getElementById('ckHorHorasWrap');
   var cont = document.getElementById('ckHorHoras');
-  if (!dia || !dia.horas.length) { wrap.style.display = 'none'; cont.innerHTML=''; return; }
   wrap.style.display = 'block';
+  cont.innerHTML = '<span style="font-size:12px;color:var(--text3)">Consultando disponibilidad…</span>';
+  await _refrescarHorariosDisponibles();
+  var dia = _horariosDisponibles.dias.find(function(d){ return d.fecha === fecha; });
+  if (!dia || !dia.horas.length) {
+    wrap.style.display = 'none'; cont.innerHTML = '';
+    notif('Ese día ya no tiene horarios disponibles, elige otro');
+    renderHorDias();
+    return;
+  }
   cont.innerHTML = dia.horas.map(function(h){
     return '<button type="button" class="seg-btn" onclick="elegirHorHora(\''+h+'\')">'+h+'</button>';
   }).join('');
 }
 
-function elegirHorHora(hora){
+async function elegirHorHora(hora){
+  // Se revalida justo al elegir la hora — así el cliente se entera en el
+  // momento si ya no está disponible, no hasta enviar el pedido.
+  await _refrescarHorariosDisponibles();
+  var dia = _horariosDisponibles.dias.find(function(d){ return d.fecha === _horFechaElegida; });
+  var cont = document.getElementById('ckHorHoras');
+  if (!dia || !dia.horas.includes(hora)) {
+    notif('❌ Ese horario ya no está disponible, elige otro');
+    document.getElementById('ckHoraEntrega').value = '';
+    if (dia && dia.horas.length) {
+      cont.innerHTML = dia.horas.map(function(h){ return '<button type="button" class="seg-btn" onclick="elegirHorHora(\''+h+'\')">'+h+'</button>'; }).join('');
+    } else {
+      cont.innerHTML = '';
+      document.getElementById('ckHorHorasWrap').style.display = 'none';
+      renderHorDias();
+    }
+    return;
+  }
   document.getElementById('ckHoraEntrega').value = hora;
-  Array.prototype.forEach.call(document.getElementById('ckHorHoras').children, function(btn){
+  Array.prototype.forEach.call(cont.children, function(btn){
     btn.classList.toggle('active', btn.textContent === hora);
   });
 }
