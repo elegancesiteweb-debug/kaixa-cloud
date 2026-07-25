@@ -209,6 +209,14 @@ async function aplicarEsquema() {
     console.log('✅ Tabla promociones lista');
   } catch(e) { console.error('⚠️ promociones:', e.message); }
   try {
+    // Vigencia por día de la semana / horario, además del rango de fechas
+    // que ya existía — dias_semana es un JSON string de enteros 0-6
+    // (0=domingo), igual que en pos-mexico. NULL en cualquiera de los tres = sin restricción.
+    await pool.query(`ALTER TABLE promociones ADD COLUMN IF NOT EXISTS dias_semana TEXT`);
+    await pool.query(`ALTER TABLE promociones ADD COLUMN IF NOT EXISTS hora_inicio TEXT`);
+    await pool.query(`ALTER TABLE promociones ADD COLUMN IF NOT EXISTS hora_fin TEXT`);
+  } catch(e) { console.error('⚠️ promociones (dias/horario):', e.message); }
+  try {
     await pool.query(`
       CREATE TABLE IF NOT EXISTS divisas (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

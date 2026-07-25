@@ -238,13 +238,15 @@ router.post('/push', async (req, res) => {
       try {
         await client.query(`
           INSERT INTO promociones (id, negocio_id, sucursal_id, nombre, tipo, categoria_nombre, producto_id,
-            valor, nxm_compra, nxm_paga, fecha_inicio, fecha_fin, activo, actualizado_en)
-          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,now())
+            valor, nxm_compra, nxm_paga, fecha_inicio, fecha_fin, activo, dias_semana, hora_inicio, hora_fin, actualizado_en)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,now())
           ON CONFLICT (id) DO UPDATE SET
             nombre=$4, tipo=$5, categoria_nombre=$6, producto_id=$7,
-            valor=$8, nxm_compra=$9, nxm_paga=$10, fecha_inicio=$11, fecha_fin=$12, activo=$13, actualizado_en=now()`,
+            valor=$8, nxm_compra=$9, nxm_paga=$10, fecha_inicio=$11, fecha_fin=$12, activo=$13,
+            dias_semana=$14, hora_inicio=$15, hora_fin=$16, actualizado_en=now()`,
           [pr.id, negocio_id, pr.sucursal_id||sucursal_id, pr.nombre, pr.tipo, pr.categoria_nombre||null, pr.producto_id||null,
-           pr.valor||0, pr.nxm_compra||0, pr.nxm_paga||0, pr.fecha_inicio||null, pr.fecha_fin||null, pr.activo!==false]
+           pr.valor||0, pr.nxm_compra||0, pr.nxm_paga||0, pr.fecha_inicio||null, pr.fecha_fin||null, pr.activo!==false,
+           pr.dias_semana||null, pr.hora_inicio||null, pr.hora_fin||null]
         );
       } catch(e) { console.warn('Promoción push error:', e.message); }
     }

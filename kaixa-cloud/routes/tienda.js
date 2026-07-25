@@ -14,6 +14,26 @@ const crypto  = require('crypto');
 // pertenece un producto aquí — aplicar por categoría_nombre podría acertar
 // por coincidencia de texto en unos negocios y fallar silenciosamente en
 // otros, así que se prefiere no aplicarlas en línea antes que aplicarlas mal.
+// Día de la semana (0-6, domingo=0) y horario ("HH:MM") — opcionales, si no
+// están definidos no restringen nada. Mismo criterio que pos-mexico
+// (promocionesVigentes() en frontend/public/index.html y promocionesVigentesHoy()
+// en src/routes/mesas.js) — se evalúa en JS porque comparar arrays JSON +
+// horas dentro de la consulta SQL es innecesariamente complejo para esto.
+function promoDiaHorarioOk(p, ahora) {
+  if (p.dias_semana) {
+    try {
+      const dias = JSON.parse(p.dias_semana);
+      if (dias && dias.length && !dias.includes(ahora.getDay())) return false;
+    } catch(e) {}
+  }
+  if (p.hora_inicio && p.hora_fin) {
+    const pad = n => String(n).padStart(2,'0');
+    const hhmm = pad(ahora.getHours()) + ':' + pad(ahora.getMinutes());
+    if (hhmm < p.hora_inicio || hhmm > p.hora_fin) return false;
+  }
+  return true;
+}
+
 async function promocionesVigentesNegocio(negocioId) {
   try {
     const r = await pool.query(
@@ -22,7 +42,8 @@ async function promocionesVigentesNegocio(negocioId) {
          AND fecha_inicio <= CURRENT_DATE AND fecha_fin >= CURRENT_DATE`,
       [negocioId]
     );
-    return r.rows;
+    const ahora = new Date();
+    return r.rows.filter(p => promoDiaHorarioOk(p, ahora));
   } catch(e) { return []; }
 }
 
