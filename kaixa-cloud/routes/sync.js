@@ -53,6 +53,15 @@ async function ensureMonedaCostoColumns() {
   _monedaCostoColOk = true;
 }
 
+// Descripción/especificaciones del platillo o producto — opcional, se
+// muestra en el menú digital QR y la tienda en línea cuando se llena.
+let _descripcionColOk = false;
+async function ensureDescripcionColumn() {
+  if (_descripcionColOk) return;
+  await pool.query(`ALTER TABLE productos ADD COLUMN IF NOT EXISTS descripcion TEXT DEFAULT ''`);
+  _descripcionColOk = true;
+}
+
 // ── POST /api/sync/push ──────────────────────────────────────
 router.post('/push', async (req, res) => {
   const { negocio_id, sucursal_id, id: caja_id } = req.caja;
@@ -69,6 +78,7 @@ router.post('/push', async (req, res) => {
     await ensureCoberturaM2Column();
     await ensureDimensionesColumns();
     await ensureMonedaCostoColumns();
+    await ensureDescripcionColumn();
     await client.query('BEGIN');
 
     // Proveedores (van primero: los productos pueden referenciarlos por uuid)
@@ -93,8 +103,8 @@ router.post('/push', async (req, res) => {
         `INSERT INTO productos
           (id, negocio_id, sucursal_id, nombre, emoji, imagen_url, codigo_barras, precio, costo,
            stock_minimo, categoria_id, giro, por_peso, unidad_peso, tiene_prescripcion, cobertura_m2,
-           peso_kg, largo_cm, ancho_cm, alto_cm, activo, proveedor_id, actualizado_en, moneda_costo, costo_moneda, imagenes_extra)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22, now(), $23,$24,$25)
+           peso_kg, largo_cm, ancho_cm, alto_cm, activo, proveedor_id, actualizado_en, moneda_costo, costo_moneda, imagenes_extra, descripcion)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22, now(), $23,$24,$25,$26)
          ON CONFLICT (id) DO UPDATE SET
            sucursal_id=COALESCE(productos.sucursal_id, $3),
            nombre=$4, emoji=$5, imagen_url=COALESCE(NULLIF($6,''), productos.imagen_url), codigo_barras=$7, precio=$8, costo=$9,
@@ -102,12 +112,13 @@ router.post('/push', async (req, res) => {
            tiene_prescripcion=$15, cobertura_m2=$16, peso_kg=$17, largo_cm=$18, ancho_cm=$19, alto_cm=$20,
            activo=$21, proveedor_id=COALESCE($22, productos.proveedor_id), actualizado_en=now(),
            moneda_costo=$23, costo_moneda=$24,
-           imagenes_extra=COALESCE(NULLIF($25,'[]'), productos.imagenes_extra)`,
+           imagenes_extra=COALESCE(NULLIF($25,'[]'), productos.imagenes_extra),
+           descripcion=$26`,
         [p.uuid, negocio_id, prodSucursalId, p.nombre, p.emoji||'📦', p.imagen_url||'', p.codigo_barras||'',
          p.precio||0, p.costo||0, p.stock_minimo||5, p.categoria_id||null, p.giro||'tienda',
          !!p.por_peso, p.unidad_peso||'kg', !!p.tiene_prescripcion, parseFloat(p.cobertura_m2)||0,
          parseFloat(p.peso_kg)||0, parseFloat(p.largo_cm)||0, parseFloat(p.ancho_cm)||0, parseFloat(p.alto_cm)||0,
-         activoProd, p.proveedor_uuid||null, p.moneda_costo||'MXN', parseFloat(p.costo_moneda)||0, imagenesExtraStr]
+         activoProd, p.proveedor_uuid||null, p.moneda_costo||'MXN', parseFloat(p.costo_moneda)||0, imagenesExtraStr, p.descripcion||'']
       );
       // Ajuste de stock si viene stock
       if (p.stock !== undefined && p.stock !== null) {
@@ -357,9 +368,10 @@ router.get('/pull', async (req, res) => {
     await ensureCoberturaM2Column();
     await ensureDimensionesColumns();
     await ensureMonedaCostoColumns();
+    await ensureDescripcionColumn();
     const [productos, clientes, ventas, movimientos, lotesPull, kitsPull, promocionesPull, divisasPull, variantesPull, proveedoresPull, pedidosPull, empleadosPull] = await Promise.all([
       pool.query(
-        `SELECT p.id, p.negocio_id, p.sucursal_id, p.nombre, p.emoji, p.codigo_barras,
+        `SELECT p.id, p.negocio_id, p.sucursal_id, p.nombre, p.descripcion, p.emoji, p.codigo_barras,
                 p.precio, p.costo, p.stock_minimo, p.categoria_id, p.giro, p.por_peso,
                 p.unidad_peso, p.tiene_prescripcion, p.cobertura_m2,
                 p.peso_kg, p.largo_cm, p.ancho_cm, p.alto_cm, p.activo, p.creado_en, p.actualizado_en,

@@ -130,6 +130,10 @@ async function ensureTiendaTables() {
   await pool.query(`ALTER TABLE negocios ADD COLUMN IF NOT EXISTS menu_bienvenida TEXT DEFAULT ''`);
   await pool.query(`ALTER TABLE negocios ADD COLUMN IF NOT EXISTS menu_mostrar_precios BOOLEAN DEFAULT true`);
   await pool.query(`ALTER TABLE negocios ADD COLUMN IF NOT EXISTS menu_categorias_ocultas TEXT DEFAULT '[]'`);
+  // Descripción/especificaciones del producto (opcional) — mismo campo que ya
+  // usa el sync (routes/sync.js la asegura también, se repite aquí para no
+  // depender del orden en que corren las rutas, mismo criterio que arriba).
+  await pool.query(`ALTER TABLE productos ADD COLUMN IF NOT EXISTS descripcion TEXT DEFAULT ''`);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS pedidos_online (
       id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -523,7 +527,7 @@ router.get('/tienda/:slug/productos', async (req, res) => {
     const neg = await pool.query('SELECT id FROM negocios WHERE slug=$1 AND activo=true', [req.params.slug]);
     if (!neg.rows.length) return res.status(404).json({ error: 'Tienda no encontrada' });
     const r = await pool.query(`
-      SELECT p.id, p.nombre, p.emoji, p.imagen_url, p.imagenes_extra, p.precio, p.categoria_id, c.nombre AS categoria_nombre,
+      SELECT p.id, p.nombre, COALESCE(p.descripcion,'') AS descripcion, p.emoji, p.imagen_url, p.imagenes_extra, p.precio, p.categoria_id, c.nombre AS categoria_nombre,
              COALESCE(p.tiene_variantes,false) AS tiene_variantes,
              COALESCE(s.stock,0) AS stock
       FROM productos p
