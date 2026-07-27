@@ -1169,6 +1169,48 @@ router.put('/negocio/tienda', async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── GET /api/negocio/menu-config — personalización del menú digital QR ──
+router.get('/negocio/menu-config', async (req, res) => {
+  try {
+    await ensureTiendaTables();
+    const r = await pool.query(
+      `SELECT COALESCE(menu_color_acento,'') AS menu_color_acento,
+              COALESCE(menu_bienvenida,'') AS menu_bienvenida,
+              COALESCE(menu_mostrar_precios,true) AS menu_mostrar_precios,
+              COALESCE(menu_categorias_ocultas,'[]') AS menu_categorias_ocultas
+       FROM negocios WHERE id=$1`,
+      [req.caja.negocio_id]
+    );
+    const row = r.rows[0] || {};
+    try { row.menu_categorias_ocultas = JSON.parse(row.menu_categorias_ocultas || '[]'); } catch(e) { row.menu_categorias_ocultas = []; }
+    res.json(row);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── PUT /api/negocio/menu-config ──
+router.put('/negocio/menu-config', async (req, res) => {
+  try {
+    await ensureTiendaTables();
+    const { color_acento, bienvenida, mostrar_precios, categorias_ocultas } = req.body;
+    await pool.query(
+      `UPDATE negocios SET
+         menu_color_acento = COALESCE($1, menu_color_acento),
+         menu_bienvenida = COALESCE($2, menu_bienvenida),
+         menu_mostrar_precios = COALESCE($3, menu_mostrar_precios),
+         menu_categorias_ocultas = COALESCE($4, menu_categorias_ocultas)
+       WHERE id=$5`,
+      [
+        color_acento != null ? color_acento : null,
+        bienvenida != null ? bienvenida : null,
+        mostrar_precios != null ? mostrar_precios : null,
+        categorias_ocultas !== undefined ? JSON.stringify(categorias_ocultas) : null,
+        req.caja.negocio_id
+      ]
+    );
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 // ── GET /api/negocio/tienda/horarios — configuración de horarios para agendar pedidos ──
 router.get('/negocio/tienda/horarios', async (req, res) => {
   try {

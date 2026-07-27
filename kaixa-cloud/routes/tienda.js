@@ -123,6 +123,13 @@ async function ensureTiendaTables() {
   // Mismo interruptor de sub-funciones que routes/modulos-opcionales.js — se
   // asegura aquí también para no depender del orden en que corren las rutas.
   await pool.query(`ALTER TABLE negocios ADD COLUMN IF NOT EXISTS modulos_opcionales TEXT DEFAULT '[]'`);
+  // Personalización del menú digital QR (public/menu.html) — separado de los
+  // campos tienda_* de arriba porque no todos aplican igual (el menú es de
+  // solo consulta, no tiene carrito/checkout).
+  await pool.query(`ALTER TABLE negocios ADD COLUMN IF NOT EXISTS menu_color_acento TEXT DEFAULT ''`);
+  await pool.query(`ALTER TABLE negocios ADD COLUMN IF NOT EXISTS menu_bienvenida TEXT DEFAULT ''`);
+  await pool.query(`ALTER TABLE negocios ADD COLUMN IF NOT EXISTS menu_mostrar_precios BOOLEAN DEFAULT true`);
+  await pool.query(`ALTER TABLE negocios ADD COLUMN IF NOT EXISTS menu_categorias_ocultas TEXT DEFAULT '[]'`);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS pedidos_online (
       id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -475,16 +482,22 @@ router.get('/tienda/:slug/info', async (req, res) => {
               COALESCE(envio_costo,0) AS envio_costo,
               (mp_access_token IS NOT NULL AND mp_access_token != '') AS mp_habilitado,
               COALESCE(modulos_opcionales::jsonb ? 'entregas_programadas', false) AS entregas_habilitado,
-              COALESCE(horarios_pedido_activo,false) AS horarios_pedido_activo
+              COALESCE(horarios_pedido_activo,false) AS horarios_pedido_activo,
+              COALESCE(menu_color_acento,'') AS menu_color_acento,
+              COALESCE(menu_bienvenida,'') AS menu_bienvenida,
+              COALESCE(menu_mostrar_precios,true) AS menu_mostrar_precios,
+              COALESCE(menu_categorias_ocultas,'[]') AS menu_categorias_ocultas
        FROM negocios WHERE slug=$1 AND activo=true`,
       [req.params.slug]
     );
     if (!neg.rows.length) return res.status(404).json({ error: 'Tienda no encontrada' });
+    const negocio = neg.rows[0];
+    try { negocio.menu_categorias_ocultas = JSON.parse(negocio.menu_categorias_ocultas || '[]'); } catch(e) { negocio.menu_categorias_ocultas = []; }
     const sucs = await pool.query(
       'SELECT id, nombre FROM sucursales WHERE negocio_id=$1 AND activo=true ORDER BY nombre',
       [neg.rows[0].id]
     );
-    res.json({ negocio: neg.rows[0], sucursales: sucs.rows });
+    res.json({ negocio, sucursales: sucs.rows });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 

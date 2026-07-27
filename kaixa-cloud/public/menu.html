@@ -61,6 +61,8 @@ var API = '';
 var slug = location.pathname.split('/').filter(Boolean).pop();
 var productos = [];
 var catActiva = '';
+var mostrarPrecios = true;
+var categoriasOcultas = [];
 
 function esc(s){ return (s||'').toString().replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
 
@@ -71,20 +73,31 @@ async function init(){
     var info = await rInfo.json();
     var neg = info.negocio || {};
     document.getElementById('negNombre').textContent = neg.nombre || 'Menú';
-    document.getElementById('negDesc').textContent = neg.tienda_descripcion || '';
+    document.getElementById('negDesc').textContent = neg.menu_bienvenida || neg.tienda_descripcion || '';
     if(neg.tienda_imagen_url) document.getElementById('heroBg').style.backgroundImage = 'url(' + neg.tienda_imagen_url + ')';
     if(neg.tienda_logo_url){
       var lg = document.getElementById('heroLogo');
       lg.style.display = 'flex';
       lg.innerHTML = '<img src="'+neg.tienda_logo_url+'">';
     }
+    // Personalización: color de acento (el degradado del hero usa el mismo
+    // tono en ambos extremos si se personaliza — más simple que inventar un
+    // segundo color derivado, y se ve bien igual).
+    if(neg.menu_color_acento){
+      document.documentElement.style.setProperty('--acc', neg.menu_color_acento);
+      document.documentElement.style.setProperty('--acc2', neg.menu_color_acento);
+    }
+    mostrarPrecios = neg.menu_mostrar_precios !== false;
+    categoriasOcultas = Array.isArray(neg.menu_categorias_ocultas) ? neg.menu_categorias_ocultas : [];
+
     var sucursales = info.sucursales || [];
     if(!sucursales.length){ document.getElementById('cont').innerHTML = '<div class="empty">Este negocio no tiene sucursales activas</div>'; return; }
     var sucursalId = sucursales[0].id;
 
     var rProd = await fetch(API+'/api/tienda/'+slug+'/productos?sucursal_id='+sucursalId);
-    productos = rProd.ok ? await rProd.json() : [];
-    if(!Array.isArray(productos) || !productos.length){
+    var todos = rProd.ok ? await rProd.json() : [];
+    productos = Array.isArray(todos) ? todos.filter(function(p){ return categoriasOcultas.indexOf(p.categoria_nombre) === -1; }) : [];
+    if(!productos.length){
       document.getElementById('cont').innerHTML = '<div class="empty">Todavía no hay platillos publicados</div>';
       return;
     }
@@ -121,10 +134,13 @@ function renderProductos(){
     var img = (p.imagen_url && p.imagen_url.startsWith('data:'))
       ? '<img src="'+p.imagen_url+'">'
       : '<span>'+(p.emoji||'🍽️')+'</span>';
-    var promoBadge = p.promocion ? '<div class="p-promo">🏷️ '+(p.promocion.tipo==='pct' ? (p.promocion.valor+'% OFF') : 'Promo')+'</div>' : '';
-    var precioHtml = p.precio_original
-      ? '<span class="p-pr-old">$'+Number(p.precio_original).toFixed(2)+'</span><span class="p-pr">$'+Number(p.precio).toFixed(2)+'</span>'
-      : '<span class="p-pr">$'+Number(p.precio).toFixed(2)+'</span>';
+    var promoBadge = (mostrarPrecios && p.promocion) ? '<div class="p-promo">🏷️ '+(p.promocion.tipo==='pct' ? (p.promocion.valor+'% OFF') : 'Promo')+'</div>' : '';
+    var precioHtml = '';
+    if(mostrarPrecios){
+      precioHtml = p.precio_original
+        ? '<span class="p-pr-old">$'+Number(p.precio_original).toFixed(2)+'</span><span class="p-pr">$'+Number(p.precio).toFixed(2)+'</span>'
+        : '<span class="p-pr">$'+Number(p.precio).toFixed(2)+'</span>';
+    }
     return '<div class="p">'
       + promoBadge
       + '<div class="p-imgwrap">'+img+'</div>'
