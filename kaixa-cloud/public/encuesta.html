@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Encuesta de satisfacción</title>
+<style>
+  :root{ --acc:#8b5cf6; --acc2:#d946ef; --bg:#f7f6fb; --s1:#fff; --text:#1a1a2e; --text2:#6b6b80; --text3:#9c9cb0; --border:#eae8f5; --maxw:420px; }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
+  .card{background:var(--s1);border-radius:18px;padding:26px 22px;max-width:var(--maxw);width:100%;box-shadow:0 8px 30px rgba(139,92,246,.12);text-align:center}
+  h1{font-size:18px;margin:0 0 6px}
+  p.sub{font-size:12.5px;color:var(--text2);margin:0 0 20px}
+  .stars{display:flex;justify-content:center;gap:8px;margin-bottom:18px}
+  .star{font-size:34px;cursor:pointer;filter:grayscale(1);opacity:.35;transition:transform .1s}
+  .star.on{filter:none;opacity:1}
+  .star:active{transform:scale(1.15)}
+  textarea{width:100%;padding:11px 12px;border-radius:10px;border:1.5px solid var(--border);font-size:14px;background:#fff;color:var(--text);font-family:inherit;resize:vertical;min-height:70px;margin-bottom:16px}
+  .btn{padding:12px;border-radius:10px;border:none;background:linear-gradient(135deg,var(--acc),var(--acc2));color:#fff;font-weight:800;font-size:14px;cursor:pointer;width:100%}
+  .btn:disabled{background:#d8d5e8;cursor:not-allowed}
+  .ok{font-size:15px;font-weight:800;color:var(--acc);padding:20px 0}
+  .err{font-size:12px;color:#dc2626;margin-top:8px}
+</style>
+</head>
+<body>
+  <div class="card" id="card">
+    <h1>¿Cómo estuvo tu experiencia?</h1>
+    <p class="sub" id="sub">Tu opinión nos ayuda a mejorar.</p>
+    <div class="stars" id="stars">
+      <span class="star" data-v="1">★</span>
+      <span class="star" data-v="2">★</span>
+      <span class="star" data-v="3">★</span>
+      <span class="star" data-v="4">★</span>
+      <span class="star" data-v="5">★</span>
+    </div>
+    <textarea id="comentario" placeholder="Cuéntanos más (opcional)"></textarea>
+    <button class="btn" id="btnEnviar" disabled onclick="enviar()">Enviar</button>
+    <div class="err" id="err"></div>
+  </div>
+
+<script>
+var slug = location.pathname.split('/').filter(Boolean).pop();
+var folio = new URLSearchParams(location.search).get('folio') || '';
+var calSel = 0;
+
+document.querySelectorAll('.star').forEach(function(el){
+  el.addEventListener('click', function(){
+    calSel = parseInt(el.dataset.v);
+    document.querySelectorAll('.star').forEach(function(s){
+      s.classList.toggle('on', parseInt(s.dataset.v) <= calSel);
+    });
+    document.getElementById('btnEnviar').disabled = false;
+  });
+});
+
+async function enviar(){
+  var btn = document.getElementById('btnEnviar');
+  var errEl = document.getElementById('err');
+  errEl.textContent = '';
+  if(!calSel){ errEl.textContent = 'Selecciona una calificación'; return; }
+  btn.disabled = true;
+  btn.textContent = 'Enviando...';
+  try{
+    var r = await fetch('/api/encuesta/' + slug, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ folio: folio, calificacion: calSel, comentario: document.getElementById('comentario').value.trim() })
+    });
+    var d = await r.json();
+    if(!r.ok){ errEl.textContent = d.error || 'No se pudo enviar'; btn.disabled = false; btn.textContent = 'Enviar'; return; }
+    document.getElementById('card').innerHTML = '<div class="ok">🙏 ¡Gracias por tu opinión!</div>';
+  }catch(e){
+    errEl.textContent = 'Error de conexión';
+    btn.disabled = false; btn.textContent = 'Enviar';
+  }
+}
+</script>
+</body>
+</html>

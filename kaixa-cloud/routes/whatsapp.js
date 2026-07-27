@@ -7,6 +7,10 @@ const pool    = require('../db/pool');
 async function ensureWhatsappTables() {
   await pool.query(`ALTER TABLE negocios ADD COLUMN IF NOT EXISTS whatsapp_token TEXT DEFAULT ''`);
   await pool.query(`ALTER TABLE negocios ADD COLUMN IF NOT EXISTS whatsapp_phone_id TEXT DEFAULT ''`);
+  // Número que RECIBE alertas internas (anti-fraude, corte de caja) — distinto
+  // del número emisor de WhatsApp Business de arriba, que es el que le manda
+  // mensajes al cliente final.
+  await pool.query(`ALTER TABLE negocios ADD COLUMN IF NOT EXISTS whatsapp_alertas_telefono TEXT DEFAULT ''`);
 }
 
 // Llamada a la API de WhatsApp Cloud (graph.facebook.com) — mensaje de texto libre.
@@ -77,9 +81,9 @@ router.get('/whatsapp/config', async (req, res) => {
   try {
     await ensureWhatsappTables();
     const r = await pool.query(
-      'SELECT whatsapp_token, whatsapp_phone_id FROM negocios WHERE id=$1', [req.caja.negocio_id]);
+      'SELECT whatsapp_token, whatsapp_phone_id, whatsapp_alertas_telefono FROM negocios WHERE id=$1', [req.caja.negocio_id]);
     const cfg = r.rows[0] || {};
-    const safe = { whatsapp_phone_id: cfg.whatsapp_phone_id || '' };
+    const safe = { whatsapp_phone_id: cfg.whatsapp_phone_id || '', whatsapp_alertas_telefono: cfg.whatsapp_alertas_telefono || '' };
     if (cfg.whatsapp_token && cfg.whatsapp_token.length > 8) {
       safe.token_preview = cfg.whatsapp_token.substring(0,4) + '****' + cfg.whatsapp_token.slice(-4);
     }
@@ -92,10 +96,11 @@ router.get('/whatsapp/config', async (req, res) => {
 router.put('/whatsapp/config', async (req, res) => {
   try {
     await ensureWhatsappTables();
-    const { token, phone_id } = req.body;
+    const { token, phone_id, alertas_telefono } = req.body;
     const sets = []; const vals = [];
-    if (token !== undefined)    { vals.push(token); sets.push(`whatsapp_token=$${vals.length}`); }
-    if (phone_id !== undefined) { vals.push(phone_id); sets.push(`whatsapp_phone_id=$${vals.length}`); }
+    if (token !== undefined)            { vals.push(token); sets.push(`whatsapp_token=$${vals.length}`); }
+    if (phone_id !== undefined)         { vals.push(phone_id); sets.push(`whatsapp_phone_id=$${vals.length}`); }
+    if (alertas_telefono !== undefined) { vals.push(alertas_telefono); sets.push(`whatsapp_alertas_telefono=$${vals.length}`); }
     if (!sets.length) return res.json({ ok: true });
     vals.push(req.caja.negocio_id);
     await pool.query(`UPDATE negocios SET ${sets.join(', ')} WHERE id=$${vals.length}`, vals);
@@ -110,6 +115,26 @@ router.post('/whatsapp/test', async (req, res) => {
     if (!telefono) return res.status(400).json({ error: 'Falta teléfono' });
     const r = await enviarWhatsapp(req.caja.negocio_id, telefono,
       '✅ Prueba de WhatsApp desde Kaixa. Si recibiste este mensaje, la configuración funciona correctamente.');
+    if (r.ok) res.json({ ok: true });
+    else res.status(400).json({ ok: false, error: r.error });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── POST /api/whatsapp/enviar — mensaje genérico (alertas anti-fraude, corte
+// de caja, etc.) desde la app de escritorio. Si no se manda `telefono`, usa
+// el número de alertas guardado en la configuración del negocio. ──
+router.post('/whatsapp/enviar', async (req, res) => {
+  try {
+    await ensureWhatsappTables();
+    const { telefono, mensaje } = req.body;
+    if (!mensaje) return res.status(400).json({ error: 'Falta el mensaje' });
+    let destino = telefono;
+    if (!destino) {
+      const r0 = await pool.query('SELECT whatsapp_alertas_telefono FROM negocios WHERE id=$1', [req.caja.negocio_id]);
+      destino = r0.rows[0] && r0.rows[0].whatsapp_alertas_telefono;
+    }
+    if (!destino) return res.status(400).json({ error: 'No hay teléfono de alertas configurado' });
+    const r = await enviarWhatsapp(req.caja.negocio_id, destino, mensaje);
     if (r.ok) res.json({ ok: true });
     else res.status(400).json({ ok: false, error: r.error });
   } catch(e) { res.status(500).json({ error: e.message }); }

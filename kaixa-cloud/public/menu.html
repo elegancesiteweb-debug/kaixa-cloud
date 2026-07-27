@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Menú</title>
+<style>
+  :root{ --acc:#8b5cf6; --acc2:#d946ef; --bg:#f7f6fb; --s1:#fff; --text:#1a1a2e; --text2:#6b6b80; --text3:#9c9cb0; --border:#eae8f5; --maxw:560px; }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--text)}
+  .hero{position:relative;color:#fff;text-align:center;background:linear-gradient(135deg,var(--acc),#6d28d9);overflow:hidden;min-height:150px;display:flex;align-items:flex-end}
+  .hero-bg{position:absolute;inset:0;background-size:cover;background-position:center;opacity:.6}
+  .hero-fade{position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.1) 0%,rgba(0,0,0,.6) 100%)}
+  .hero-inner{position:relative;padding:18px;max-width:var(--maxw);margin:0 auto;width:100%;display:flex;align-items:center;gap:14px;text-align:left}
+  .hero-logo{width:56px;height:56px;border-radius:14px;background:#fff;flex-shrink:0;box-shadow:0 4px 14px rgba(0,0,0,.25);overflow:hidden;display:none;align-items:center;justify-content:center;font-size:24px}
+  .hero-logo img{width:100%;height:100%;object-fit:cover}
+  .hero h1{margin:0;font-size:19px;font-weight:900;text-shadow:0 2px 8px rgba(0,0,0,.25)}
+  .hero p{margin:4px 0 0;font-size:11.5px;opacity:.9}
+  .tag{display:inline-block;margin-top:6px;font-size:10px;font-weight:800;background:rgba(255,255,255,.22);padding:3px 9px;border-radius:20px;letter-spacing:.03em}
+  .catbar{display:flex;gap:8px;overflow-x:auto;padding:12px 14px;max-width:var(--maxw);margin:0 auto}
+  .catbar::-webkit-scrollbar{display:none}
+  .catchip{flex-shrink:0;padding:7px 14px;border-radius:20px;background:var(--s1);border:1.5px solid var(--border);font-size:12px;font-weight:700;color:var(--text2);cursor:pointer;white-space:nowrap}
+  .catchip.active{background:var(--acc);border-color:var(--acc);color:#fff}
+  .wrap{max-width:var(--maxw);margin:0 auto;padding:0 14px 30px}
+  .prods{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+  .p{background:var(--s1);border-radius:16px;overflow:hidden;box-shadow:0 3px 12px rgba(139,92,246,.08);text-align:center;position:relative}
+  .p-imgwrap{width:100%;aspect-ratio:1/1;background:var(--bg);display:flex;align-items:center;justify-content:center;overflow:hidden}
+  .p-imgwrap img{width:100%;height:100%;object-fit:cover}
+  .p-imgwrap span{font-size:40px}
+  .p-body{padding:10px}
+  .p-nm{font-size:12.5px;font-weight:700;line-height:1.3;margin-bottom:4px;min-height:32px}
+  .p-pr{font-size:15px;font-weight:900;color:var(--acc)}
+  .p-pr-old{font-size:11px;color:var(--text3);text-decoration:line-through;margin-right:4px}
+  .p-promo{position:absolute;top:8px;left:8px;background:#f59e0b;color:#fff;font-size:9px;font-weight:800;padding:3px 7px;border-radius:6px}
+  .empty{text-align:center;padding:60px 20px;color:var(--text3);font-size:13px}
+  .loading{text-align:center;padding:60px 20px;color:var(--text3);font-size:13px}
+  .foot{text-align:center;padding:20px;font-size:10px;color:var(--text3)}
+</style>
+</head>
+<body>
+  <div class="hero">
+    <div class="hero-bg" id="heroBg"></div>
+    <div class="hero-fade"></div>
+    <div class="hero-inner">
+      <div class="hero-logo" id="heroLogo"></div>
+      <div>
+        <h1 id="negNombre">Menú</h1>
+        <p id="negDesc"></p>
+        <span class="tag">📋 Solo consulta — pide con tu mesero</span>
+      </div>
+    </div>
+  </div>
+  <div class="catbar" id="catBar"></div>
+  <div class="wrap">
+    <div id="cont" class="loading">Cargando menú...</div>
+  </div>
+  <div class="foot">Menú generado por Kaixa Pro</div>
+
+<script>
+var API = '';
+var slug = location.pathname.split('/').filter(Boolean).pop();
+var productos = [];
+var catActiva = '';
+
+function esc(s){ return (s||'').toString().replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+
+async function init(){
+  try{
+    var rInfo = await fetch(API+'/api/tienda/'+slug+'/info');
+    if(!rInfo.ok){ document.getElementById('cont').innerHTML = '<div class="empty">Menú no encontrado</div>'; return; }
+    var info = await rInfo.json();
+    var neg = info.negocio || {};
+    document.getElementById('negNombre').textContent = neg.nombre || 'Menú';
+    document.getElementById('negDesc').textContent = neg.tienda_descripcion || '';
+    if(neg.tienda_imagen_url) document.getElementById('heroBg').style.backgroundImage = 'url(' + neg.tienda_imagen_url + ')';
+    if(neg.tienda_logo_url){
+      var lg = document.getElementById('heroLogo');
+      lg.style.display = 'flex';
+      lg.innerHTML = '<img src="'+neg.tienda_logo_url+'">';
+    }
+    var sucursales = info.sucursales || [];
+    if(!sucursales.length){ document.getElementById('cont').innerHTML = '<div class="empty">Este negocio no tiene sucursales activas</div>'; return; }
+    var sucursalId = sucursales[0].id;
+
+    var rProd = await fetch(API+'/api/tienda/'+slug+'/productos?sucursal_id='+sucursalId);
+    productos = rProd.ok ? await rProd.json() : [];
+    if(!Array.isArray(productos) || !productos.length){
+      document.getElementById('cont').innerHTML = '<div class="empty">Todavía no hay platillos publicados</div>';
+      return;
+    }
+    renderCategorias();
+    renderProductos();
+  }catch(e){
+    document.getElementById('cont').innerHTML = '<div class="empty">No se pudo cargar el menú</div>';
+  }
+}
+
+function renderCategorias(){
+  var cats = [];
+  productos.forEach(function(p){
+    if(p.categoria_nombre && cats.indexOf(p.categoria_nombre) === -1) cats.push(p.categoria_nombre);
+  });
+  var bar = document.getElementById('catBar');
+  if(!cats.length){ bar.style.display = 'none'; return; }
+  var html = '<div class="catchip active" onclick="filtrarCat(\'\',this)">Todo</div>';
+  html += cats.map(function(c){ return '<div class="catchip" onclick="filtrarCat(\''+esc(c).replace(/'/g,"\\'")+'\',this)">'+esc(c)+'</div>'; }).join('');
+  bar.innerHTML = html;
+}
+
+function filtrarCat(cat, el){
+  catActiva = cat;
+  document.querySelectorAll('.catchip').forEach(function(c){ c.classList.remove('active'); });
+  if(el) el.classList.add('active');
+  renderProductos();
+}
+
+function renderProductos(){
+  var lista = catActiva ? productos.filter(function(p){ return p.categoria_nombre === catActiva; }) : productos;
+  if(!lista.length){ document.getElementById('cont').innerHTML = '<div class="empty">Sin platillos en esta categoría</div>'; return; }
+  document.getElementById('cont').innerHTML = '<div class="prods">' + lista.map(function(p){
+    var img = (p.imagen_url && p.imagen_url.startsWith('data:'))
+      ? '<img src="'+p.imagen_url+'">'
+      : '<span>'+(p.emoji||'🍽️')+'</span>';
+    var promoBadge = p.promocion ? '<div class="p-promo">🏷️ '+(p.promocion.tipo==='pct' ? (p.promocion.valor+'% OFF') : 'Promo')+'</div>' : '';
+    var precioHtml = p.precio_original
+      ? '<span class="p-pr-old">$'+Number(p.precio_original).toFixed(2)+'</span><span class="p-pr">$'+Number(p.precio).toFixed(2)+'</span>'
+      : '<span class="p-pr">$'+Number(p.precio).toFixed(2)+'</span>';
+    return '<div class="p">'
+      + promoBadge
+      + '<div class="p-imgwrap">'+img+'</div>'
+      + '<div class="p-body"><div class="p-nm">'+esc(p.nombre)+'</div>'+precioHtml+'</div>'
+    + '</div>';
+  }).join('') + '</div>';
+}
+
+init();
+</script>
+</body>
+</html>

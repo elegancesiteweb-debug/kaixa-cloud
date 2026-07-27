@@ -15,7 +15,11 @@ const server = http.createServer(app);
 const io     = new Server(server, { cors: { origin: '*' } });
 app.set('io', io);
 app.use(cors());
-app.use(express.json({ limit: '50mb' }));
+// verify: guarda el body crudo en req.rawBody — lo necesitan los webhooks de
+// integraciones de reparto (Uber Eats/etc.) para verificar firma HMAC más
+// adelante (ver routes/delivery/adapters/*). No cambia nada para el resto de
+// rutas, que siguen usando req.body ya parseado como siempre.
+app.use(express.json({ limit: '50mb', verify: (req, res, buf) => { req.rawBody = buf; } }));
 app.use(express.static(path.join(__dirname, 'public')));
 async function aplicarEsquema() {
   try { await pool.query('CREATE EXTENSION IF NOT EXISTS "pgcrypto"'); } catch(e) {}
@@ -547,10 +551,26 @@ app.use('/api/admin',    require('./routes/negocios'));
 app.use('/api',          require('./routes/tienda').router); // público: /api/tienda/:slug/*
 app.use('/api',          require('./routes/pagos').webhookRouter); // público: /api/pagos/mp/webhook/:negocio_id
 app.use('/api',          require('./routes/autofactura').router); // público: /api/autofactura/:token
+app.use('/api',          require('./routes/delivery').router); // público: /api/delivery/webhook/:webhook_token
+app.use('/api',          require('./routes/encuestas').router); // público: /api/encuesta/:slug
 app.get('/tienda/:slug', (req, res) => {
   const p = path.join(__dirname, 'public', 'tienda.html');
   if (fs.existsSync(p)) res.sendFile(p);
   else res.status(404).send('Tienda no disponible');
+});
+// Menú digital de solo lectura (sin carrito) — para el QR que se pone en las
+// mesas. Reutiliza los mismos endpoints públicos que ya usa tienda.html
+// (/api/tienda/:slug/info y /productos), pero es una página aparte y mucho
+// más chica porque no necesita carrito/checkout/pago.
+app.get('/menu/:slug', (req, res) => {
+  const p = path.join(__dirname, 'public', 'menu.html');
+  if (fs.existsSync(p)) res.sendFile(p);
+  else res.status(404).send('Menú no disponible');
+});
+app.get('/encuesta/:slug', (req, res) => {
+  const p = path.join(__dirname, 'public', 'encuesta.html');
+  if (fs.existsSync(p)) res.sendFile(p);
+  else res.status(404).send('Encuesta no disponible');
 });
 app.get('/factura/:token', (req, res) => {
   const p = path.join(__dirname, 'public', 'factura-cliente.html');
@@ -644,6 +664,8 @@ app.use('/api',           authCaja, require('./routes/pagos').router);
 app.use('/api',           authCaja, require('./routes/cotizaciones').router);
 app.use('/api',           authCaja, require('./routes/tarjetas-regalo').router);
 app.use('/api',           authCaja, require('./routes/ventas-pendientes').router);
+app.use('/api',           authCaja, require('./routes/delivery').authRouter);
+app.use('/api',           authCaja, require('./routes/encuestas').authRouter);
 app.use('/api',           authCaja, require('./routes/api'));
 app.get('*', (req, res) => {
   const idx = path.join(__dirname, 'public', 'index.html');
