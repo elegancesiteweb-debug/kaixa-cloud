@@ -1323,7 +1323,7 @@ router.get('/pedidos-online', async (req, res) => {
           'producto_id', poi.producto_id, 'nombre_producto', poi.nombre_producto,
           'cantidad', poi.cantidad, 'precio_unitario', poi.precio_unitario,
           'variante_id', poi.variante_id, 'variante_texto', poi.variante_texto,
-          'kit_id', poi.kit_id
+          'kit_id', poi.kit_id, 'extras', poi.extras
         )) FILTER (WHERE poi.id IS NOT NULL), '[]') AS items
       FROM pedidos_online po
       LEFT JOIN pedido_online_items poi ON poi.pedido_id = po.id
@@ -1410,7 +1410,8 @@ router.post('/pedidos-online/:id/confirmar', async (req, res) => {
     );
 
     for (const it of items.rows) {
-      const nombreConVariante = it.variante_texto ? (it.nombre_producto + ' · ' + it.variante_texto) : it.nombre_producto;
+      const extrasTexto = Array.isArray(it.extras) && it.extras.length ? it.extras.map(e => e.nombre).join(', ') : '';
+      const nombreConVariante = [it.nombre_producto, it.variante_texto || null, extrasTexto ? ('+ '+extrasTexto) : null].filter(Boolean).join(' · ');
       await client.query(
         `INSERT INTO venta_detalle (id, venta_id, producto_id, nombre_producto, cantidad, precio_unitario, subtotal)
          VALUES ($1,$2,$3,$4,$5,$6,$7)`,
