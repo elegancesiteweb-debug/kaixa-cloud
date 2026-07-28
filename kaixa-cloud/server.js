@@ -661,6 +661,7 @@ app.use('/api',           authCaja, require('./routes/cfdi').router);
 app.use('/api',           authCaja, require('./routes/modulos-opcionales').router);
 app.use('/api',           authCaja, require('./routes/whatsapp').router);
 app.use('/api',           authCaja, require('./routes/pagos').router);
+app.use('/api',           authCaja, require('./routes/pagos_clip').router);
 app.use('/api',           authCaja, require('./routes/cotizaciones').router);
 app.use('/api',           authCaja, require('./routes/tarjetas-regalo').router);
 app.use('/api',           authCaja, require('./routes/ventas-pendientes').router);

@@ -10,6 +10,7 @@ const pool    = require('../db/pool');
 async function ensurePagosTables() {
   await pool.query(`ALTER TABLE negocios ADD COLUMN IF NOT EXISTS mp_access_token TEXT DEFAULT ''`);
   await pool.query(`ALTER TABLE negocios ADD COLUMN IF NOT EXISTS mp_public_key TEXT DEFAULT ''`);
+  await pool.query(`ALTER TABLE negocios ADD COLUMN IF NOT EXISTS mp_point_device_id TEXT DEFAULT ''`);
 }
 
 function mpRequest(method, path, body, accessToken) {
@@ -44,9 +45,14 @@ function mpRequest(method, path, body, accessToken) {
 router.get('/pagos/config', async (req, res) => {
   try {
     await ensurePagosTables();
-    const r = await pool.query('SELECT mp_access_token, mp_public_key FROM negocios WHERE id=$1', [req.caja.negocio_id]);
+    const r = await pool.query('SELECT mp_access_token, mp_public_key, mp_point_device_id FROM negocios WHERE id=$1', [req.caja.negocio_id]);
     const cfg = r.rows[0] || {};
-    const safe = { mp_public_key: cfg.mp_public_key || '', configurado: !!cfg.mp_access_token };
+    const safe = {
+      mp_public_key: cfg.mp_public_key || '',
+      configurado: !!cfg.mp_access_token,
+      mp_point_device_id: cfg.mp_point_device_id || '',
+      mp_point_configurado: !!(cfg.mp_access_token && cfg.mp_point_device_id)
+    };
     if (cfg.mp_access_token && cfg.mp_access_token.length > 8) {
       safe.access_token_preview = cfg.mp_access_token.substring(0,4) + '****' + cfg.mp_access_token.slice(-4);
     }
@@ -58,10 +64,11 @@ router.get('/pagos/config', async (req, res) => {
 router.put('/pagos/config', async (req, res) => {
   try {
     await ensurePagosTables();
-    const { mp_access_token, mp_public_key } = req.body;
+    const { mp_access_token, mp_public_key, mp_point_device_id } = req.body;
     const sets = []; const vals = [];
-    if (mp_access_token !== undefined) { vals.push(mp_access_token); sets.push(`mp_access_token=$${vals.length}`); }
-    if (mp_public_key !== undefined)   { vals.push(mp_public_key); sets.push(`mp_public_key=$${vals.length}`); }
+    if (mp_access_token !== undefined)    { vals.push(mp_access_token); sets.push(`mp_access_token=$${vals.length}`); }
+    if (mp_public_key !== undefined)      { vals.push(mp_public_key); sets.push(`mp_public_key=$${vals.length}`); }
+    if (mp_point_device_id !== undefined) { vals.push(mp_point_device_id); sets.push(`mp_point_device_id=$${vals.length}`); }
     if (!sets.length) return res.json({ ok: true });
     vals.push(req.caja.negocio_id);
     await pool.query(`UPDATE negocios SET ${sets.join(', ')} WHERE id=$${vals.length}`, vals);
@@ -114,6 +121,50 @@ router.get('/pagos/mp/estado/:referencia', async (req, res) => {
     const pagos = (r.data && r.data.results) || [];
     const aprobado = pagos.find(p => p.status === 'approved');
     res.json({ pagado: !!aprobado, payment_id: aprobado ? aprobado.id : null, status: aprobado ? aprobado.status : (pagos[0] && pagos[0].status) || null });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── POST /api/pagos/mp/point/pagar — empuja un cobro a la terminal física Point ──
+router.post('/pagos/mp/point/pagar', async (req, res) => {
+  try {
+    await ensurePagosTables();
+    const negR = await pool.query('SELECT mp_access_token, mp_point_device_id FROM negocios WHERE id=$1', [req.caja.negocio_id]);
+    const accessToken = negR.rows[0] && negR.rows[0].mp_access_token;
+    const deviceId = negR.rows[0] && negR.rows[0].mp_point_device_id;
+    if (!accessToken) return res.status(400).json({ error: 'Mercado Pago no configurado. Ve a Ajustes > Pagos con tarjeta.' });
+    if (!deviceId) return res.status(400).json({ error: 'Configura tu terminal Point en Ajustes > Pagos con tarjeta.' });
+
+    const monto = parseFloat(req.body.monto);
+    if (!monto || monto <= 0) return res.status(400).json({ error: 'Monto inválido' });
+    const descripcion = req.body.descripcion || 'Cobro Kaixa Pos';
+    const referenciaExterna = req.body.referencia_externa || ('kx-point-' + Date.now());
+
+    const body = {
+      type: 'point',
+      external_reference: referenciaExterna,
+      transactions: { payments: [{ amount: monto.toFixed(2) }] },
+      config: { point: { terminal_id: deviceId, print_on_terminal: 'no_ticket' } },
+      description: descripcion
+    };
+    const r = await mpRequest('POST', '/v1/orders', body, accessToken);
+    if (r.status !== 200 && r.status !== 201) {
+      return res.status(400).json({ error: 'Error de Mercado Pago: ' + (r.data && r.data.message || JSON.stringify(r.data)) });
+    }
+    res.json({ ok: true, order_id: r.data.id, referencia_externa: referenciaExterna });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── GET /api/pagos/mp/point/estado/:orderId — consulta el estado de una orden Point ──
+router.get('/pagos/mp/point/estado/:orderId', async (req, res) => {
+  try {
+    await ensurePagosTables();
+    const negR = await pool.query('SELECT mp_access_token FROM negocios WHERE id=$1', [req.caja.negocio_id]);
+    const accessToken = negR.rows[0] && negR.rows[0].mp_access_token;
+    if (!accessToken) return res.status(400).json({ error: 'No configurado' });
+    const r = await mpRequest('GET', '/v1/orders/' + req.params.orderId, null, accessToken);
+    if (r.status !== 200) return res.json({ pagado: false });
+    const status = r.data && r.data.status;
+    res.json({ pagado: status === 'processed' || status === 'closed', status: status || null });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
