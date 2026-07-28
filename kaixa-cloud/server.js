@@ -657,6 +657,7 @@ app.use('/api/sync',      authCaja, require('./routes/sync'));
 app.use('/api/dashboard', authCaja, require('./routes/dashboard'));
 app.use('/api/push',      authCaja, pushRouter);
 app.use('/api',           authCaja, require('./routes/variantes').router);
+app.use('/api',           authCaja, require('./routes/producto-extras').router);
 app.use('/api',           authCaja, require('./routes/cfdi').router);
 app.use('/api',           authCaja, require('./routes/modulos-opcionales').router);
 app.use('/api',           authCaja, require('./routes/whatsapp').router);
@@ -693,6 +694,7 @@ const PORT = process.env.PORT || 4500;
 aplicarEsquema().then(async () => {
   await crearTablasPush();
   try { await require('./routes/variantes').ensureVariantesTable(); } catch(e) { console.error('⚠️ producto_variantes:', e.message); }
+  try { await require('./routes/producto-extras').ensureExtrasTable(); } catch(e) { console.error('⚠️ producto_extras:', e.message); }
   const { ensureVentasPendientesTables, expirarVentasPendientes } = require('./routes/ventas-pendientes');
   try { await ensureVentasPendientesTables(); } catch(e) { console.error('⚠️ ventas_pendientes:', e.message); }
   server.listen(PORT, () => {

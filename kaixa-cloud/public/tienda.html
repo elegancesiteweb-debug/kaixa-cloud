@@ -183,6 +183,16 @@
   </div>
 </div>
 
+<div class="overlay" id="ovExtras">
+  <div class="sheet" style="position:relative">
+    <button class="close" onclick="cerrar('ovExtras')">✕</button>
+    <h2 id="extrasSheetTtl">Extras</h2>
+    <div id="extrasSheetBody"></div>
+    <div class="totalrow"><span>Total</span><span id="extrasSheetTotal">$0.00</span></div>
+    <button class="btn" style="margin-top:10px" onclick="confirmarExtrasTienda()">Agregar al carrito</button>
+  </div>
+</div>
+
 <div class="overlay" id="ovCarrito">
   <div class="sheet" style="position:relative">
     <button class="close" onclick="cerrar('ovCarrito')">✕</button>
@@ -507,10 +517,77 @@ function abrirGaleria(id){
 function agregarCarrito(id){
   var p = productos.find(function(x){ return x.id === id; });
   if (!p) return;
+  if (p.tiene_extras && p.extras && p.extras.length) { abrirSelectorExtras(id, null); return; }
   cart[id] = { producto: p, qty: 1 };
   renderProductos();
   actualizarCartBar();
   notif('✅ ' + p.nombre + ' agregado');
+}
+
+// ── Extras opcionales — mismo patrón de hoja/bottom-sheet que el selector de
+// variantes (ovVariante), encadenado tras elegir variante si el producto
+// tiene ambos. ──
+var _extrasTiendaProd = null;
+var _extrasTiendaVarianteId = null;
+
+function abrirSelectorExtras(prodId, varianteId){
+  var p = productos.find(function(x){ return x.id === prodId; });
+  if (!p) return;
+  _extrasTiendaProd = p;
+  _extrasTiendaVarianteId = varianteId || null;
+  document.getElementById('extrasSheetTtl').textContent = 'Extras · ' + p.nombre;
+  var body = document.getElementById('extrasSheetBody');
+  body.innerHTML = (p.extras||[]).map(function(e){
+    return '<label class="item-row" style="cursor:pointer">' +
+      '<input type="checkbox" class="extraTiendaChk" value="'+e.id+'" onchange="_recalcExtrasTiendaTotal()" style="width:auto;margin-right:8px">' +
+      '<div class="nm">'+e.nombre+'</div>' +
+      (e.precio_extra>0 ? '<div style="font-weight:800;min-width:60px;text-align:right">+$'+Number(e.precio_extra).toFixed(2)+'</div>' : '') +
+      '</label>';
+  }).join('');
+  _recalcExtrasTiendaTotal();
+  document.getElementById('ovExtras').classList.add('show');
+}
+
+function _varianteExtrasTienda(){
+  if (!_extrasTiendaVarianteId || !_extrasTiendaProd) return null;
+  return (_extrasTiendaProd.variantes||[]).find(function(v){ return v.id === _extrasTiendaVarianteId; }) || null;
+}
+
+function _extrasTiendaSeleccionados(){
+  var ids = Array.from(document.querySelectorAll('.extraTiendaChk:checked')).map(function(c){ return c.value; });
+  return (_extrasTiendaProd.extras||[]).filter(function(e){ return ids.indexOf(e.id) !== -1; });
+}
+
+function _recalcExtrasTiendaTotal(){
+  var p = _extrasTiendaProd;
+  if (!p) return;
+  var variante = _varianteExtrasTienda();
+  var base = Number(p.precio) + (variante ? Number(variante.precio_extra||0) : 0);
+  var extras = _extrasTiendaSeleccionados();
+  var total = base + extras.reduce(function(s,e){ return s + Number(e.precio_extra||0); }, 0);
+  document.getElementById('extrasSheetTotal').textContent = '$' + total.toFixed(2);
+}
+
+function confirmarExtrasTienda(){
+  var p = _extrasTiendaProd;
+  if (!p) return;
+  var variante = _varianteExtrasTienda();
+  var extras = _extrasTiendaSeleccionados();
+  var etiquetaVariante = variante ? [variante.atributo1_valor, variante.atributo2_valor].filter(Boolean).join(' / ') : '';
+  var extrasSig = extras.map(function(e){ return e.id; }).sort().join(',');
+  var key = p.id + (variante ? '::'+variante.id : '') + (extrasSig ? '::'+extrasSig : '');
+  var precio = Number(p.precio) + (variante ? Number(variante.precio_extra||0) : 0) + extras.reduce(function(s,e){ return s + Number(e.precio_extra||0); }, 0);
+  var nombre = p.nombre + (etiquetaVariante ? ' · '+etiquetaVariante : '') + (extras.length ? ' + '+extras.map(function(e){ return e.nombre; }).join(', ') : '');
+  if (cart[key]) {
+    cart[key].qty++;
+  } else {
+    cart[key] = { producto: p, variante: variante, extras: extras, qty: 1, nombreMostrado: nombre, precioMostrado: precio };
+  }
+  cerrar('ovExtras');
+  renderProductos();
+  actualizarCartBar();
+  if (document.getElementById('ovCarrito').classList.contains('show')) renderCarrito();
+  notif('✅ ' + nombre + ' agregado');
 }
 
 function abrirSelectorVariante(prodId){
@@ -548,6 +625,7 @@ function agregarCarritoVariante(prodId, varianteId){
   if (!p) return;
   var v = (p.variantes||[]).find(function(x){ return x.id === varianteId; });
   if (!v) return;
+  if (p.tiene_extras && p.extras && p.extras.length) { cerrar('ovVariante'); abrirSelectorExtras(prodId, varianteId); return; }
   var key = prodId + '::' + varianteId;
   var etiqueta = [v.atributo1_valor, v.atributo2_valor].filter(Boolean).join(' / ') || 'Opción';
   if (cart[key]) {
@@ -804,7 +882,8 @@ async function enviarPedido(){
     var items = Object.values(cart).map(function(it){
       return it.kit
         ? { kit_id: it.kit.id, cantidad: it.qty }
-        : { producto_id: it.producto.id, cantidad: it.qty, variante_id: it.variante ? it.variante.id : null };
+        : { producto_id: it.producto.id, cantidad: it.qty, variante_id: it.variante ? it.variante.id : null,
+            extras: (it.extras||[]).map(function(e){ return { id: e.id }; }) };
     });
     var r = await fetch('/api/tienda/' + slug + '/pedidos', {
       method: 'POST',

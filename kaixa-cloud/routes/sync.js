@@ -67,6 +67,7 @@ router.post('/push', async (req, res) => {
   const { negocio_id, sucursal_id, id: caja_id } = req.caja;
   const { productos = [], clientes = [], ventas = [], movimientos = [], lotes = [] } = req.body;
   const variantes = req.body.variantes || [];
+  const extras = req.body.extras || [];
   const proveedores = req.body.proveedores || [];
   const pedidos = req.body.pedidos || [];
   const client = await pool.connect();
@@ -304,6 +305,24 @@ router.post('/push', async (req, res) => {
       } catch(e) { console.warn('Variante push error:', e.message); }
     }
 
+    // Extras opcionales de producto (mismo patrón que variantes)
+    for (const ex of extras) {
+      try {
+        await client.query(`
+          INSERT INTO producto_extras
+            (id, negocio_id, sucursal_id, producto_id, nombre, precio_extra, activo, actualizado_en)
+          VALUES ($1,$2,$3,$4,$5,$6,$7, now())
+          ON CONFLICT (id) DO UPDATE SET
+            nombre=$5, precio_extra=$6, activo=$7, actualizado_en=now()`,
+          [ex.id, negocio_id, ex.sucursal_id||sucursal_id, ex.producto_uuid,
+           ex.nombre||'', ex.precio_extra||0, ex.activo!==false]
+        );
+        if (ex.producto_uuid) {
+          await client.query(`UPDATE productos SET tiene_extras=true WHERE id=$1`, [ex.producto_uuid]);
+        }
+      } catch(e) { console.warn('Extra push error:', e.message); }
+    }
+
     // Pedidos a proveedores
     for (const p of pedidos) {
       try {
@@ -369,7 +388,7 @@ router.get('/pull', async (req, res) => {
     await ensureDimensionesColumns();
     await ensureMonedaCostoColumns();
     await ensureDescripcionColumn();
-    const [productos, clientes, ventas, movimientos, lotesPull, kitsPull, promocionesPull, divisasPull, variantesPull, proveedoresPull, pedidosPull, empleadosPull] = await Promise.all([
+    const [productos, clientes, ventas, movimientos, lotesPull, kitsPull, promocionesPull, divisasPull, variantesPull, extrasPull, proveedoresPull, pedidosPull, empleadosPull] = await Promise.all([
       pool.query(
         `SELECT p.id, p.negocio_id, p.sucursal_id, p.nombre, p.descripcion, p.emoji, p.codigo_barras,
                 p.precio, p.costo, p.stock_minimo, p.categoria_id, p.giro, p.por_peso,
@@ -456,6 +475,12 @@ router.get('/pull', async (req, res) => {
         [negocio_id, sucursal_id, since]
       ).catch(() => ({ rows: [] })),
       pool.query(
+        `SELECT * FROM producto_extras
+         WHERE negocio_id=$1 AND sucursal_id=$2 AND actualizado_en > $3
+         ORDER BY actualizado_en`,
+        [negocio_id, sucursal_id, since]
+      ).catch(() => ({ rows: [] })),
+      pool.query(
         `SELECT * FROM proveedores WHERE negocio_id=$1 ORDER BY nombre`,
         [negocio_id]
       ).catch(() => ({ rows: [] })),
@@ -491,6 +516,7 @@ router.get('/pull', async (req, res) => {
       promociones: promocionesPull.rows,
       divisas: divisasPull.rows,
       variantes: variantesPull.rows,
+      extras: extrasPull.rows,
       proveedores: proveedoresPull.rows,
       pedidos: pedidosPull.rows,
       empleados: empleadosPull.rows

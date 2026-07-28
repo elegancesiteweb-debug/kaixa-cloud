@@ -193,6 +193,7 @@ async function ensureTiendaTables() {
   await pool.query(`ALTER TABLE pedido_online_items ADD COLUMN IF NOT EXISTS variante_texto TEXT DEFAULT ''`);
   await pool.query(`ALTER TABLE pedido_online_items ADD COLUMN IF NOT EXISTS kit_id UUID`);
   await pool.query(`ALTER TABLE pedido_online_items ADD COLUMN IF NOT EXISTS componentes JSONB DEFAULT '[]'`);
+  await pool.query(`ALTER TABLE pedido_online_items ADD COLUMN IF NOT EXISTS extras JSONB DEFAULT '[]'`);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS carritos_abandonados (
       id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -529,6 +530,7 @@ router.get('/tienda/:slug/productos', async (req, res) => {
     const r = await pool.query(`
       SELECT p.id, p.nombre, COALESCE(p.descripcion,'') AS descripcion, p.emoji, p.imagen_url, p.imagenes_extra, p.precio, p.categoria_id, c.nombre AS categoria_nombre,
              COALESCE(p.tiene_variantes,false) AS tiene_variantes,
+             COALESCE(p.tiene_extras,false) AS tiene_extras,
              COALESCE(s.stock,0) AS stock
       FROM productos p
       LEFT JOIN stock_actual s ON s.producto_id = p.id AND s.sucursal_id = p.sucursal_id
@@ -568,6 +570,19 @@ router.get('/tienda/:slug/productos', async (req, res) => {
       // routes/variantes.js) — no se manda a la tienda pública.
       vr.rows.forEach(v => { delete v.especificaciones; (porProducto[v.producto_id] = porProducto[v.producto_id] || []).push(v); });
       productos.forEach(p => { if (p.tiene_variantes) p.variantes = porProducto[p.id] || []; });
+    }
+
+    // Adjuntar extras opcionales activos de los productos que los tienen
+    const conExtras = productos.filter(p => p.tiene_extras);
+    if (conExtras.length) {
+      const idsEx = conExtras.map(p => p.id);
+      const er = await pool.query(
+        `SELECT * FROM producto_extras WHERE producto_id = ANY($1) AND activo=true ORDER BY nombre`,
+        [idsEx]
+      );
+      const extrasPorProducto = {};
+      er.rows.forEach(e => { (extrasPorProducto[e.producto_id] = extrasPorProducto[e.producto_id] || []).push(e); });
+      productos.forEach(p => { if (p.tiene_extras) p.extras = extrasPorProducto[p.id] || []; });
     }
 
     res.json(productos);
@@ -700,7 +715,7 @@ router.post('/tienda/:slug/pedidos', async (req, res) => {
         itemsValidados.push({
           producto_id: null, nombre_producto: (kit.emoji||'🎁') + ' ' + kit.nombre, cantidad,
           precio_unitario: parseFloat(kit.precio), variante_id: null, variante_texto: '',
-          kit_id: kit.id, componentes: componentes.map(c => ({ producto_id: c.producto_id, cantidad: c.cantidad }))
+          kit_id: kit.id, componentes: componentes.map(c => ({ producto_id: c.producto_id, cantidad: c.cantidad })), extras: []
         });
         continue;
       }
@@ -726,6 +741,21 @@ router.post('/tienda/:slug/pedidos', async (req, res) => {
         precioUnit = parseFloat(p.precio) + parseFloat(v.precio_extra || 0);
       }
 
+      // Extras opcionales elegidos — revalidados contra la BD (no se confía en
+      // el precio que mande el navegador), mismo criterio que la variante arriba.
+      let extrasValidados = [];
+      if (Array.isArray(it.extras) && it.extras.length) {
+        const idsExtras = it.extras.map(e => e && e.id).filter(Boolean);
+        if (idsExtras.length) {
+          const exRes = await client.query(
+            'SELECT * FROM producto_extras WHERE id = ANY($1) AND producto_id=$2 AND activo=true',
+            [idsExtras, p.id]
+          );
+          extrasValidados = exRes.rows.map(e => ({ id: e.id, nombre: e.nombre, precio_extra: parseFloat(e.precio_extra || 0) }));
+          precioUnit += extrasValidados.reduce((s, e) => s + e.precio_extra, 0);
+        }
+      }
+
       subtotal += precioUnit * cantidad;
       // Las promociones aplican sobre el producto base, no sobre variantes con
       // precio_extra distinto — igual que en el POS, se evalúan por producto_id.
@@ -733,7 +763,7 @@ router.post('/tienda/:slug/pedidos', async (req, res) => {
       if (promo) descuentoPromoTotal += descuentoPromoLinea(precioUnit, cantidad, promo);
       itemsValidados.push({
         producto_id: p.id, nombre_producto: p.nombre, cantidad, precio_unitario: precioUnit,
-        variante_id: varianteId, variante_texto: varianteTexto, kit_id: null, componentes: []
+        variante_id: varianteId, variante_texto: varianteTexto, kit_id: null, componentes: [], extras: extrasValidados
       });
     }
     if (!itemsValidados.length) {
@@ -757,10 +787,10 @@ router.post('/tienda/:slug/pedidos', async (req, res) => {
 
     for (const it of itemsValidados) {
       await client.query(
-        `INSERT INTO pedido_online_items (pedido_id, producto_id, nombre_producto, cantidad, precio_unitario, variante_id, variante_texto, kit_id, componentes)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+        `INSERT INTO pedido_online_items (pedido_id, producto_id, nombre_producto, cantidad, precio_unitario, variante_id, variante_texto, kit_id, componentes, extras)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
         [pedidoId, it.producto_id, it.nombre_producto, it.cantidad, it.precio_unitario, it.variante_id, it.variante_texto,
-         it.kit_id || null, JSON.stringify(it.componentes || [])]
+         it.kit_id || null, JSON.stringify(it.componentes || []), JSON.stringify(it.extras || [])]
       );
     }
 
