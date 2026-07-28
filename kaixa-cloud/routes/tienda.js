@@ -120,6 +120,18 @@ async function ensureTiendaTables() {
   // Tarifa plana para arrancar; zonas/CP quedan para una pasada futura si se necesita.
   await pool.query(`ALTER TABLE negocios ADD COLUMN IF NOT EXISTS envio_habilitado BOOLEAN DEFAULT false`);
   await pool.query(`ALTER TABLE negocios ADD COLUMN IF NOT EXISTS envio_costo NUMERIC(10,2) DEFAULT 0`);
+  // Entrega rápida/exprés — mismo patrón tarifa-plana que envío, más un tiempo
+  // prometido (minutos) que se muestra al cliente. No usa el selector de
+  // horarios: siempre es "lo antes posible", no una fecha/hora agendada.
+  await pool.query(`ALTER TABLE negocios ADD COLUMN IF NOT EXISTS entrega_rapida_habilitado BOOLEAN DEFAULT false`);
+  await pool.query(`ALTER TABLE negocios ADD COLUMN IF NOT EXISTS entrega_rapida_costo NUMERIC(10,2) DEFAULT 0`);
+  await pool.query(`ALTER TABLE negocios ADD COLUMN IF NOT EXISTS entrega_rapida_tiempo_min INTEGER DEFAULT 30`);
+  // Disponibilidad de entrega por producto — un platillo caliente puede no
+  // aplicar para envío por paquetería, por ejemplo. "Recoger" nunca se
+  // bloquea, no necesita bandera.
+  await pool.query(`ALTER TABLE productos ADD COLUMN IF NOT EXISTS disponible_domicilio BOOLEAN DEFAULT true`);
+  await pool.query(`ALTER TABLE productos ADD COLUMN IF NOT EXISTS disponible_envio BOOLEAN DEFAULT true`);
+  await pool.query(`ALTER TABLE productos ADD COLUMN IF NOT EXISTS entrega_rapida BOOLEAN DEFAULT false`);
   // Mismo interruptor de sub-funciones que routes/modulos-opcionales.js — se
   // asegura aquí también para no depender del orden en que corren las rutas.
   await pool.query(`ALTER TABLE negocios ADD COLUMN IF NOT EXISTS modulos_opcionales TEXT DEFAULT '[]'`);
@@ -485,6 +497,9 @@ router.get('/tienda/:slug/info', async (req, res) => {
               COALESCE(domicilio_habilitado,false) AS domicilio_habilitado,
               COALESCE(envio_habilitado,false) AS envio_habilitado,
               COALESCE(envio_costo,0) AS envio_costo,
+              COALESCE(entrega_rapida_habilitado,false) AS entrega_rapida_habilitado,
+              COALESCE(entrega_rapida_costo,0) AS entrega_rapida_costo,
+              COALESCE(entrega_rapida_tiempo_min,30) AS entrega_rapida_tiempo_min,
               (mp_access_token IS NOT NULL AND mp_access_token != '') AS mp_habilitado,
               COALESCE(modulos_opcionales::jsonb ? 'entregas_programadas', false) AS entregas_habilitado,
               COALESCE(horarios_pedido_activo,false) AS horarios_pedido_activo,
@@ -531,6 +546,9 @@ router.get('/tienda/:slug/productos', async (req, res) => {
       SELECT p.id, p.nombre, COALESCE(p.descripcion,'') AS descripcion, p.emoji, p.imagen_url, p.imagenes_extra, p.precio, p.categoria_id, c.nombre AS categoria_nombre,
              COALESCE(p.tiene_variantes,false) AS tiene_variantes,
              COALESCE(p.tiene_extras,false) AS tiene_extras,
+             COALESCE(p.disponible_domicilio,true) AS disponible_domicilio,
+             COALESCE(p.disponible_envio,true) AS disponible_envio,
+             COALESCE(p.entrega_rapida,false) AS entrega_rapida,
              COALESCE(s.stock,0) AS stock
       FROM productos p
       LEFT JOIN stock_actual s ON s.producto_id = p.id AND s.sucursal_id = p.sucursal_id
@@ -648,17 +666,24 @@ router.post('/tienda/:slug/pedidos', async (req, res) => {
     if (!sucursal_id) return res.status(400).json({ error: 'Falta la sucursal' });
     if (!cliente_nombre || !cliente_nombre.trim()) return res.status(400).json({ error: 'Falta tu nombre' });
     if (!items.length) return res.status(400).json({ error: 'El pedido está vacío' });
-    if ((tipo_entrega === 'domicilio' || tipo_entrega === 'envio') && (!direccion_calle.trim() || !direccion_colonia.trim())) {
+    if ((tipo_entrega === 'domicilio' || tipo_entrega === 'envio' || tipo_entrega === 'rapida') && (!direccion_calle.trim() || !direccion_colonia.trim())) {
       return res.status(400).json({ error: 'Falta la dirección de entrega' });
     }
 
-    const neg = await pool.query('SELECT id, envio_habilitado, envio_costo FROM negocios WHERE slug=$1 AND activo=true', [req.params.slug]);
+    const neg = await pool.query(
+      'SELECT id, envio_habilitado, envio_costo, entrega_rapida_habilitado, entrega_rapida_costo FROM negocios WHERE slug=$1 AND activo=true',
+      [req.params.slug]
+    );
     if (!neg.rows.length) return res.status(404).json({ error: 'Tienda no encontrada' });
     const negocioId = neg.rows[0].id;
     if (tipo_entrega === 'envio' && !neg.rows[0].envio_habilitado) {
       return res.status(400).json({ error: 'Este negocio no ofrece envío por paquetería' });
     }
-    const costoEnvio = tipo_entrega === 'envio' ? parseFloat(neg.rows[0].envio_costo) || 0 : 0;
+    if (tipo_entrega === 'rapida' && !neg.rows[0].entrega_rapida_habilitado) {
+      return res.status(400).json({ error: 'Este negocio no ofrece entrega rápida' });
+    }
+    const costoEnvio = tipo_entrega === 'envio' ? parseFloat(neg.rows[0].envio_costo) || 0
+      : tipo_entrega === 'rapida' ? parseFloat(neg.rows[0].entrega_rapida_costo) || 0 : 0;
 
     const suc = await pool.query(
       'SELECT id FROM sucursales WHERE id=$1 AND negocio_id=$2 AND activo=true',
@@ -721,11 +746,24 @@ router.post('/tienda/:slug/pedidos', async (req, res) => {
       }
 
       const prod = await client.query(
-        'SELECT id, nombre, precio FROM productos WHERE id=$1 AND negocio_id=$2 AND sucursal_id=$3 AND activo=true',
+        'SELECT id, nombre, precio, COALESCE(disponible_domicilio,true) AS disponible_domicilio, COALESCE(disponible_envio,true) AS disponible_envio, COALESCE(entrega_rapida,false) AS entrega_rapida FROM productos WHERE id=$1 AND negocio_id=$2 AND sucursal_id=$3 AND activo=true',
         [it.producto_id, negocioId, sucursal_id]
       );
       if (!prod.rows.length) continue;
       const p = prod.rows[0];
+
+      // Disponibilidad de entrega por producto — "recoger" nunca se bloquea.
+      // Se rechaza todo el pedido (no se ignora el item en silencio) para que
+      // el cliente sepa exactamente qué producto tiene que quitar o cambiar.
+      if (tipo_entrega === 'domicilio' && !p.disponible_domicilio) {
+        throw Object.assign(new Error(`"${p.nombre}" no está disponible a domicilio — quítalo del carrito o cambia a Recoger en tienda`), { status: 400 });
+      }
+      if (tipo_entrega === 'envio' && !p.disponible_envio) {
+        throw Object.assign(new Error(`"${p.nombre}" no está disponible para envío por paquetería — quítalo del carrito o cambia a Recoger en tienda`), { status: 400 });
+      }
+      if (tipo_entrega === 'rapida' && !p.entrega_rapida) {
+        throw Object.assign(new Error(`"${p.nombre}" no está disponible para entrega rápida — quítalo del carrito o cambia a Recoger en tienda`), { status: 400 });
+      }
 
       let varianteId = null, varianteTexto = '', precioUnit = parseFloat(p.precio);
       if (it.variante_id) {

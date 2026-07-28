@@ -223,8 +223,11 @@
         <button type="button" id="btnRecoger" class="seg-btn active" onclick="setTipoEntrega('recoger')">🏪 Recoger en tienda</button>
         <button type="button" id="btnDomicilio" class="seg-btn" onclick="setTipoEntrega('domicilio')" style="display:none">🚚 A domicilio</button>
         <button type="button" id="btnEnvio" class="seg-btn" onclick="setTipoEntrega('envio')" style="display:none">📦 Envío</button>
+        <button type="button" id="btnRapida" class="seg-btn" onclick="setTipoEntrega('rapida')" style="display:none">⚡ Entrega rápida</button>
       </div>
     </div>
+    <div id="ckEntregaAviso" style="display:none;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:12px;color:#dc2626;font-weight:600"></div>
+    <div id="ckRapidaInfo" style="display:none;font-size:12px;color:var(--text2);margin-bottom:10px">⚡ Se entrega en aproximadamente <b id="ckRapidaMin">30</b> min después de confirmado</div>
     <div id="ckHorariosBox" style="display:none">
       <div class="field"><label>¿Qué día?</label><div id="ckHorDias" style="display:flex;gap:6px;overflow-x:auto;padding-bottom:4px"></div></div>
       <div class="field" id="ckHorHorasWrap" style="display:none"><label>¿A qué hora?</label><div id="ckHorHoras" style="display:flex;gap:6px;flex-wrap:wrap"></div></div>
@@ -725,10 +728,11 @@ function irACheckout(){
   cerrar('ovCarrito');
   document.getElementById('ckTotal').textContent = '$' + totalCarrito().toFixed(2);
   var entregaBox = document.getElementById('ckEntregaBox');
-  var haySelect = negocio && (negocio.domicilio_habilitado || negocio.envio_habilitado);
+  var haySelect = negocio && (negocio.domicilio_habilitado || negocio.envio_habilitado || negocio.entrega_rapida_habilitado);
   entregaBox.style.display = haySelect ? 'block' : 'none';
   document.getElementById('btnDomicilio').style.display = (negocio && negocio.domicilio_habilitado) ? 'inline-block' : 'none';
   document.getElementById('btnEnvio').style.display = (negocio && negocio.envio_habilitado) ? 'inline-block' : 'none';
+  document.getElementById('btnRapida').style.display = (negocio && negocio.entrega_rapida_habilitado) ? 'inline-block' : 'none';
   document.getElementById('ckEntregaProgramadaBox').style.display = (negocio && negocio.entregas_habilitado) ? 'block' : 'none';
   setTipoEntrega('recoger');
   document.getElementById('ovCheckout').classList.add('show');
@@ -739,18 +743,53 @@ function toggleEsRegalo(){
 }
 
 var _tipoEntrega = 'recoger';
+// ── Candado por producto: si algo en el carrito no aplica para el tipo de
+// entrega elegido, se avisa y se bloquea "Enviar pedido" — el cliente decide
+// si quita el producto o cambia el tipo de entrega. "Recoger" nunca bloquea. ──
+var _FLAG_POR_TIPO = { domicilio: 'disponible_domicilio', envio: 'disponible_envio', rapida: 'entrega_rapida' };
+function _productosNoDisponiblesParaTipo(tipo){
+  var flag = _FLAG_POR_TIPO[tipo];
+  if (!flag) return [];
+  var nombres = [];
+  Object.values(cart).forEach(function(it){
+    if (it.kit || !it.producto) return;
+    if (it.producto[flag] === false && nombres.indexOf(it.producto.nombre) === -1) nombres.push(it.producto.nombre);
+  });
+  return nombres;
+}
+
 function setTipoEntrega(tipo){
   _tipoEntrega = tipo;
   document.getElementById('btnRecoger').classList.toggle('active', tipo === 'recoger');
   document.getElementById('btnDomicilio').classList.toggle('active', tipo === 'domicilio');
   document.getElementById('btnEnvio').classList.toggle('active', tipo === 'envio');
-  document.getElementById('ckDomicilioBox').style.display = (tipo === 'domicilio' || tipo === 'envio') ? 'block' : 'none';
+  document.getElementById('btnRapida').classList.toggle('active', tipo === 'rapida');
+  document.getElementById('ckDomicilioBox').style.display = (tipo === 'domicilio' || tipo === 'envio' || tipo === 'rapida') ? 'block' : 'none';
+  document.getElementById('ckRapidaInfo').style.display = tipo === 'rapida' ? 'block' : 'none';
+  if (tipo === 'rapida') document.getElementById('ckRapidaMin').textContent = (negocio && negocio.entrega_rapida_tiempo_min) || 30;
+
   var envioCosto = (negocio && parseFloat(negocio.envio_costo)) || 0;
-  var totalMostrar = totalCarrito() + (tipo === 'envio' ? envioCosto : 0);
-  document.getElementById('ckTotal').textContent = '$' + totalMostrar.toFixed(2) + (tipo === 'envio' && envioCosto ? ' (incluye $'+envioCosto.toFixed(2)+' de envío)' : '');
-  document.getElementById('ckTotalLbl').textContent = tipo === 'domicilio' ? 'Total a pagar al recibir' : tipo === 'envio' ? 'Total a pagar (envío incluido)' : 'Total a pagar en tienda';
+  var rapidaCosto = (negocio && parseFloat(negocio.entrega_rapida_costo)) || 0;
+  var costoExtra = tipo === 'envio' ? envioCosto : tipo === 'rapida' ? rapidaCosto : 0;
+  var totalMostrar = totalCarrito() + costoExtra;
+  document.getElementById('ckTotal').textContent = '$' + totalMostrar.toFixed(2) + (costoExtra ? ' (incluye $'+costoExtra.toFixed(2)+' de entrega)' : '');
+  document.getElementById('ckTotalLbl').textContent = tipo === 'domicilio' ? 'Total a pagar al recibir' : tipo === 'envio' ? 'Total a pagar (envío incluido)' : tipo === 'rapida' ? 'Total a pagar (entrega incluida)' : 'Total a pagar en tienda';
+
+  var aviso = document.getElementById('ckEntregaAviso');
+  var noDisponibles = _productosNoDisponiblesParaTipo(tipo);
+  var btn = document.getElementById('ckBtn');
+  if (noDisponibles.length) {
+    aviso.style.display = 'block';
+    aviso.textContent = '⚠️ Estos productos no están disponibles para "' + document.getElementById('btn'+tipo.charAt(0).toUpperCase()+tipo.slice(1)).textContent.trim() + '": ' + noDisponibles.join(', ') + ' — quítalos del carrito o elige "Recoger en tienda".';
+    btn.disabled = true; btn.style.opacity = '.5';
+  } else {
+    aviso.style.display = 'none';
+    btn.disabled = false; btn.style.opacity = '';
+  }
+
   _horFechaElegida = null;
-  cargarHorariosDisponibles();
+  if (tipo === 'rapida') { document.getElementById('ckHorariosBox').style.display = 'none'; }
+  else { cargarHorariosDisponibles(); }
 }
 
 // ── Horarios para agendar pedidos (recoger/domicilio/envío) — independiente ──
@@ -889,7 +928,8 @@ async function enviarPedido(){
   if (quiereFactura && (!rfc || !razonSocial)) { notif('Completa el RFC y la razón social para tu factura'); return; }
   var calle = document.getElementById('ckCalle').value.trim();
   var colonia = document.getElementById('ckColonia').value.trim();
-  if ((_tipoEntrega === 'domicilio' || _tipoEntrega === 'envio') && (!calle || !colonia)) { notif('Completa la calle y colonia para la entrega'); return; }
+  if ((_tipoEntrega === 'domicilio' || _tipoEntrega === 'envio' || _tipoEntrega === 'rapida') && (!calle || !colonia)) { notif('Completa la calle y colonia para la entrega'); return; }
+  if (_productosNoDisponiblesParaTipo(_tipoEntrega).length) { notif('Hay productos en tu carrito que no están disponibles para este tipo de entrega'); return; }
   var btn = document.getElementById('ckBtn');
   btn.disabled = true; btn.textContent = 'Enviando…';
   try{

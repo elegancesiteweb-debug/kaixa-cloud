@@ -1125,7 +1125,10 @@ router.get('/negocio/tienda', async (req, res) => {
               COALESCE(domicilio_habilitado,false) AS domicilio_habilitado,
               COALESCE(cotizacion_mostrar_fotos,false) AS cotizacion_mostrar_fotos,
               COALESCE(envio_habilitado,false) AS envio_habilitado,
-              COALESCE(envio_costo,0) AS envio_costo
+              COALESCE(envio_costo,0) AS envio_costo,
+              COALESCE(entrega_rapida_habilitado,false) AS entrega_rapida_habilitado,
+              COALESCE(entrega_rapida_costo,0) AS entrega_rapida_costo,
+              COALESCE(entrega_rapida_tiempo_min,30) AS entrega_rapida_tiempo_min
        FROM negocios WHERE id=$1`,
       [req.caja.negocio_id]
     );
@@ -1142,6 +1145,7 @@ router.put('/negocio/tienda', async (req, res) => {
       tienda_telefono = null, tienda_direccion = null, tienda_horario = null,
       tienda_mostrar_kits = null, domicilio_habilitado = null, cotizacion_mostrar_fotos = null,
       envio_habilitado = null, envio_costo = null,
+      entrega_rapida_habilitado = null, entrega_rapida_costo = null, entrega_rapida_tiempo_min = null,
       nombre = null
     } = req.body;
     // nombre no admite NULL en la tabla — solo se actualiza si mandan algo no vacío
@@ -1159,11 +1163,14 @@ router.put('/negocio/tienda', async (req, res) => {
          domicilio_habilitado=COALESCE($9, domicilio_habilitado),
          cotizacion_mostrar_fotos=COALESCE($10, cotizacion_mostrar_fotos),
          envio_habilitado=COALESCE($12, envio_habilitado),
-         envio_costo=COALESCE($13, envio_costo)
+         envio_costo=COALESCE($13, envio_costo),
+         entrega_rapida_habilitado=COALESCE($14, entrega_rapida_habilitado),
+         entrega_rapida_costo=COALESCE($15, entrega_rapida_costo),
+         entrega_rapida_tiempo_min=COALESCE($16, entrega_rapida_tiempo_min)
        WHERE id=$8`,
       [tienda_imagen_url, tienda_descripcion, tienda_logo_url, tienda_telefono, tienda_direccion, tienda_horario,
        tienda_mostrar_kits, req.caja.negocio_id, domicilio_habilitado, cotizacion_mostrar_fotos, nombreVal,
-       envio_habilitado, envio_costo]
+       envio_habilitado, envio_costo, entrega_rapida_habilitado, entrega_rapida_costo, entrega_rapida_tiempo_min]
     );
     res.json({ ok: true });
   } catch(e) { res.status(500).json({ error: e.message }); }
