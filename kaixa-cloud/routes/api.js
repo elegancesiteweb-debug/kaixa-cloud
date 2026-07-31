@@ -1243,7 +1243,7 @@ router.put('/negocio/tienda/horarios', async (req, res) => {
   try {
     await ensureTiendaTables();
     const { activo, modo, capacidad, dias = [] } = req.body;
-    if (modo && !['automatico', 'manual'].includes(modo)) return res.status(400).json({ error: 'Modo inválido' });
+    if (modo && !['automatico', 'manual', 'simple'].includes(modo)) return res.status(400).json({ error: 'Modo inválido' });
 
     await client.query('BEGIN');
     await client.query(
