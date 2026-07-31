@@ -418,7 +418,7 @@ async function estaAbiertoAhoraSimple(negocioId) {
   const porDiaSemana = {};
   filasHorario.rows.forEach(f => { porDiaSemana[f.dia_semana] = f; });
 
-  const fechaFin7 = fechaAISO(new Date(hoyStr + 'T00:00:00Z').getTime() + 7 * 86400000);
+  const fechaFin7 = fechaAISO(new Date(new Date(hoyStr + 'T00:00:00Z').getTime() + 7 * 86400000));
   const cerradosRes = await pool.query(
     `SELECT fecha FROM tienda_horarios_bloqueados WHERE negocio_id=$1 AND hora='' AND fecha BETWEEN $2 AND $3`,
     [negocioId, hoyStr, fechaFin7]
@@ -432,7 +432,7 @@ async function estaAbiertoAhoraSimple(negocioId) {
   let proximaApertura = null;
   if (!disponibleAhora) {
     for (let i = 0; i <= 7; i++) {
-      const fechaStr = fechaAISO(new Date(hoyStr + 'T00:00:00Z').getTime() + i * 86400000);
+      const fechaStr = fechaAISO(new Date(new Date(hoyStr + 'T00:00:00Z').getTime() + i * 86400000));
       if (diasCerrados.has(fechaStr)) continue;
       const dow = (dowHoy + i) % 7;
       const cfg = porDiaSemana[dow];
