@@ -392,6 +392,61 @@ async function calcularHorariosDisponibles(negocioId, tipoEntrega, dias) {
   return { activo: true, modo, capacidad, dias: resultado };
 }
 
+const DIAS_SEMANA_NOMBRE = ['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
+
+// ── Modo "simple" de horarios: el negocio solo define días/horas de
+// operación (misma tabla tienda_horarios que ya usan automático/manual) —
+// aquí no se generan slots, solo se responde "¿estamos abiertos ahora
+// mismo?", para que el cliente NO tenga que elegir una hora. ──
+async function estaAbiertoAhoraSimple(negocioId) {
+  const negRes = await pool.query(`SELECT horarios_pedido_activo FROM negocios WHERE id=$1`, [negocioId]);
+  if (!negRes.rows.length || !negRes.rows[0].horarios_pedido_activo) return { activo: false, modo: 'simple', disponible_ahora: true };
+
+  const ahoraRes = await pool.query(
+    `SELECT (now() AT TIME ZONE 'America/Mexico_City')::date as hoy,
+            to_char(now() AT TIME ZONE 'America/Mexico_City', 'HH24:MI') as hora_actual,
+            EXTRACT(DOW FROM (now() AT TIME ZONE 'America/Mexico_City'))::int as dow`
+  );
+  const hoyStr = fechaAISO(ahoraRes.rows[0].hoy);
+  const horaActual = ahoraRes.rows[0].hora_actual;
+  const dowHoy = ahoraRes.rows[0].dow;
+
+  const filasHorario = await pool.query(
+    `SELECT dia_semana, hora_apertura, hora_cierre FROM tienda_horarios WHERE negocio_id=$1 AND activo=true`,
+    [negocioId]
+  );
+  const porDiaSemana = {};
+  filasHorario.rows.forEach(f => { porDiaSemana[f.dia_semana] = f; });
+
+  const fechaFin7 = fechaAISO(new Date(hoyStr + 'T00:00:00Z').getTime() + 7 * 86400000);
+  const cerradosRes = await pool.query(
+    `SELECT fecha FROM tienda_horarios_bloqueados WHERE negocio_id=$1 AND hora='' AND fecha BETWEEN $2 AND $3`,
+    [negocioId, hoyStr, fechaFin7]
+  );
+  const diasCerrados = new Set(cerradosRes.rows.map(r => fechaAISO(r.fecha)));
+
+  const cfgHoy = !diasCerrados.has(hoyStr) ? porDiaSemana[dowHoy] : null;
+  const horarioHoy = cfgHoy ? { apertura: cfgHoy.hora_apertura, cierre: cfgHoy.hora_cierre } : null;
+  const disponibleAhora = !!(cfgHoy && horaActual >= cfgHoy.hora_apertura && horaActual < cfgHoy.hora_cierre);
+
+  let proximaApertura = null;
+  if (!disponibleAhora) {
+    for (let i = 0; i <= 7; i++) {
+      const fechaStr = fechaAISO(new Date(hoyStr + 'T00:00:00Z').getTime() + i * 86400000);
+      if (diasCerrados.has(fechaStr)) continue;
+      const dow = (dowHoy + i) % 7;
+      const cfg = porDiaSemana[dow];
+      if (!cfg) continue;
+      // Si es hoy y ya cerró (no si todavía no abre), pasa al siguiente día configurado.
+      if (i === 0 && horaActual >= cfg.hora_cierre) continue;
+      proximaApertura = { dia_semana: dow, dia_nombre: DIAS_SEMANA_NOMBRE[dow], hora: cfg.hora_apertura, es_hoy: i === 0 };
+      break;
+    }
+  }
+
+  return { activo: true, modo: 'simple', disponible_ahora: disponibleAhora, horario_hoy: horarioHoy, proxima_apertura: proximaApertura };
+}
+
 // ── Genera los pedidos_online de la semana para cada plantilla recurrente ──
 // cuyo día_semana coincide con hoy (horario de México) y que no se haya
 // generado ya hoy. Se llama periódicamente desde server.js.
@@ -503,6 +558,7 @@ router.get('/tienda/:slug/info', async (req, res) => {
               (mp_access_token IS NOT NULL AND mp_access_token != '') AS mp_habilitado,
               COALESCE(modulos_opcionales::jsonb ? 'entregas_programadas', false) AS entregas_habilitado,
               COALESCE(horarios_pedido_activo,false) AS horarios_pedido_activo,
+              COALESCE(horarios_pedido_modo,'automatico') AS horarios_pedido_modo,
               COALESCE(menu_color_acento,'') AS menu_color_acento,
               COALESCE(menu_bienvenida,'') AS menu_bienvenida,
               COALESCE(menu_mostrar_precios,true) AS menu_mostrar_precios,
@@ -527,6 +583,10 @@ router.get('/tienda/:slug/horarios-disponibles', async (req, res) => {
     await ensureTiendaTables();
     const neg = await pool.query('SELECT id FROM negocios WHERE slug=$1 AND activo=true', [req.params.slug]);
     if (!neg.rows.length) return res.status(404).json({ error: 'Tienda no encontrada' });
+    const modoRes = await pool.query('SELECT horarios_pedido_modo FROM negocios WHERE id=$1', [neg.rows[0].id]);
+    if ((modoRes.rows[0] && modoRes.rows[0].horarios_pedido_modo) === 'simple') {
+      return res.json(await estaAbiertoAhoraSimple(neg.rows[0].id));
+    }
     const tipoEntrega = ['recoger', 'domicilio', 'envio'].includes(req.query.tipo_entrega) ? req.query.tipo_entrega : 'recoger';
     const dias = Math.min(parseInt(req.query.dias) || 14, 60);
     const resultado = await calcularHorariosDisponibles(neg.rows[0].id, tipoEntrega, dias);
@@ -702,6 +762,19 @@ router.post('/tienda/:slug/pedidos', async (req, res) => {
         if (!diaDisponible || !diaDisponible.horas.includes(hora_entrega)) {
           return res.status(409).json({ error: 'Ese horario ya no está disponible, elige otro.' });
         }
+      }
+    }
+
+    // Modo "simple": el cliente no elige fecha/hora — se revalida que el
+    // negocio esté abierto en este momento justo antes de guardar el pedido.
+    const modoHorarios = await pool.query('SELECT horarios_pedido_activo, horarios_pedido_modo FROM negocios WHERE id=$1', [negocioId]);
+    if (modoHorarios.rows[0] && modoHorarios.rows[0].horarios_pedido_activo && modoHorarios.rows[0].horarios_pedido_modo === 'simple') {
+      const estado = await estaAbiertoAhoraSimple(negocioId);
+      if (!estado.disponible_ahora) {
+        const cuando = estado.proxima_apertura
+          ? (estado.proxima_apertura.es_hoy ? 'hoy' : estado.proxima_apertura.dia_nombre) + ' a las ' + estado.proxima_apertura.hora
+          : 'pronto';
+        return res.status(409).json({ error: 'En este momento no estamos recibiendo pedidos. Abrimos ' + cuando + '.' });
       }
     }
 

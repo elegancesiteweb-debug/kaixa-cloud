@@ -775,21 +775,42 @@ function setTipoEntrega(tipo){
   document.getElementById('ckTotal').textContent = '$' + totalMostrar.toFixed(2) + (costoExtra ? ' (incluye $'+costoExtra.toFixed(2)+' de entrega)' : '');
   document.getElementById('ckTotalLbl').textContent = tipo === 'domicilio' ? 'Total a pagar al recibir' : tipo === 'envio' ? 'Total a pagar (envío incluido)' : tipo === 'rapida' ? 'Total a pagar (entrega incluida)' : 'Total a pagar en tienda';
 
+  _actualizarAvisoCheckout(tipo);
+  _horFechaElegida = null;
+  cargarHorariosDisponibles();
+}
+
+// ── Combina las dos razones independientes por las que se puede bloquear el
+// checkout — productos no disponibles para el tipo de entrega elegido (ya
+// existía) y, en modo "simple" de horarios, que el negocio esté cerrado en
+// este momento (_horarioSimpleInfo, ver cargarHorariosDisponibles) — en un
+// solo aviso, sin que una pise a la otra. ──
+function _actualizarAvisoCheckout(tipo){
   var aviso = document.getElementById('ckEntregaAviso');
-  var noDisponibles = _productosNoDisponiblesParaTipo(tipo);
   var btn = document.getElementById('ckBtn');
+  var mensajes = [];
+
+  var noDisponibles = _productosNoDisponiblesParaTipo(tipo);
   if (noDisponibles.length) {
+    var nombreTipo = document.getElementById('btn'+tipo.charAt(0).toUpperCase()+tipo.slice(1)).textContent.trim();
+    mensajes.push('Estos productos no están disponibles para "'+nombreTipo+'": '+noDisponibles.join(', ')+' — quítalos del carrito o elige "Recoger en tienda".');
+  }
+
+  if (_horarioSimpleInfo && _horarioSimpleInfo.activo && !_horarioSimpleInfo.disponible_ahora) {
+    var cuando = _horarioSimpleInfo.proxima_apertura
+      ? (_horarioSimpleInfo.proxima_apertura.es_hoy ? 'hoy' : _horarioSimpleInfo.proxima_apertura.dia_nombre) + ' a las ' + _horarioSimpleInfo.proxima_apertura.hora
+      : 'pronto';
+    mensajes.push('En este momento no estamos recibiendo pedidos. Abrimos '+cuando+'.');
+  }
+
+  if (mensajes.length) {
     aviso.style.display = 'block';
-    aviso.textContent = '⚠️ Estos productos no están disponibles para "' + document.getElementById('btn'+tipo.charAt(0).toUpperCase()+tipo.slice(1)).textContent.trim() + '": ' + noDisponibles.join(', ') + ' — quítalos del carrito o elige "Recoger en tienda".';
+    aviso.textContent = '⚠️ ' + mensajes.join(' ');
     btn.disabled = true; btn.style.opacity = '.5';
   } else {
     aviso.style.display = 'none';
     btn.disabled = false; btn.style.opacity = '';
   }
-
-  _horFechaElegida = null;
-  if (tipo === 'rapida') { document.getElementById('ckHorariosBox').style.display = 'none'; }
-  else { cargarHorariosDisponibles(); }
 }
 
 // ── Horarios para agendar pedidos (recoger/domicilio/envío) — independiente ──
@@ -799,10 +820,33 @@ function setTipoEntrega(tipo){
 // el horario real del negocio en vez de un date/time libre.
 var _horariosDisponibles = null;
 var _horFechaElegida = null;
+// Modo "simple": el cliente no elige fecha/hora — solo se guarda si el
+// negocio está abierto ahora mismo, para el aviso combinado en
+// _actualizarAvisoCheckout(). null = no aplica (no es modo simple).
+var _horarioSimpleInfo = null;
 
 async function cargarHorariosDisponibles(){
   var box = document.getElementById('ckHorariosBox');
-  if (!negocio || !negocio.horarios_pedido_activo) { box.style.display = 'none'; return; }
+  document.getElementById('ckFechaEntrega').value = '';
+  document.getElementById('ckHoraEntrega').value = '';
+  if (!negocio || !negocio.horarios_pedido_activo) {
+    box.style.display = 'none'; _horarioSimpleInfo = null; _actualizarAvisoCheckout(_tipoEntrega);
+    return;
+  }
+
+  if (negocio.horarios_pedido_modo === 'simple') {
+    box.style.display = 'none';
+    try {
+      var rs = await fetch('/api/tienda/' + slug + '/horarios-disponibles?tipo_entrega=' + _tipoEntrega + '&dias=14');
+      _horarioSimpleInfo = await rs.json();
+    } catch(e) { _horarioSimpleInfo = null; }
+    _actualizarAvisoCheckout(_tipoEntrega);
+    return;
+  }
+  _horarioSimpleInfo = null;
+
+  if (_tipoEntrega === 'rapida') { box.style.display = 'none'; _actualizarAvisoCheckout(_tipoEntrega); return; }
+
   try {
     var r = await fetch('/api/tienda/' + slug + '/horarios-disponibles?tipo_entrega=' + _tipoEntrega + '&dias=14');
     var d = await r.json();
@@ -810,12 +854,14 @@ async function cargarHorariosDisponibles(){
       box.style.display = 'none';
       document.getElementById('ckFechaEntrega').value = '';
       document.getElementById('ckHoraEntrega').value = '';
+      _actualizarAvisoCheckout(_tipoEntrega);
       return;
     }
     _horariosDisponibles = d;
     box.style.display = 'block';
     renderHorDias();
-  } catch(e) { box.style.display = 'none'; }
+    _actualizarAvisoCheckout(_tipoEntrega);
+  } catch(e) { box.style.display = 'none'; _actualizarAvisoCheckout(_tipoEntrega); }
 }
 
 function renderHorDias(){
