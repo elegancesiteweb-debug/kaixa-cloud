@@ -797,7 +797,7 @@ async function loadEmpleadosLogin() {
       var avHtml = (e.foto && e.foto.indexOf('data:') === 0)
         ? '<img src="' + e.foto + '" style="width:100%;height:100%;object-fit:cover;border-radius:50%">'
         : ini;
-      return '<div class="login-emp-tile" id="loginEmpTile-' + e.id + '" onclick="seleccionarEmpLogin(' + e.id + ')" ' +
+      return '<div class="login-emp-tile" id="loginEmpTile-' + e.id + '" onclick="seleccionarEmpLogin(\'' + e.id + '\')" ' +
         'style="text-align:center;cursor:pointer;padding:10px 6px;border-radius:12px;border:1.5px solid var(--border);background:var(--s2);transition:all .15s">' +
         '<div style="width:48px;height:48px;border-radius:50%;margin:0 auto 6px;overflow:hidden;background:linear-gradient(135deg,#8b5cf6,#d946ef);display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:800;color:#fff">' + avHtml + '</div>' +
         '<div style="font-size:11px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + e.nombre + '</div>' +
@@ -872,14 +872,14 @@ async function doLogin() {
   try {
     var r = await apiFetch('/api/auth/login', {
       method: 'POST',
-      body: JSON.stringify({ id: parseInt(empId), password: pass })
+      body: JSON.stringify({ id: empId, password: pass })
     });
     if (r && r.ok) {
       var d = await r.json();
       if (d.ok || d.success || d.token) {
         var re = await apiFetch('/api/empleados/' + empId);
         if (re && re.ok) { usuario = await re.json(); }
-        else { usuario = { id: parseInt(empId), nombre: 'Usuario', rol: 'cajero' }; }
+        else { usuario = { id: empId, nombre: 'Usuario', rol: 'cajero' }; }
         localStorage.setItem('kaixa_usuario', JSON.stringify(usuario));
         go('main');
         navTo('dash');
