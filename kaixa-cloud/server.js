@@ -298,6 +298,64 @@ app.get('/api/lic/stats', authAdmin, async (req, res) => {
     res.json({ total: parseInt(total.rows[0].n), activas: parseInt(activas.rows[0].n), suspendidas: parseInt(total.rows[0].n) - parseInt(activas.rows[0].n), nuevas_hoy: parseInt(hoy.rows[0].n), por_giro: porGiro.rows });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
+// ── RUTA TEMPORAL — corrige el bug de doble conteo de stock inicial ──────
+// Un producto nuevo con stock inicial se mandaba a la nube por dos caminos
+// a la vez (movimiento "recepcion" + "ajuste" calculado automáticamente),
+// dejando el stock casi al doble de lo real. Ya se corrigió en pos-mexico
+// para que no vuelva a pasar; esta ruta identifica y corrige, sin borrar
+// nada (movimiento compensatorio), los productos que ya quedaron mal antes
+// del fix. Se retira una vez confirmado que ya no hace falta.
+const SQL_STOCK_DUPLICADO = `
+  WITH ordenados AS (
+    SELECT id, producto_id, negocio_id, sucursal_id, motivo, cantidad, creado_en,
+           ROW_NUMBER() OVER (PARTITION BY producto_id ORDER BY creado_en, id) AS rn
+    FROM stock_movimientos
+  )
+  SELECT a.id AS ajuste_id, a.producto_id, a.negocio_id, a.sucursal_id, a.cantidad,
+         a.creado_en AS ajuste_en, r.creado_en AS recepcion_en,
+         n.nombre AS negocio_nombre, p.nombre AS producto_nombre
+  FROM ordenados a
+  JOIN ordenados r ON r.producto_id = a.producto_id AND r.rn = 1
+  LEFT JOIN productos p ON p.id = a.producto_id
+  LEFT JOIN negocios n ON n.id = a.negocio_id
+  WHERE a.rn = 2
+    AND a.motivo = 'ajuste'
+    AND r.motivo = 'recepcion'
+    AND a.cantidad = r.cantidad
+    AND a.creado_en - r.creado_en < interval '2 minutes'
+    AND NOT EXISTS (
+      SELECT 1 FROM stock_movimientos c
+      WHERE c.motivo = 'correccion_bug_duplicado' AND c.producto_id = a.producto_id
+    )
+  ORDER BY a.creado_en DESC`;
+
+app.get('/api/admin/stock-duplicado', authAdmin, async (req, res) => {
+  try {
+    const r = await pool.query(SQL_STOCK_DUPLICADO);
+    res.json({ ok: true, total: r.rows.length, casos: r.rows });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/admin/stock-duplicado/corregir', authAdmin, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const casos = (await client.query(SQL_STOCK_DUPLICADO)).rows;
+    await client.query('BEGIN');
+    for (const c of casos) {
+      await client.query(
+        `INSERT INTO stock_movimientos (id, negocio_id, sucursal_id, producto_id, cantidad, motivo)
+         VALUES (gen_random_uuid(), $1, $2, $3, $4, 'correccion_bug_duplicado')`,
+        [c.negocio_id, c.sucursal_id, c.producto_id, -c.cantidad]
+      );
+    }
+    await client.query('COMMIT');
+    res.json({ ok: true, corregidos: casos.length, detalle: casos });
+  } catch(e) {
+    await client.query('ROLLBACK');
+    res.status(500).json({ error: e.message });
+  } finally { client.release(); }
+});
+
 app.get('/api/lic/licencias', authAdmin, async (req, res) => {
   try {
     const { q='', giro='', estado='' } = req.query;
