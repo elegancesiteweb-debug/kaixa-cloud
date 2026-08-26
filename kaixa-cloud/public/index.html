@@ -1952,24 +1952,57 @@ async function loadVentas() {
   var fecha = document.getElementById('ventaFiltroFecha')?.value || new Date().toLocaleDateString('en-CA');
   var fp = document.getElementById('ventaFiltroFP')?.value || '';
   if (!document.getElementById('ventaFiltroFecha').value) {
-    document.getElementById('ventaFiltroFecha').value = new Date().toLocaleDateString('en-CA');
+    document.getElementById('ventaFiltroFecha').value = fecha;
   }
   try {
-    var r = await apiFetch('/api/ventas');
-    var ventas = r && r.ok ? await r.json() : [];
-    if (!Array.isArray(ventas)) ventas = [];
-    ventas = ventas.filter(function(v) {
-      var fechaLocal = new Date(v.creado_en).toLocaleDateString('en-CA');
-      return fechaLocal === fecha && (!fp || v.forma_pago === fp);
+    // Rango del día elegido en hora LOCAL de este dispositivo, convertido a UTC para
+    // que el servidor filtre exacto — antes se pedían las últimas 200 ventas del
+    // negocio (sin importar el día) y se filtraba por fecha en el celular, así que
+    // un día viejo con más de 200 ventas más recientes de por medio salía vacío.
+    var partes = fecha.split('-').map(Number);
+    var inicioLocal = new Date(partes[0], partes[1] - 1, partes[2], 0, 0, 0, 0);
+    var finLocal    = new Date(partes[0], partes[1] - 1, partes[2] + 1, 0, 0, 0, 0);
+    var url = '/api/ventas?desde=' + encodeURIComponent(inicioLocal.toISOString()) + '&hasta=' + encodeURIComponent(finLocal.toISOString());
+    var r = await apiFetch(url);
+    var ventasDia = r && r.ok ? await r.json() : [];
+    if (!Array.isArray(ventasDia)) ventasDia = [];
+
+    // Resumen del día — siempre sobre TODAS las ventas del día (sin importar el filtro
+    // de forma de pago de abajo, que solo afecta qué filas se listan), y sin contar
+    // las canceladas (no son venta real), igual que ya hace el corte de caja en PC.
+    var resumen = { total: 0, count: 0, efectivo: 0, tarjeta: 0, transferencia: 0, credito: 0 };
+    ventasDia.forEach(function(v) {
+      if (v.estado === 'cancelada') return;
+      var t = parseFloat(v.total) || 0;
+      resumen.total += t;
+      resumen.count++;
+      var f = v.forma_pago || 'efectivo';
+      if (resumen[f] === undefined) f = 'efectivo';
+      resumen[f] += t;
     });
+
+    var resumenHtml = '<div class="card" style="margin:12px 16px">' +
+      '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px">' +
+        '<div style="font-size:12px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:.5px">Total del día · ' + resumen.count + ' venta' + (resumen.count === 1 ? '' : 's') + '</div>' +
+        '<div style="font-size:20px;font-weight:900;color:var(--accent);font-family:var(--fm)">' + fmt(resumen.total) + '</div>' +
+      '</div>' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 14px">' +
+        '<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text2)"><span>💵 Efectivo</span><span style="font-weight:800;font-family:var(--fm);color:var(--text)">' + fmt(resumen.efectivo) + '</span></div>' +
+        '<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text2)"><span>💳 Tarjeta</span><span style="font-weight:800;font-family:var(--fm);color:var(--text)">' + fmt(resumen.tarjeta) + '</span></div>' +
+        '<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text2)"><span>📲 Transferencia</span><span style="font-weight:800;font-family:var(--fm);color:var(--text)">' + fmt(resumen.transferencia) + '</span></div>' +
+        '<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text2)"><span>🏷️ Crédito</span><span style="font-weight:800;font-family:var(--fm);color:var(--text)">' + fmt(resumen.credito) + '</span></div>' +
+      '</div></div>';
+
+    var ventas = fp ? ventasDia.filter(function(v) { return v.forma_pago === fp; }) : ventasDia;
     var cont = document.getElementById('ventasList');
-    if (!ventas.length) { cont.innerHTML = '<div class="empty"><div class="ico">🧾</div><p>Sin ventas ese día</p></div>'; return; }
-    cont.innerHTML = ventas.map(function(v) {
+    if (!ventas.length) { cont.innerHTML = resumenHtml + '<div class="empty"><div class="ico">🧾</div><p>Sin ventas ese día' + (fp ? ' con esa forma de pago' : '') + '</p></div>'; return; }
+    cont.innerHTML = resumenHtml + ventas.map(function(v) {
       var fp2 = v.forma_pago || 'efectivo';
       var fpCls = { efectivo:'fp-efectivo', tarjeta:'fp-tarjeta', transferencia:'fp-transferencia' };
+      var canceladaTag = v.estado === 'cancelada' ? ' <span class="tag err" style="margin-left:4px">cancelada</span>' : '';
       return '<div class="venta-row" onclick="verDetalleVenta(\'' + v.id + '\')">' +
         '<div class="vr-num">#' + (v.folio||v.id) + '</div>' +
-        '<div class="vr-info"><div class="vr-hora">' + (v.creado_en ? fmtHora(v.creado_en) : '') + '</div>' +
+        '<div class="vr-info"><div class="vr-hora">' + (v.creado_en ? fmtHora(v.creado_en) : '') + canceladaTag + '</div>' +
         '<div class="vr-cajero">' + (v.cajero_nombre||v.usuario_nombre||'—') + '</div>' +
         '<span class="vr-fp ' + (fpCls[fp2]||'fp-efectivo') + '">' + fp2 + '</span></div>' +
         '<div class="vr-total">' + fmt(v.total) + '</div></div>';

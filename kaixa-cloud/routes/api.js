@@ -303,19 +303,29 @@ router.post('/ventas', async (req, res) => {
   }
 });
 
-// ── GET /api/ventas ────────────────────────────────────────────
+// ── GET /api/ventas — ?desde=ISO&hasta=ISO filtra por rango exacto (lo usa
+// el resumen de un día en la app móvil); sin esos params, regresa las
+// últimas 200 como antes. Sin esto, consultar un día viejo con más de 200
+// ventas más recientes en el negocio se quedaba fuera del LIMIT y salía
+// incompleto o vacío aunque sí hubiera ventas ese día. ──────────────────
 router.get('/ventas', async (req, res) => {
   try {
     await ensureVentasFechaPagoColumn();
     const { negocio_id, sucursal_id } = req.caja;
-    const r = await pool.query(
-      `SELECT v.*, s.nombre AS sucursal_nombre, c.nombre AS caja_nombre
+    const { desde, hasta } = req.query;
+    let sql = `SELECT v.*, s.nombre AS sucursal_nombre, c.nombre AS caja_nombre
        FROM ventas v
        JOIN sucursales s ON s.id = v.sucursal_id
        LEFT JOIN cajas c ON c.id = v.caja_id
-       WHERE v.negocio_id=$1 AND v.sucursal_id=$2 ORDER BY v.creado_en DESC LIMIT 200`,
-      [negocio_id, sucursal_id]
-    );
+       WHERE v.negocio_id=$1 AND v.sucursal_id=$2`;
+    const params = [negocio_id, sucursal_id];
+    if (desde && hasta) {
+      sql += ` AND v.creado_en >= $3 AND v.creado_en < $4 ORDER BY v.creado_en DESC`;
+      params.push(desde, hasta);
+    } else {
+      sql += ` ORDER BY v.creado_en DESC LIMIT 200`;
+    }
+    const r = await pool.query(sql, params);
     res.json(r.rows);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
