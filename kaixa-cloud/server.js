@@ -373,6 +373,23 @@ app.get('/api/admin/ventas-sin-detalle', authAdmin, async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── TEMPORAL — última vez que cada caja de un negocio se conectó a sincronizar.
+app.get('/api/admin/cajas-negocio', authAdmin, async (req, res) => {
+  try {
+    const { negocio } = req.query;
+    const r = await pool.query(
+      `SELECT c.nombre, c.tipo, c.activo, c.ultimo_sync, s.nombre AS sucursal_nombre
+       FROM cajas c
+       JOIN sucursales s ON s.id = c.sucursal_id
+       JOIN negocios n ON n.id = c.negocio_id
+       WHERE n.nombre = $1
+       ORDER BY c.ultimo_sync DESC NULLS LAST`,
+      [negocio]
+    );
+    res.json({ ok: true, cajas: r.rows, ahora: new Date().toISOString() });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 app.post('/api/admin/stock-duplicado/corregir', authAdmin, async (req, res) => {
   const client = await pool.connect();
   try {
