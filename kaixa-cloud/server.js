@@ -394,6 +394,22 @@ app.get('/api/admin/cajas-negocio', authAdmin, async (req, res) => {
 // ── TEMPORAL — fijar el stock de un producto directo desde la nube (para
 // probar que la corrección baja bien a la PC, o para corregir un caso
 // puntual sin depender de que el negocio lo edite).
+app.get('/api/admin/recepciones-duplicadas', authAdmin, async (req, res) => {
+  try {
+    const r = await pool.query(
+      `SELECT producto_id, p.nombre, n.nombre AS negocio_nombre, COUNT(*) AS n
+       FROM stock_movimientos sm
+       LEFT JOIN productos p ON p.id = sm.producto_id
+       LEFT JOIN negocios n ON n.id = sm.negocio_id
+       WHERE motivo='recepcion'
+       GROUP BY producto_id, p.nombre, n.nombre
+       HAVING COUNT(*) > 1
+       ORDER BY n DESC`
+    );
+    res.json({ ok: true, total: r.rows.length, casos: r.rows });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 app.post('/api/admin/set-stock', authAdmin, async (req, res) => {
   try {
     const { negocio, producto_nombre, stock } = req.body;

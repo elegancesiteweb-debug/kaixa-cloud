@@ -187,12 +187,21 @@ router.post('/push', async (req, res) => {
 
     // Movimientos de stock
     for (const m of movimientos) {
-      await client.query(
-        `INSERT INTO stock_movimientos (id, negocio_id, sucursal_id, producto_id, caja_id, cantidad, motivo, venta_id, creado_en)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT (id) DO NOTHING`,
-        [m.uuid, negocio_id, m.sucursal_id||sucursal_id, m.producto_uuid, caja_id, m.cantidad, m.motivo||'venta',
-         m.venta_uuid||null, m.creado_en||new Date()]
-      );
+      try {
+        await client.query(
+          `INSERT INTO stock_movimientos (id, negocio_id, sucursal_id, producto_id, caja_id, cantidad, motivo, venta_id, creado_en)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT (id) DO NOTHING`,
+          [m.uuid, negocio_id, m.sucursal_id||sucursal_id, m.producto_uuid, caja_id, m.cantidad, m.motivo||'venta',
+           m.venta_uuid||null, m.creado_en||new Date()]
+        );
+      } catch(eMov) {
+        // 23505 = unique_violation — lo dispara idx_movs_recepcion_unica si
+        // alguna vez llega un segundo "stock inicial" con un id distinto
+        // para el mismo producto (la protección de última línea). Se ignora
+        // a propósito: es exactamente el resultado que se busca (rechazar
+        // el duplicado), no debe tumbar el resto del push.
+        if (eMov.code !== '23505') throw eMov;
+      }
     }
 
     // Lotes

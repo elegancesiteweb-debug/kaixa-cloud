@@ -93,6 +93,13 @@ CREATE TABLE IF NOT EXISTS stock_movimientos (
 );
 CREATE INDEX IF NOT EXISTS idx_movs_producto   ON stock_movimientos(producto_id);
 CREATE INDEX IF NOT EXISTS idx_movs_sucursal   ON stock_movimientos(sucursal_id);
+-- Protección de última línea contra el stock duplicado: un producto solo
+-- puede tener UN movimiento de "recepcion" (su stock inicial) en toda su
+-- vida — la base de datos lo rechaza directo si algo intenta mandarlo dos
+-- veces, sin importar qué identificador traiga ni por qué código haya
+-- pasado. No depende de que la lógica de arriba (banderas, reintentos, etc.)
+-- esté perfecta.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_movs_recepcion_unica ON stock_movimientos(producto_id) WHERE motivo='recepcion';
 
 -- Vista de stock actual por producto Y sucursal
 CREATE OR REPLACE VIEW stock_actual AS
