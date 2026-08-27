@@ -354,6 +354,24 @@ app.get('/api/admin/stock-movimientos-negocio', authAdmin, async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── TEMPORAL — diagnóstico: productos modificados más recientemente en un
+// negocio, para ver qué cambio se hizo y cuándo llegó a la nube.
+app.get('/api/admin/productos-recientes', authAdmin, async (req, res) => {
+  try {
+    const { negocio } = req.query;
+    const r = await pool.query(
+      `SELECT p.id, p.nombre, p.stock, p.actualizado_en, p.sucursal_id
+       FROM productos p
+       JOIN negocios n ON n.id = p.negocio_id
+       WHERE n.nombre = $1
+       ORDER BY p.actualizado_en DESC NULLS LAST
+       LIMIT 20`,
+      [negocio]
+    );
+    res.json({ ok: true, ahora: new Date().toISOString(), productos: r.rows });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 // ── TEMPORAL — ventas sin ningún renglón de detalle (venta_detalle vacío):
 // señal de que el item nunca llegó a sincronizarse, así que tampoco se
 // mandó el movimiento de stock de esa venta (el stock local sí bajó, pero
