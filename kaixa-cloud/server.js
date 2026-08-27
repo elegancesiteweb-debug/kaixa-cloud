@@ -336,6 +336,25 @@ app.get('/api/admin/stock-duplicado', authAdmin, async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── TEMPORAL — diagnóstico ampliado: todos los movimientos de un negocio,
+// para ver el historial completo de un producto en vez de solo el patrón
+// exacto recepcion+ajuste que ya se corrigió.
+app.get('/api/admin/stock-movimientos-negocio', authAdmin, async (req, res) => {
+  try {
+    const { negocio } = req.query;
+    const r = await pool.query(
+      `SELECT sm.id, sm.producto_id, p.nombre AS producto_nombre, sm.motivo, sm.cantidad, sm.creado_en
+       FROM stock_movimientos sm
+       JOIN productos p ON p.id = sm.producto_id
+       JOIN negocios n ON n.id = sm.negocio_id
+       WHERE n.nombre = $1
+       ORDER BY p.nombre, sm.creado_en`,
+      [negocio]
+    );
+    res.json({ ok: true, total: r.rows.length, movimientos: r.rows });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 app.post('/api/admin/stock-duplicado/corregir', authAdmin, async (req, res) => {
   const client = await pool.connect();
   try {
