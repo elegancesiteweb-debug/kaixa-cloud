@@ -124,22 +124,19 @@ router.post('/push', async (req, res) => {
          activoProd, p.proveedor_uuid||null, p.moneda_costo||'MXN', parseFloat(p.costo_moneda)||0, imagenesExtraStr, p.descripcion||'',
          p.disponible_domicilio !== false, p.disponible_envio !== false, p.entrega_rapida === true]
       );
-      // Ajuste de stock si viene stock
+      // Ajuste de stock si viene stock — leer + insertar en una sola
+      // sentencia (evita la ventana de carrera entre leer el stock actual
+      // e insertar el ajuste, si otra edición del mismo producto llega casi
+      // al mismo tiempo, ej. PC y móvil editando seguido).
       if (p.stock !== undefined && p.stock !== null) {
         const stockNuevo = parseInt(p.stock) || 0;
-        const stockActual = await client.query(
-          `SELECT COALESCE(SUM(cantidad),0) as stock FROM stock_movimientos WHERE producto_id=$1 AND sucursal_id=$2`,
-          [p.uuid, prodSucursalId]
+        await client.query(
+          `INSERT INTO stock_movimientos (id, negocio_id, sucursal_id, producto_id, caja_id, cantidad, motivo)
+           SELECT gen_random_uuid(), $1, $2, $3, $4, $5 - COALESCE(SUM(cantidad),0), 'ajuste'
+           FROM stock_movimientos WHERE producto_id=$3 AND sucursal_id=$2
+           HAVING ($5 - COALESCE(SUM(cantidad),0)) != 0`,
+          [negocio_id, prodSucursalId, p.uuid, caja_id, stockNuevo]
         );
-        const stockActualNum = parseInt(stockActual.rows[0].stock) || 0;
-        const diferencia = stockNuevo - stockActualNum;
-        if (diferencia !== 0) {
-          await client.query(
-            `INSERT INTO stock_movimientos (id, negocio_id, sucursal_id, producto_id, caja_id, cantidad, motivo)
-             VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,'ajuste')`,
-            [negocio_id, prodSucursalId, p.uuid, caja_id, diferencia]
-          );
-        }
       }
     }
 

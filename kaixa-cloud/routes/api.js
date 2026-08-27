@@ -167,21 +167,22 @@ router.put('/productos/:id', async (req, res) => {
        p.categoria_id||null, !!p.por_peso, p.unidad_peso||'kg', !!p.tiene_prescripcion,
        req.params.id, negocio_id]
     );
-    // Si viene stock, registrar movimiento de ajuste
+    // Si viene stock, registrar movimiento de ajuste — leer el stock actual
+    // e insertar el ajuste en UNA sola sentencia (en vez de un SELECT y
+    // luego un INSERT separados) para que dos ediciones casi simultáneas
+    // del mismo producto no lean el mismo número base antes de que la otra
+    // escriba (condición de carrera real con PC + móvil editando seguido).
     if (p.stock !== undefined) {
       const stockNuevo = parseInt(p.stock) || 0;
-      const stockActual = await pool.query(
-        `SELECT COALESCE(SUM(cantidad),0) as stock FROM stock_movimientos WHERE producto_id=$1 AND sucursal_id=$2`,
-        [req.params.id, sucursal_id]
+      const ins = await pool.query(
+        `INSERT INTO stock_movimientos (id, negocio_id, sucursal_id, producto_id, caja_id, cantidad, motivo)
+         SELECT gen_random_uuid(), $1, $2, $3, $4, $5 - COALESCE(SUM(cantidad),0), 'ajuste'
+         FROM stock_movimientos WHERE producto_id=$3 AND sucursal_id=$2
+         HAVING ($5 - COALESCE(SUM(cantidad),0)) != 0
+         RETURNING id`,
+        [negocio_id, sucursal_id, req.params.id, req.caja.id, stockNuevo]
       );
-      const stockActualNum = parseInt(stockActual.rows[0].stock) || 0;
-      const diferencia = stockNuevo - stockActualNum;
-      if (diferencia !== 0) {
-        await pool.query(
-          `INSERT INTO stock_movimientos (id, negocio_id, sucursal_id, producto_id, caja_id, cantidad, motivo)
-           VALUES ($1,$2,$3,$4,$5,$6,'ajuste')`,
-          [uuid(), negocio_id, sucursal_id, req.params.id, req.caja.id, diferencia]
-        );
+      if (ins.rows.length) {
         // Tocar actualizado_en para que el pull de la PC recoja el cambio de stock
         await pool.query(
           `UPDATE productos SET actualizado_en=now() WHERE id=$1`,
