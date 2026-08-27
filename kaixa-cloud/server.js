@@ -353,6 +353,26 @@ app.get('/api/admin/stock-movimientos-negocio', authAdmin, async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── TEMPORAL — ventas sin ningún renglón de detalle (venta_detalle vacío):
+// señal de que el item nunca llegó a sincronizarse, así que tampoco se
+// mandó el movimiento de stock de esa venta (el stock local sí bajó, pero
+// la nube nunca se enteró).
+app.get('/api/admin/ventas-sin-detalle', authAdmin, async (req, res) => {
+  try {
+    const { negocio } = req.query;
+    const r = await pool.query(
+      `SELECT v.id, v.folio, v.total, v.forma_pago, v.creado_en, v.cajero
+       FROM ventas v
+       JOIN negocios n ON n.id = v.negocio_id
+       WHERE n.nombre = $1 AND v.estado != 'cancelada'
+         AND NOT EXISTS (SELECT 1 FROM venta_detalle vd WHERE vd.venta_id = v.id)
+       ORDER BY v.creado_en DESC`,
+      [negocio]
+    );
+    res.json({ ok: true, total: r.rows.length, ventas: r.rows });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 app.post('/api/admin/stock-duplicado/corregir', authAdmin, async (req, res) => {
   const client = await pool.connect();
   try {
