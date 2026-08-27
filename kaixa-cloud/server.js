@@ -410,6 +410,26 @@ app.get('/api/admin/recepciones-duplicadas', authAdmin, async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+// Deja SOLO la recepción más antigua de cada producto como 'recepcion' —
+// cualquier recepción extra (de antes del fix de hoy) se re-etiqueta a
+// 'correccion_bug_duplicado' sin tocar su cantidad (el total no cambia,
+// solo dejan de contar como una segunda "recepcion"). Necesario una sola
+// vez antes de poder crear el índice único que impide que esto vuelva a
+// pasar.
+app.post('/api/admin/recepciones-duplicadas/limpiar', authAdmin, async (req, res) => {
+  try {
+    const r = await pool.query(
+      `UPDATE stock_movimientos SET motivo='correccion_bug_duplicado'
+       WHERE motivo='recepcion' AND id NOT IN (
+         SELECT DISTINCT ON (producto_id) id FROM stock_movimientos
+         WHERE motivo='recepcion' ORDER BY producto_id, creado_en ASC
+       )
+       RETURNING id, producto_id, cantidad`
+    );
+    res.json({ ok: true, relabeled: r.rows.length, filas: r.rows });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 app.post('/api/admin/set-stock', authAdmin, async (req, res) => {
   try {
     const { negocio, producto_nombre, stock } = req.body;
