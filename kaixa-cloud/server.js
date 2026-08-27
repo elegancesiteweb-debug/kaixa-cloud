@@ -264,7 +264,8 @@ app.get('/health', async (req, res) => {
   try {
     await pool.query('SELECT 1');
     const t = await pool.query(`SELECT table_name FROM information_schema.tables WHERE table_schema='public' ORDER BY table_name`);
-    res.json({ ok: true, db: 'conectada', tablas: t.rows.map(r => r.table_name) });
+    const idx = await pool.query(`SELECT indexname FROM pg_indexes WHERE indexname='idx_movs_recepcion_unica'`);
+    res.json({ ok: true, db: 'conectada', tablas: t.rows.map(r => r.table_name), proteccion_recepcion_unica: idx.rows.length > 0 });
   } catch(e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 app.get('/version', (req, res) => {
