@@ -360,9 +360,10 @@ app.get('/api/admin/productos-recientes', authAdmin, async (req, res) => {
   try {
     const { negocio } = req.query;
     const r = await pool.query(
-      `SELECT p.id, p.nombre, p.stock, p.actualizado_en, p.sucursal_id
+      `SELECT p.id, p.nombre, COALESCE(sa.stock,0) AS stock, p.actualizado_en, p.sucursal_id
        FROM productos p
        JOIN negocios n ON n.id = p.negocio_id
+       LEFT JOIN stock_actual sa ON sa.producto_id = p.id AND sa.sucursal_id = p.sucursal_id
        WHERE n.nombre = $1
        ORDER BY p.actualizado_en DESC NULLS LAST
        LIMIT 20`,
