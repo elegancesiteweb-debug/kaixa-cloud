@@ -253,11 +253,26 @@ async function cargarCajas(){
   const cont = document.getElementById('listaCajas');
   if(!deEstaSucursal.length){ cont.innerHTML = '<div class="empty">Sin cajas todavía</div>'; return; }
   cont.innerHTML = deEstaSucursal.map(c => `
-    <div class="item">
+    <div class="item" onclick='mostrarTokenCaja(${JSON.stringify(c.nombre)}, ${JSON.stringify(c.token)}, ${JSON.stringify(c.tipo)})'>
       <div class="item-nm">${c.nombre} <span class="badge ${c.tipo}">${c.tipo === 'madre' ? 'MADRE' : 'EXTRA'}</span></div>
-      <div class="item-sub">Token: ${c.token.slice(0,20)}...</div>
+      <div class="item-sub">Token: ${c.token.slice(0,20)}... (toca para ver completo)</div>
     </div>
   `).join('');
+}
+
+// Vuelve a mostrar el token completo de una caja ya creada — antes, en
+// cuanto cerrabas o creabas otra caja, ya no había forma de volver a ver un
+// token viejo sin ir directo a la base de datos.
+function mostrarTokenCaja(nombre, token, tipo){
+  document.getElementById('tokenResultado').innerHTML = `
+    <div class="token-box">
+      <div class="lbl">🔑 Token de "${nombre}" (${tipo === 'madre' ? 'Madre' : 'Extra'}):</div>
+      <div class="token-val" id="tokenTxt">${token}</div>
+      <button class="copy-btn" onclick="copiarToken()">📋 Copiar token</button>
+      <div class="lbl" style="margin-top:10px">URL del servidor (también la necesitas):</div>
+      <div class="token-val">${API}</div>
+    </div>
+  `;
 }
 
 async function crearCaja(){
