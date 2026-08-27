@@ -305,29 +305,27 @@ app.get('/api/lic/stats', authAdmin, async (req, res) => {
 // para que no vuelva a pasar; esta ruta identifica y corrige, sin borrar
 // nada (movimiento compensatorio), los productos que ya quedaron mal antes
 // del fix. Se retira una vez confirmado que ya no hace falta.
+// Encuentra pares recepcion+ajuste del MISMO producto y monto, sin importar
+// el orden cronológico entre ellos (en la práctica el "ajuste" a veces queda
+// con timestamp anterior al "recepcion" porque se generan en dos vueltas de
+// sincronización distintas, 30s aparte) — solo exige que estén razonablemente
+// cerca en el tiempo (24h) y que el producto no tenga ya una corrección
+// aplicada antes.
 const SQL_STOCK_DUPLICADO = `
-  WITH ordenados AS (
-    SELECT id, producto_id, negocio_id, sucursal_id, motivo, cantidad, creado_en,
-           ROW_NUMBER() OVER (PARTITION BY producto_id ORDER BY creado_en, id) AS rn
-    FROM stock_movimientos
-  )
-  SELECT a.id AS ajuste_id, a.producto_id, a.negocio_id, a.sucursal_id, a.cantidad,
-         a.creado_en AS ajuste_en, r.creado_en AS recepcion_en,
+  SELECT r.id AS recepcion_id, a.id AS ajuste_id, r.producto_id, r.negocio_id, r.sucursal_id,
+         r.cantidad, r.creado_en AS recepcion_en, a.creado_en AS ajuste_en,
          n.nombre AS negocio_nombre, p.nombre AS producto_nombre
-  FROM ordenados a
-  JOIN ordenados r ON r.producto_id = a.producto_id AND r.rn = 1
-  LEFT JOIN productos p ON p.id = a.producto_id
-  LEFT JOIN negocios n ON n.id = a.negocio_id
-  WHERE a.rn = 2
-    AND a.motivo = 'ajuste'
-    AND r.motivo = 'recepcion'
-    AND a.cantidad = r.cantidad
-    AND a.creado_en - r.creado_en < interval '2 minutes'
+  FROM stock_movimientos r
+  JOIN stock_movimientos a ON a.producto_id = r.producto_id AND a.cantidad = r.cantidad AND a.motivo = 'ajuste'
+  LEFT JOIN productos p ON p.id = r.producto_id
+  LEFT JOIN negocios n ON n.id = r.negocio_id
+  WHERE r.motivo = 'recepcion'
+    AND ABS(EXTRACT(EPOCH FROM (a.creado_en - r.creado_en))) < 86400
     AND NOT EXISTS (
       SELECT 1 FROM stock_movimientos c
-      WHERE c.motivo = 'correccion_bug_duplicado' AND c.producto_id = a.producto_id
+      WHERE c.motivo = 'correccion_bug_duplicado' AND c.producto_id = r.producto_id
     )
-  ORDER BY a.creado_en DESC`;
+  ORDER BY r.creado_en DESC`;
 
 app.get('/api/admin/stock-duplicado', authAdmin, async (req, res) => {
   try {
