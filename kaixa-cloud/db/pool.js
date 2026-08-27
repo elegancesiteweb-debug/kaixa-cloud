@@ -32,4 +32,19 @@ pool.on('error', (err) => {
   console.error('❌ Error inesperado en el pool de PostgreSQL:', err.message);
 });
 
+// La conexión hacia la BD a veces tarda en dar un lugar del pool (ver nota
+// arriba) y falla con "timeout exceeded when trying to connect" aunque la
+// base de datos esté sana — un segundo intento casi siempre pasa de
+// inmediato. Se usa en rutas de alto tráfico (autenticación de caja en cada
+// sync) donde ese error intermitente se veía como "error de autenticación"
+// para el usuario sin que hubiera nada realmente mal.
+pool.queryConReintento = async function(texto, params) {
+  try {
+    return await pool.query(texto, params);
+  } catch (e) {
+    if (!/timeout exceeded when trying to connect/.test(e.message)) throw e;
+    return await pool.query(texto, params);
+  }
+};
+
 module.exports = pool;

@@ -284,7 +284,7 @@ app.post('/api/lic/login', async (req, res) => {
   try {
     const { usuario, password } = req.body;
     if (!usuario || !password) return res.status(400).json({ error: 'Faltan datos' });
-    const r = await pool.query('SELECT * FROM admins_licencias WHERE usuario=$1 AND password=$2', [usuario.trim(), password.trim()]);
+    const r = await pool.queryConReintento('SELECT * FROM admins_licencias WHERE usuario=$1 AND password=$2', [usuario.trim(), password.trim()]);
     if (!r.rows.length) return res.status(401).json({ error: 'Credenciales incorrectas' });
     const token = crearTokenAdmin(usuario);
     res.json({ ok: true, token, nombre: r.rows[0].nombre });
@@ -567,7 +567,7 @@ async function verificarLicenciaHandler(req, res) {
   try {
     const clave = (req.body.clave || '').trim().toUpperCase();
     if (!clave) return res.status(400).json({ ok: false, mensaje: 'Clave requerida' });
-    const r = await pool.query('SELECT * FROM licencias WHERE clave=$1', [clave]);
+    const r = await pool.queryConReintento('SELECT * FROM licencias WHERE clave=$1', [clave]);
     if (!r.rows.length) return res.json({ ok: false, mensaje: 'Clave inválida' });
     const lic = r.rows[0];
     if (lic.estado === 'suspendida') return res.json({ ok: false, mensaje: 'Licencia suspendida. Contacta a tu proveedor.' });
@@ -619,7 +619,7 @@ app.post('/api/vincular-licencia', async (req, res) => {
     const clave     = (req.body.clave || '').trim().toUpperCase();
     const negocioId = (req.body.negocio_id || '').trim();
     if (!clave || !negocioId) return res.status(400).json({ ok: false, mensaje: 'Faltan datos' });
-    const r = await pool.query('SELECT * FROM licencias WHERE clave=$1', [clave]);
+    const r = await pool.queryConReintento('SELECT * FROM licencias WHERE clave=$1', [clave]);
     if (!r.rows.length) return res.json({ ok: false, mensaje: 'Clave inválida' });
     const lic = r.rows[0];
     if (lic.estado === 'suspendida') return res.json({ ok: false, mensaje: 'Licencia suspendida' });
@@ -713,7 +713,7 @@ app.post('/api/lic/canjear', async (req, res) => {
   try {
     const clave = (req.body.clave || '').trim().toUpperCase();
     if (!clave) return res.status(400).json({ ok: false, mensaje: 'Clave requerida' });
-    const r = await pool.query('SELECT * FROM licencias WHERE clave=$1', [clave]);
+    const r = await pool.queryConReintento('SELECT * FROM licencias WHERE clave=$1', [clave]);
     if (!r.rows.length) return res.json({ ok: false, mensaje: 'Clave inválida' });
     const lic = r.rows[0];
     if (lic.estado === 'suspendida') return res.json({ ok: false, mensaje: 'Licencia suspendida' });
@@ -743,7 +743,7 @@ app.post('/api/lic/elegir-sucursal', async (req, res) => {
     const clave = (req.body.clave || '').trim().toUpperCase();
     const sucursalId = req.body.sucursal_id;
     if (!clave || !sucursalId) return res.status(400).json({ ok: false, mensaje: 'Faltan datos' });
-    const r = await pool.query('SELECT * FROM licencias WHERE clave=$1', [clave]);
+    const r = await pool.queryConReintento('SELECT * FROM licencias WHERE clave=$1', [clave]);
     if (!r.rows.length) return res.json({ ok: false, mensaje: 'Clave inválida' });
     const lic = r.rows[0];
     if (!lic.negocio_id) return res.json({ ok: false, mensaje: 'Activa la licencia primero' });

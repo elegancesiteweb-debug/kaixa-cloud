@@ -8,7 +8,7 @@ async function authCaja(req, res, next) {
       return res.status(401).json({ error: 'Falta el token de la caja (header x-caja-token)' });
     }
 
-    const r = await pool.query(
+    const r = await pool.queryConReintento(
       `SELECT c.id AS caja_id, c.nombre AS caja_nombre, c.tipo AS caja_tipo,
               c.sucursal_id, c.negocio_id, n.nombre AS negocio_nombre, n.activo AS negocio_activo,
               n.giro_principal AS giro
