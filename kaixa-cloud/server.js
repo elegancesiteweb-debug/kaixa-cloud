@@ -361,9 +361,10 @@ app.get('/api/admin/ventas-sin-detalle', authAdmin, async (req, res) => {
   try {
     const { negocio } = req.query;
     const r = await pool.query(
-      `SELECT v.id, v.folio, v.total, v.forma_pago, v.creado_en, v.cajero
+      `SELECT v.id, v.folio, v.total, v.forma_pago, v.creado_en, v.cajero, c.nombre AS caja_nombre, c.tipo AS caja_tipo
        FROM ventas v
        JOIN negocios n ON n.id = v.negocio_id
+       LEFT JOIN cajas c ON c.id = v.caja_id
        WHERE n.nombre = $1 AND v.estado != 'cancelada'
          AND NOT EXISTS (SELECT 1 FROM venta_detalle vd WHERE vd.venta_id = v.id)
        ORDER BY v.creado_en DESC`,
