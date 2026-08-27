@@ -431,6 +431,21 @@ app.post('/api/admin/recepciones-duplicadas/limpiar', authAdmin, async (req, res
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+// TEMPORAL — retroactivo: las correcciones ya aplicadas antes de este fix
+// nunca tocaron actualizado_en, así que ninguna PC las vio nunca vía pull
+// incremental. Se toca una sola vez para que el próximo pull de cada caja
+// por fin las recoja.
+app.post('/api/admin/tocar-corregidos', authAdmin, async (req, res) => {
+  try {
+    const r = await pool.query(
+      `UPDATE productos SET actualizado_en=now()
+       WHERE id IN (SELECT DISTINCT producto_id FROM stock_movimientos WHERE motivo IN ('correccion_bug_duplicado','ajuste'))
+       RETURNING id`
+    );
+    res.json({ ok: true, tocados: r.rows.length });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 app.post('/api/admin/set-stock', authAdmin, async (req, res) => {
   try {
     const { negocio, producto_nombre, stock } = req.body;
@@ -449,6 +464,9 @@ app.post('/api/admin/set-stock', authAdmin, async (req, res) => {
        RETURNING cantidad`,
       [negocio_id, sucursal_id, id, parseInt(stock)]
     );
+    // Igual que arriba: sin tocar actualizado_en, el pull incremental de la
+    // PC nunca ve que este producto cambió.
+    if (ins.rows.length) await pool.query('UPDATE productos SET actualizado_en=now() WHERE id=$1', [id]);
     res.json({ ok: true, ajuste_aplicado: ins.rows.length ? ins.rows[0].cantidad : 0, ya_estaba_en_ese_valor: !ins.rows.length });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
@@ -464,6 +482,11 @@ app.post('/api/admin/stock-duplicado/corregir', authAdmin, async (req, res) => {
          VALUES (gen_random_uuid(), $1, $2, $3, $4, 'correccion_bug_duplicado')`,
         [c.negocio_id, c.sucursal_id, c.producto_id, -c.cantidad]
       );
+      // Sin esto, la PC nunca se entera de la corrección — el pull incremental
+      // solo baja productos con actualizado_en más nuevo que la última vez
+      // que esa caja sincronizó, y esta ruta insertaba el movimiento de
+      // compensación sin tocar esa marca de tiempo.
+      await client.query('UPDATE productos SET actualizado_en=now() WHERE id=$1', [c.producto_id]);
     }
     await client.query('COMMIT');
     res.json({ ok: true, corregidos: casos.length, detalle: casos });
