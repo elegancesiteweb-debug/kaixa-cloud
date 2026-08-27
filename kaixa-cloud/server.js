@@ -391,6 +391,31 @@ app.get('/api/admin/cajas-negocio', authAdmin, async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── TEMPORAL — fijar el stock de un producto directo desde la nube (para
+// probar que la corrección baja bien a la PC, o para corregir un caso
+// puntual sin depender de que el negocio lo edite).
+app.post('/api/admin/set-stock', authAdmin, async (req, res) => {
+  try {
+    const { negocio, producto_nombre, stock } = req.body;
+    const prod = await pool.query(
+      `SELECT p.id, p.sucursal_id, p.negocio_id FROM productos p JOIN negocios n ON n.id = p.negocio_id
+       WHERE n.nombre = $1 AND p.nombre = $2 LIMIT 1`,
+      [negocio, producto_nombre]
+    );
+    if (!prod.rows.length) return res.status(404).json({ ok: false, mensaje: 'Producto no encontrado' });
+    const { id, sucursal_id, negocio_id } = prod.rows[0];
+    const ins = await pool.query(
+      `INSERT INTO stock_movimientos (id, negocio_id, sucursal_id, producto_id, cantidad, motivo)
+       SELECT gen_random_uuid(), $1, $2, $3, $4 - COALESCE(SUM(cantidad),0), 'ajuste'
+       FROM stock_movimientos WHERE producto_id=$3 AND sucursal_id=$2
+       HAVING ($4 - COALESCE(SUM(cantidad),0)) != 0
+       RETURNING cantidad`,
+      [negocio_id, sucursal_id, id, parseInt(stock)]
+    );
+    res.json({ ok: true, ajuste_aplicado: ins.rows.length ? ins.rows[0].cantidad : 0, ya_estaba_en_ese_valor: !ins.rows.length });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 app.post('/api/admin/stock-duplicado/corregir', authAdmin, async (req, res) => {
   const client = await pool.connect();
   try {
