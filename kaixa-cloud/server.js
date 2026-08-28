@@ -335,6 +335,31 @@ app.get('/api/admin/stock-duplicado', authAdmin, async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── TEMPORAL — dry-run: cuenta cuántas filas hay, tabla por tabla, para un
+// negocio, en TODAS las tablas que de verdad tienen columna negocio_id
+// (se consulta el esquema real de Postgres, no un archivo que se pudiera
+// haber quedado desactualizado por tablas creadas en tiempo de ejecución).
+// No borra nada — es solo para ver el alcance antes de confirmar un borrado.
+app.get('/api/admin/borrado-negocio/preview', authAdmin, async (req, res) => {
+  try {
+    const { negocio } = req.query;
+    const n = await pool.query(`SELECT id FROM negocios WHERE nombre = $1`, [negocio]);
+    if (!n.rows.length) return res.status(404).json({ error: 'Negocio no encontrado' });
+    const negocioId = n.rows[0].id;
+    const tablas = await pool.query(
+      `SELECT table_name FROM information_schema.columns
+       WHERE column_name = 'negocio_id' AND table_schema = 'public'
+       ORDER BY table_name`
+    );
+    const conteos = [];
+    for (const t of tablas.rows) {
+      const c = await pool.query(`SELECT COUNT(*) AS n FROM ${t.table_name} WHERE negocio_id = $1`, [negocioId]);
+      conteos.push({ tabla: t.table_name, filas: parseInt(c.rows[0].n) });
+    }
+    res.json({ ok: true, negocio_id: negocioId, tablas: conteos });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 // ── TEMPORAL — diagnóstico ampliado: todos los movimientos de un negocio,
 // para ver el historial completo de un producto en vez de solo el patrón
 // exacto recepcion+ajuste que ya se corrigió.
