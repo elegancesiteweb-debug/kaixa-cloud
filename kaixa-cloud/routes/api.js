@@ -174,20 +174,36 @@ router.put('/productos/:id', async (req, res) => {
     // escriba (condición de carrera real con PC + móvil editando seguido).
     if (p.stock !== undefined) {
       const stockNuevo = parseInt(p.stock) || 0;
-      const ins = await pool.query(
-        `INSERT INTO stock_movimientos (id, negocio_id, sucursal_id, producto_id, caja_id, cantidad, motivo)
-         SELECT gen_random_uuid(), $1, $2, $3, $4, $5 - COALESCE(SUM(cantidad),0), 'ajuste'
-         FROM stock_movimientos WHERE producto_id=$3 AND sucursal_id=$2
-         HAVING ($5 - COALESCE(SUM(cantidad),0)) != 0
-         RETURNING id`,
-        [negocio_id, sucursal_id, req.params.id, req.caja.id, stockNuevo]
-      );
-      if (ins.rows.length) {
-        // Tocar actualizado_en para que el pull de la PC recoja el cambio de stock
-        await pool.query(
-          `UPDATE productos SET actualizado_en=now() WHERE id=$1`,
-          [req.params.id]
+      // El INSERT...SELECT de abajo es una sola sentencia atómica, pero eso
+      // solo protege DENTRO de esa sentencia — dos ediciones del MISMO
+      // producto que lleguen en el mismo instante (PC y móvil casi a la vez)
+      // corren cada una en su propia transacción implícita y podrían leer el
+      // mismo SUM(cantidad) base antes de que la otra term ine, duplicando
+      // el ajuste. pg_advisory_xact_lock serializa solo las ediciones de
+      // ESTE producto (no bloquea otros) y se libera solo al terminar la
+      // transacción, sin riesgo de quedar pegado si algo falla.
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [req.params.id]);
+        const ins = await client.query(
+          `INSERT INTO stock_movimientos (id, negocio_id, sucursal_id, producto_id, caja_id, cantidad, motivo)
+           SELECT gen_random_uuid(), $1, $2, $3, $4, $5 - COALESCE(SUM(cantidad),0), 'ajuste'
+           FROM stock_movimientos WHERE producto_id=$3 AND sucursal_id=$2
+           HAVING ($5 - COALESCE(SUM(cantidad),0)) != 0
+           RETURNING id`,
+          [negocio_id, sucursal_id, req.params.id, req.caja.id, stockNuevo]
         );
+        if (ins.rows.length) {
+          // Tocar actualizado_en para que el pull de la PC recoja el cambio de stock
+          await client.query(`UPDATE productos SET actualizado_en=now() WHERE id=$1`, [req.params.id]);
+        }
+        await client.query('COMMIT');
+      } catch (eLock) {
+        await client.query('ROLLBACK');
+        throw eLock;
+      } finally {
+        client.release();
       }
     }
     broadcast(req, 'productos:editado', { id: req.params.id });

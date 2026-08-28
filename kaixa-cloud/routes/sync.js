@@ -130,6 +130,11 @@ router.post('/push', async (req, res) => {
       // al mismo tiempo, ej. PC y móvil editando seguido).
       if (p.stock !== undefined && p.stock !== null) {
         const stockNuevo = parseInt(p.stock) || 0;
+        // Igual que en api.js PUT /productos/:id: un candado por producto
+        // (liberado solo al terminar esta transacción) para que este push y
+        // una edición simultánea del móvil para el MISMO producto no lean el
+        // mismo SUM(cantidad) base antes de que la otra termine.
+        await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [p.uuid]);
         await client.query(
           `INSERT INTO stock_movimientos (id, negocio_id, sucursal_id, producto_id, caja_id, cantidad, motivo)
            SELECT gen_random_uuid(), $1, $2, $3, $4, $5 - COALESCE(SUM(cantidad),0), 'ajuste'
