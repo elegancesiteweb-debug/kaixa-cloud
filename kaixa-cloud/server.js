@@ -360,6 +360,38 @@ app.get('/api/admin/borrado-negocio/preview', authAdmin, async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── TEMPORAL — ejecuta el borrado de datos de negocio confirmado con el
+// dueño: productos, stock_movimientos, ventas (+venta_detalle en cascada),
+// empleados, notificaciones, push_subscriptions. A propósito NO toca
+// negocios/sucursales/cajas/licencias — así la licencia y los tokens de
+// caja siguen funcionando, solo que apuntan a un negocio vacío. Orden
+// pensado para no violar ninguna foreign key (lo que referencia se borra
+// antes que lo referenciado). Requiere body.confirmar === 'BORRAR'.
+app.post('/api/admin/borrado-negocio/ejecutar', authAdmin, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const { negocio, confirmar } = req.body;
+    if (confirmar !== 'BORRAR') return res.status(400).json({ error: "Falta confirmar:'BORRAR' en el body" });
+    const n = await client.query(`SELECT id FROM negocios WHERE nombre = $1`, [negocio]);
+    if (!n.rows.length) return res.status(404).json({ error: 'Negocio no encontrado' });
+    const negocioId = n.rows[0].id;
+    const TABLAS = ['ventas', 'stock_movimientos', 'productos', 'empleados', 'notificaciones', 'push_subscriptions'];
+    await client.query('BEGIN');
+    const resultado = {};
+    for (const tabla of TABLAS) {
+      const r = await client.query(`DELETE FROM ${tabla} WHERE negocio_id = $1`, [negocioId]);
+      resultado[tabla] = r.rowCount;
+    }
+    await client.query('COMMIT');
+    res.json({ ok: true, negocio_id: negocioId, borrados: resultado });
+  } catch(e) {
+    await client.query('ROLLBACK');
+    res.status(500).json({ error: e.message });
+  } finally {
+    client.release();
+  }
+});
+
 // ── TEMPORAL — diagnóstico ampliado: todos los movimientos de un negocio,
 // para ver el historial completo de un producto en vez de solo el patrón
 // exacto recepcion+ajuste que ya se corrigió.
