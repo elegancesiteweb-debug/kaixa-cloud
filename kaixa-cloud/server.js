@@ -475,17 +475,32 @@ app.post('/api/admin/set-stock', authAdmin, async (req, res) => {
     );
     if (!prod.rows.length) return res.status(404).json({ ok: false, mensaje: 'Producto no encontrado' });
     const { id, sucursal_id, negocio_id } = prod.rows[0];
-    const ins = await pool.query(
-      `INSERT INTO stock_movimientos (id, negocio_id, sucursal_id, producto_id, cantidad, motivo)
-       SELECT gen_random_uuid(), $1, $2, $3, $4 - COALESCE(SUM(cantidad),0), 'ajuste'
-       FROM stock_movimientos WHERE producto_id=$3 AND sucursal_id=$2
-       HAVING ($4 - COALESCE(SUM(cantidad),0)) != 0
-       RETURNING cantidad`,
-      [negocio_id, sucursal_id, id, parseInt(stock)]
-    );
-    // Igual que arriba: sin tocar actualizado_en, el pull incremental de la
-    // PC nunca ve que este producto cambió.
-    if (ins.rows.length) await pool.query('UPDATE productos SET actualizado_en=now() WHERE id=$1', [id]);
+    // Mismo candado por producto que en api.js/sync.js — esta ruta también
+    // hace un ajuste relativo al SUM actual, así que puede chocar con una
+    // edición real del cliente que llegue justo en ese instante.
+    const client = await pool.connect();
+    let ins;
+    try {
+      await client.query('BEGIN');
+      await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [id]);
+      ins = await client.query(
+        `INSERT INTO stock_movimientos (id, negocio_id, sucursal_id, producto_id, cantidad, motivo)
+         SELECT gen_random_uuid(), $1, $2, $3, $4 - COALESCE(SUM(cantidad),0), 'ajuste'
+         FROM stock_movimientos WHERE producto_id=$3 AND sucursal_id=$2
+         HAVING ($4 - COALESCE(SUM(cantidad),0)) != 0
+         RETURNING cantidad`,
+        [negocio_id, sucursal_id, id, parseInt(stock)]
+      );
+      // Igual que arriba: sin tocar actualizado_en, el pull incremental de la
+      // PC nunca ve que este producto cambió.
+      if (ins.rows.length) await client.query('UPDATE productos SET actualizado_en=now() WHERE id=$1', [id]);
+      await client.query('COMMIT');
+    } catch (eLock) {
+      await client.query('ROLLBACK');
+      throw eLock;
+    } finally {
+      client.release();
+    }
     res.json({ ok: true, ajuste_aplicado: ins.rows.length ? ins.rows[0].cantidad : 0, ya_estaba_en_ese_valor: !ins.rows.length });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
