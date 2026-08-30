@@ -1,7 +1,10 @@
 // routes/tienda.js — Tienda en línea pública (sin login) por negocio
-// Los pedidos se apartan aquí; se confirman desde la PC o la app móvil
-// (ver /api/pedidos-online en routes/api.js), lo que descuenta stock y
-// registra la venta — el cliente paga en tienda, no en línea.
+// El stock se reserva (se descuenta) en cuanto se hace el pedido aquí, para
+// que no se pueda seguir vendiendo en la tienda física mientras el pedido
+// espera respuesta. Se confirma o rechaza desde la PC o la app móvil (ver
+// /api/pedidos-online en routes/api.js): al confirmar, la reserva se
+// re-etiqueta como la venta real; al rechazar, se devuelve el stock. El
+// cliente paga en tienda, no en línea.
 const express = require('express');
 const router  = express.Router();
 const pool    = require('../db/pool');
@@ -206,6 +209,10 @@ async function ensureTiendaTables() {
   await pool.query(`ALTER TABLE pedido_online_items ADD COLUMN IF NOT EXISTS kit_id UUID`);
   await pool.query(`ALTER TABLE pedido_online_items ADD COLUMN IF NOT EXISTS componentes JSONB DEFAULT '[]'`);
   await pool.query(`ALTER TABLE pedido_online_items ADD COLUMN IF NOT EXISTS extras JSONB DEFAULT '[]'`);
+  // Liga cada movimiento de stock a la reserva del pedido que lo generó, para
+  // poder encontrarlo y re-etiquetarlo (al confirmar) o revertirlo (al
+  // rechazar) sin ambigüedad frente a otras reservas del mismo producto.
+  await pool.query(`ALTER TABLE stock_movimientos ADD COLUMN IF NOT EXISTS pedido_online_id UUID`);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS carritos_abandonados (
       id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -903,6 +910,35 @@ router.post('/tienda/:slug/pedidos', async (req, res) => {
         [pedidoId, it.producto_id, it.nombre_producto, it.cantidad, it.precio_unitario, it.variante_id, it.variante_texto,
          it.kit_id || null, JSON.stringify(it.componentes || []), JSON.stringify(it.extras || [])]
       );
+
+      // Reservar el stock desde que se hace el pedido — antes solo se
+      // descontaba hasta que el cajero lo confirmaba, así que el mismo
+      // producto se podía seguir vendiendo en la tienda física mientras el
+      // pedido esperaba respuesta. Si el cajero lo rechaza, se devuelve
+      // (ver POST /pedidos-online/:id/rechazar); si lo confirma, este mismo
+      // movimiento se re-etiqueta como la venta real (ver /confirmar) en vez
+      // de descontar una segunda vez.
+      if (it.kit_id) {
+        for (const comp of (it.componentes || [])) {
+          if (!comp.producto_id) continue;
+          const compCantidad = it.cantidad * (parseFloat(comp.cantidad) || 1);
+          await client.query(
+            `INSERT INTO stock_movimientos (id, negocio_id, sucursal_id, producto_id, cantidad, motivo, pedido_online_id)
+             VALUES (gen_random_uuid(),$1,$2,$3,$4,'pedido_online_reserva',$5)`,
+            [negocioId, sucursal_id, comp.producto_id, -compCantidad, pedidoId]
+          );
+        }
+      } else if (it.variante_id) {
+        await client.query('UPDATE producto_variantes SET stock = stock - $1, actualizado_en = now() WHERE id=$2',
+          [it.cantidad, it.variante_id]);
+      } else if (it.producto_id) {
+        await client.query(
+          `INSERT INTO stock_movimientos (id, negocio_id, sucursal_id, producto_id, cantidad, motivo, pedido_online_id)
+           VALUES (gen_random_uuid(),$1,$2,$3,$4,'pedido_online_reserva',$5)`,
+          [negocioId, sucursal_id, it.producto_id, -it.cantidad, pedidoId]
+        );
+        await client.query('UPDATE productos SET actualizado_en=now() WHERE id=$1', [it.producto_id]);
+      }
     }
 
     await client.query('COMMIT');

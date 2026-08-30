@@ -1387,42 +1387,9 @@ router.post('/pedidos-online/:id/confirmar', async (req, res) => {
     if (!pedido.rows.length) throw Object.assign(new Error('Pedido no encontrado o ya procesado'), { status: 404 });
     const p = pedido.rows[0];
     const items = await client.query('SELECT * FROM pedido_online_items WHERE pedido_id=$1', [p.id]);
-
-    // Verificar stock disponible de cada item antes de confirmar
-    // (las variantes llevan su propio stock, aparte del producto general)
-    for (const it of items.rows) {
-      if (it.kit_id) {
-        const componentes = it.componentes || [];
-        for (const comp of componentes) {
-          if (!comp.producto_id) continue;
-          const stock = await client.query(
-            'SELECT COALESCE(SUM(cantidad),0) AS stock FROM stock_movimientos WHERE producto_id=$1 AND sucursal_id=$2',
-            [comp.producto_id, sucursal_id]
-          );
-          const requerido = it.cantidad * (parseFloat(comp.cantidad) || 1);
-          if (parseFloat(stock.rows[0].stock) < requerido) {
-            throw Object.assign(new Error('Sin stock suficiente para armar "' + it.nombre_producto + '"'), { status: 400 });
-          }
-        }
-        continue;
-      }
-      if (it.variante_id) {
-        const vStock = await client.query('SELECT stock FROM producto_variantes WHERE id=$1', [it.variante_id]);
-        const disp = vStock.rows.length ? vStock.rows[0].stock : 0;
-        if (disp < it.cantidad) {
-          throw Object.assign(new Error('Sin stock suficiente de "' + it.nombre_producto + ' · ' + (it.variante_texto||'') + '" (' + disp + ' disponible)'), { status: 400 });
-        }
-        continue;
-      }
-      if (!it.producto_id) continue;
-      const stock = await client.query(
-        'SELECT COALESCE(SUM(cantidad),0) AS stock FROM stock_movimientos WHERE producto_id=$1 AND sucursal_id=$2',
-        [it.producto_id, sucursal_id]
-      );
-      if (parseFloat(stock.rows[0].stock) < it.cantidad) {
-        throw Object.assign(new Error('Sin stock suficiente de "' + it.nombre_producto + '" (' + stock.rows[0].stock + ' disponible)'), { status: 400 });
-      }
-    }
+    // El stock ya se reservó (se descontó) cuando se hizo el pedido — ver
+    // POST /tienda/:slug/pedidos — así que no hay que revalidar disponibilidad
+    // ni volver a descontar aquí, solo re-etiquetar esa reserva como la venta real.
 
     const ventaId = uuid();
     const ultimo = await client.query('SELECT folio FROM ventas WHERE negocio_id=$1 ORDER BY creado_en DESC LIMIT 1', [negocio_id]);
@@ -1455,24 +1422,35 @@ router.post('/pedidos-online/:id/confirmar', async (req, res) => {
         const componentes = it.componentes || [];
         for (const comp of componentes) {
           if (!comp.producto_id) continue;
-          const compCantidad = it.cantidad * (parseFloat(comp.cantidad) || 1);
+          // Re-etiquetar el movimiento de la reserva (ya existe, ya descontó
+          // el stock) como venta real, en vez de descontar una segunda vez.
           await client.query(
-            `INSERT INTO stock_movimientos (id, negocio_id, sucursal_id, producto_id, caja_id, cantidad, motivo, venta_id)
-             VALUES ($1,$2,$3,$4,$5,$6,'kit_venta',$7)`,
-            [uuid(), negocio_id, sucursal_id, comp.producto_id, cajaId, -compCantidad, ventaId]
+            `UPDATE stock_movimientos SET motivo='kit_venta', venta_id=$1, caja_id=$2, pedido_online_id=NULL
+             WHERE pedido_online_id=$3 AND producto_id=$4 AND motivo='pedido_online_reserva'`,
+            [ventaId, cajaId, p.id, comp.producto_id]
           );
           await client.query('UPDATE productos SET actualizado_en=now() WHERE id=$1', [comp.producto_id]);
         }
       } else if (it.variante_id) {
-        await client.query('UPDATE producto_variantes SET stock = stock - $1, actualizado_en = now() WHERE id=$2',
-          [it.cantidad, it.variante_id]);
+        // La reserva de una variante ya restó su stock directamente (no deja
+        // movimiento en stock_movimientos) — no hay nada más que descontar.
         if (it.producto_id) await client.query('UPDATE productos SET actualizado_en=now() WHERE id=$1', [it.producto_id]);
       } else if (it.producto_id) {
-        await client.query(
-          `INSERT INTO stock_movimientos (id, negocio_id, sucursal_id, producto_id, caja_id, cantidad, motivo, venta_id)
-           VALUES ($1,$2,$3,$4,$5,$6,'venta',$7)`,
-          [uuid(), negocio_id, sucursal_id, it.producto_id, cajaId, -it.cantidad, ventaId]
+        const retag = await client.query(
+          `UPDATE stock_movimientos SET motivo='venta', venta_id=$1, caja_id=$2, pedido_online_id=NULL
+           WHERE pedido_online_id=$3 AND producto_id=$4 AND motivo='pedido_online_reserva'
+           RETURNING id`,
+          [ventaId, cajaId, p.id, it.producto_id]
         );
+        // Respaldo: si por lo que sea la reserva no existe (pedido de antes
+        // de este cambio, o se perdió), no dejar la venta sin su movimiento.
+        if (!retag.rows.length) {
+          await client.query(
+            `INSERT INTO stock_movimientos (id, negocio_id, sucursal_id, producto_id, caja_id, cantidad, motivo, venta_id)
+             VALUES ($1,$2,$3,$4,$5,$6,'venta',$7)`,
+            [uuid(), negocio_id, sucursal_id, it.producto_id, cajaId, -it.cantidad, ventaId]
+          );
+        }
         // Tocar actualizado_en para que el pull incremental de la PC recoja
         // el nuevo stock (antes se quedaba con el timestamp viejo y el
         // producto nunca volvía a bajarse de precio/stock en la PC)
@@ -1526,21 +1504,63 @@ router.post('/pedidos-online/:id/marcar-entregado', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// ── POST /api/pedidos-online/:id/rechazar ──
+// ── POST /api/pedidos-online/:id/rechazar — devuelve el stock que se
+// reservó al hacer el pedido (ver POST /tienda/:slug/pedidos) ──
 router.post('/pedidos-online/:id/rechazar', async (req, res) => {
+  const client = await pool.connect();
   try {
     await ensureTiendaTables();
     const { negocio_id, sucursal_id } = req.caja;
     const { motivo = '' } = req.body;
-    const r = await pool.query(
+    await client.query('BEGIN');
+
+    const r = await client.query(
       "UPDATE pedidos_online SET estado='rechazado', rechazo_motivo=$1 WHERE id=$2 AND negocio_id=$3 AND sucursal_id=$4 AND estado='pendiente' RETURNING id",
       [motivo, req.params.id, negocio_id, sucursal_id]
     );
-    if (!r.rows.length) return res.status(404).json({ error: 'Pedido no encontrado o ya procesado' });
+    if (!r.rows.length) throw Object.assign(new Error('Pedido no encontrado o ya procesado'), { status: 404 });
+    const pedidoId = r.rows[0].id;
+
+    // Devolver el stock de productos y componentes de kit reservados —
+    // un movimiento compensatorio (no se borra la reserva) para dejar
+    // rastro claro de por qué volvió a subir.
+    const reservas = await client.query(
+      `SELECT producto_id, -cantidad AS a_devolver FROM stock_movimientos
+       WHERE pedido_online_id=$1 AND motivo='pedido_online_reserva'`,
+      [pedidoId]
+    );
+    for (const res_ of reservas.rows) {
+      await client.query(
+        `INSERT INTO stock_movimientos (id, negocio_id, sucursal_id, producto_id, cantidad, motivo, pedido_online_id)
+         VALUES (gen_random_uuid(),$1,$2,$3,$4,'pedido_online_rechazado',$5)`,
+        [negocio_id, sucursal_id, res_.producto_id, res_.a_devolver, pedidoId]
+      );
+      await client.query('UPDATE productos SET actualizado_en=now() WHERE id=$1', [res_.producto_id]);
+    }
+
+    // Devolver el stock de variantes reservadas (esas no dejan movimiento en
+    // stock_movimientos, se restaron directo en producto_variantes).
+    const itemsVariante = await client.query(
+      `SELECT variante_id, cantidad FROM pedido_online_items WHERE pedido_id=$1 AND variante_id IS NOT NULL`,
+      [pedidoId]
+    );
+    for (const it of itemsVariante.rows) {
+      await client.query(
+        'UPDATE producto_variantes SET stock = stock + $1, actualizado_en = now() WHERE id=$2',
+        [it.cantidad, it.variante_id]
+      );
+    }
+
+    await client.query('COMMIT');
     const io = req.app.get('io');
     if (io) io.to('negocio:' + negocio_id).emit('pedido_online:rechazado', { id: req.params.id });
     res.json({ ok: true });
-  } catch(e) { res.status(500).json({ error: e.message }); }
+  } catch(e) {
+    await client.query('ROLLBACK');
+    res.status(e.status || 500).json({ error: e.message });
+  } finally {
+    client.release();
+  }
 });
 
 // ── POST /api/pedidos-online/:id/enviar — capturar guía y marcar enviado ──

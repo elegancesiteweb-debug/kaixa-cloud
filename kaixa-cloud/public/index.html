@@ -2778,7 +2778,7 @@ async function _refrescarPedidoOnlineEnTodosLados(id) {
 }
 
 async function confirmarPedidoOnline(id) {
-  if (!confirm('¿Confirmar este pedido? Se descontará el stock y se registrará la venta.')) return;
+  if (!confirm('¿Confirmar este pedido? El stock ya se reservó al hacerse el pedido — esto lo registra como venta.')) return;
   var r = await apiFetch('/api/pedidos-online/' + id + '/confirmar', {
     method: 'POST',
     body: JSON.stringify({ cajero: usuario ? usuario.nombre : 'Pedido en línea' })
@@ -2790,7 +2790,7 @@ async function confirmarPedidoOnline(id) {
 async function rechazarPedidoOnline(id) {
   var motivo = prompt('Motivo del rechazo (opcional):') || '';
   var r = await apiFetch('/api/pedidos-online/' + id + '/rechazar', { method: 'POST', body: JSON.stringify({ motivo: motivo }) });
-  if (r && r.ok) { notif('Pedido rechazado', 'ok'); _refrescarPedidoOnlineEnTodosLados(id); }
+  if (r && r.ok) { notif('Pedido rechazado — stock devuelto', 'ok'); _refrescarPedidoOnlineEnTodosLados(id); }
   else { notif('❌ Error al rechazar', 'err'); }
 }
 
