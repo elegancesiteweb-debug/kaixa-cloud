@@ -1206,7 +1206,7 @@ function abrirCobro() {
         '</div>' +
         '<div class="cambio-box" id="cambioBox" style="display:none"><span class="lbl">Cambio</span><span class="val" id="cambioVal">$0.00</span></div>' +
       '</div>' +
-      '<button class="btn-cobrar" style="margin-top:14px" onclick="confirmarVenta()">✅ Confirmar venta</button>' +
+      '<button class="btn-cobrar" id="btnConfirmarVentaMovil" style="margin-top:14px" onclick="confirmarVenta()">✅ Confirmar venta</button>' +
     '</div></div>';
   document.getElementById('modalContainer').innerHTML = html;
   window._cobroTotal = total;
@@ -1382,7 +1382,24 @@ function numPad(val) {
   if (cb) { cb.style.display = num > 0 ? 'flex' : 'none'; document.getElementById('cambioVal').textContent = fmt(Math.max(0, cambio)); }
 }
 
+var _confirmandoVentaMovil = false;
 async function confirmarVenta() {
+  // Sin esto, un doble-toque (muy común en pantallas táctiles, más aún si
+  // hay algo de lag) mandaba la MISMA venta dos veces — cada una descontando
+  // el stock por separado. Con la última unidad disponible, eso era
+  // exactamente lo que dejaba el producto en -1 en vez de 0.
+  if (_confirmandoVentaMovil) return;
+  _confirmandoVentaMovil = true;
+  var btnCV = document.getElementById('btnConfirmarVentaMovil');
+  if (btnCV) { btnCV.disabled = true; btnCV.style.opacity = '0.6'; }
+  try {
+    await _confirmarVentaInterna();
+  } finally {
+    _confirmandoVentaMovil = false;
+    if (btnCV) { btnCV.disabled = false; btnCV.style.opacity = ''; }
+  }
+}
+async function _confirmarVentaInterna() {
   var totalOriginal = window._cobroTotal || 0;
   var descuentoTarjeta = window._cobroTarjeta ? window._cobroTarjeta.disponible : 0;
   var total = Math.max(totalOriginal - descuentoTarjeta, 0); // lo que realmente paga el cliente
