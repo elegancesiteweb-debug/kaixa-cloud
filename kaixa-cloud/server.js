@@ -94,7 +94,11 @@ async function aplicarEsquema() {
   try {
     await pool.query(`ALTER TABLE clientes ADD COLUMN IF NOT EXISTS fecha_proximo_pago DATE`);
     await pool.query(`ALTER TABLE clientes ADD COLUMN IF NOT EXISTS frecuencia_pago TEXT DEFAULT 'mensual'`);
-    console.log('✅ clientes.fecha_proximo_pago / frecuencia_pago listo');
+    // Faltaba esta — el push de sync.js siempre la incluye en su INSERT
+    // (para CUALQUIER cliente, tenga foto o no), así que sin esta columna
+    // la sincronización de clientes fallaba con 500 en todos los casos.
+    await pool.query(`ALTER TABLE clientes ADD COLUMN IF NOT EXISTS foto TEXT DEFAULT ''`);
+    console.log('✅ clientes.fecha_proximo_pago / frecuencia_pago / foto listo');
   } catch(e) { console.error('⚠️ Migración clientes fiado:', e.message); }
   try {
     await pool.query(`ALTER TABLE ventas ADD COLUMN IF NOT EXISTS fecha_pago DATE`);

@@ -12,6 +12,7 @@ async function ensureClientesFiadoColumns() {
   await pool.query(`ALTER TABLE clientes ADD COLUMN IF NOT EXISTS fecha_proximo_pago DATE`);
   await pool.query(`ALTER TABLE clientes ADD COLUMN IF NOT EXISTS frecuencia_pago TEXT DEFAULT 'mensual'`);
   await pool.query(`ALTER TABLE clientes ADD COLUMN IF NOT EXISTS es_mayorista BOOLEAN DEFAULT false`);
+  await pool.query(`ALTER TABLE clientes ADD COLUMN IF NOT EXISTS foto TEXT DEFAULT ''`);
   _clientesFiadoColOk = true;
 }
 
@@ -240,6 +241,7 @@ router.get('/clientes', async (req, res) => {
 // ── GET /api/clientes/:id/foto ─────────────────────────────────
 router.get('/clientes/:id/foto', async (req, res) => {
   try {
+    await ensureClientesFiadoColumns();
     const r = await pool.query('SELECT foto FROM clientes WHERE id=$1 AND negocio_id=$2',
       [req.params.id, req.caja.negocio_id]);
     if (!r.rows.length || !r.rows[0].foto) return res.json({ foto: null });

@@ -27,6 +27,10 @@ async function ensureClientesFiadoColumns() {
   if (_clientesFiadoColOk) return;
   await pool.query(`ALTER TABLE clientes ADD COLUMN IF NOT EXISTS fecha_proximo_pago DATE`);
   await pool.query(`ALTER TABLE clientes ADD COLUMN IF NOT EXISTS frecuencia_pago TEXT DEFAULT 'mensual'`);
+  // El INSERT de clientes de abajo siempre incluye "foto" en su lista de
+  // columnas (para cualquier cliente, tenga foto o no) — sin esta columna
+  // el push de clientes fallaba con 500 siempre, no solo con foto.
+  await pool.query(`ALTER TABLE clientes ADD COLUMN IF NOT EXISTS foto TEXT DEFAULT ''`);
   _clientesFiadoColOk = true;
 }
 let _coberturaM2ColOk = false;
