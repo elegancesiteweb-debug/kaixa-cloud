@@ -417,9 +417,13 @@ router.post('/push', async (req, res) => {
       proveedores: proveedores.length, pedidos: pedidos.length
     }});
   } catch (e) {
-    await client.query('ROLLBACK');
-    console.error('Error en sync push:', e.message);
-    res.status(500).json({ error: e.message });
+    try { await client.query('ROLLBACK'); } catch(eRb) {}
+    // Temporal: mandar el detalle completo del error de Postgres (detail,
+    // hint, code, where) para encontrar la causa real de un push que falla
+    // con "current transaction is aborted" — ese mensaje es un efecto
+    // cascada, no dice qué disparó el problema en primer lugar.
+    console.error('Error en sync push:', e.message, '| detail:', e.detail, '| code:', e.code, '| where:', e.where);
+    res.status(500).json({ error: e.message, detail: e.detail || null, code: e.code || null, where: e.where || null });
   } finally {
     client.release();
   }
