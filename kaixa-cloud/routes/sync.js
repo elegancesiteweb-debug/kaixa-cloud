@@ -206,8 +206,21 @@ router.post('/push', async (req, res) => {
       }
     }
 
-    // Movimientos de stock
+    // Movimientos de stock — CADA UNO en su propio SAVEPOINT. El caso 23505
+    // (duplicado de recepción inicial) es esperado y se ignora a propósito,
+    // pero atrapar el error en JS no le avisa a Postgres que la transacción
+    // sigue sana: una vez que CUALQUIER consulta falla (aunque el 23505 sea
+    // justo el resultado que se busca), Postgres marca TODA la transacción
+    // como abortada hasta el próximo ROLLBACK — sin el ROLLBACK TO SAVEPOINT
+    // de aquí abajo, cada movimiento posterior, cada kit/promo/etc., y sobre
+    // todo el UPDATE final de ultimo_sync, fallaban en cascada con
+    // "current transaction is aborted". Esta caja llevaba 18 días
+    // reintentando el mismo "stock inicial" en cada ciclo (nunca se marcaba
+    // sincronizado=1 porque el push entero se revertía), así que chocaba
+    // con esta protección de duplicados una y otra vez — este era el
+    // verdadero origen del bloqueo.
     for (const m of movimientos) {
+      await client.query('SAVEPOINT sp_mov');
       try {
         await client.query(
           `INSERT INTO stock_movimientos (id, negocio_id, sucursal_id, producto_id, caja_id, cantidad, motivo, venta_id, creado_en)
@@ -216,6 +229,7 @@ router.post('/push', async (req, res) => {
            m.venta_uuid||null, m.creado_en||new Date()]
         );
       } catch(eMov) {
+        await client.query('ROLLBACK TO SAVEPOINT sp_mov');
         // 23505 = unique_violation — lo dispara idx_movs_recepcion_unica si
         // alguna vez llega un segundo "stock inicial" con un id distinto
         // para el mismo producto (la protección de última línea). Se ignora
