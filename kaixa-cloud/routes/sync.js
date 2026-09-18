@@ -66,6 +66,16 @@ async function ensureDescripcionColumn() {
   _descripcionColOk = true;
 }
 
+// La nube nunca sabía qué producto era un "servicio" — la PC nunca mandaba
+// este dato, así que la tienda en línea no tenía forma de mostrarlos
+// (ver tienda_mostrar_servicios en negocios y el filtro en /tienda/:slug/productos).
+let _esServicioColOk = false;
+async function ensureEsServicioColumn() {
+  if (_esServicioColOk) return;
+  await pool.query(`ALTER TABLE productos ADD COLUMN IF NOT EXISTS es_servicio BOOLEAN DEFAULT false`);
+  _esServicioColOk = true;
+}
+
 // ── POST /api/sync/push ──────────────────────────────────────
 router.post('/push', async (req, res) => {
   const { negocio_id, sucursal_id, id: caja_id } = req.caja;
@@ -84,6 +94,7 @@ router.post('/push', async (req, res) => {
     await ensureDimensionesColumns();
     await ensureMonedaCostoColumns();
     await ensureDescripcionColumn();
+    await ensureEsServicioColumn();
     await client.query('BEGIN');
 
     // Proveedores (van primero: los productos pueden referenciarlos por uuid)
@@ -109,8 +120,8 @@ router.post('/push', async (req, res) => {
           (id, negocio_id, sucursal_id, nombre, emoji, imagen_url, codigo_barras, precio, costo,
            stock_minimo, categoria_id, giro, por_peso, unidad_peso, tiene_prescripcion, cobertura_m2,
            peso_kg, largo_cm, ancho_cm, alto_cm, activo, proveedor_id, actualizado_en, moneda_costo, costo_moneda, imagenes_extra, descripcion,
-           disponible_domicilio, disponible_envio, entrega_rapida)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22, now(), $23,$24,$25,$26,$27,$28,$29)
+           disponible_domicilio, disponible_envio, entrega_rapida, es_servicio)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22, now(), $23,$24,$25,$26,$27,$28,$29,$30)
          ON CONFLICT (id) DO UPDATE SET
            sucursal_id=COALESCE(productos.sucursal_id, $3),
            nombre=$4, emoji=$5, imagen_url=COALESCE(NULLIF($6,''), productos.imagen_url), codigo_barras=$7, precio=$8, costo=$9,
@@ -120,13 +131,13 @@ router.post('/push', async (req, res) => {
            moneda_costo=$23, costo_moneda=$24,
            imagenes_extra=COALESCE(NULLIF($25,'[]'), productos.imagenes_extra),
            descripcion=$26,
-           disponible_domicilio=$27, disponible_envio=$28, entrega_rapida=$29`,
+           disponible_domicilio=$27, disponible_envio=$28, entrega_rapida=$29, es_servicio=$30`,
         [p.uuid, negocio_id, prodSucursalId, p.nombre, p.emoji||'📦', p.imagen_url||'', p.codigo_barras||'',
          p.precio||0, p.costo||0, p.stock_minimo||5, p.categoria_id||null, p.giro||'tienda',
          !!p.por_peso, p.unidad_peso||'kg', !!p.tiene_prescripcion, parseFloat(p.cobertura_m2)||0,
          parseFloat(p.peso_kg)||0, parseFloat(p.largo_cm)||0, parseFloat(p.ancho_cm)||0, parseFloat(p.alto_cm)||0,
          activoProd, p.proveedor_uuid||null, p.moneda_costo||'MXN', parseFloat(p.costo_moneda)||0, imagenesExtraStr, p.descripcion||'',
-         p.disponible_domicilio !== false, p.disponible_envio !== false, p.entrega_rapida === true]
+         p.disponible_domicilio !== false, p.disponible_envio !== false, p.entrega_rapida === true, p.es_servicio === true]
       );
       // Ajuste de stock si viene stock — leer + insertar en una sola
       // sentencia (evita la ventana de carrera entre leer el stock actual
@@ -406,6 +417,7 @@ router.get('/pull', async (req, res) => {
     await ensureDimensionesColumns();
     await ensureMonedaCostoColumns();
     await ensureDescripcionColumn();
+    await ensureEsServicioColumn();
     const [productos, clientes, ventas, movimientos, lotesPull, kitsPull, promocionesPull, divisasPull, variantesPull, extrasPull, proveedoresPull, pedidosPull, empleadosPull] = await Promise.all([
       pool.query(
         `SELECT p.id, p.negocio_id, p.sucursal_id, p.nombre, p.descripcion, p.emoji, p.codigo_barras,
@@ -416,6 +428,7 @@ router.get('/pull', async (req, res) => {
                 COALESCE(p.disponible_domicilio,true) AS disponible_domicilio,
                 COALESCE(p.disponible_envio,true) AS disponible_envio,
                 COALESCE(p.entrega_rapida,false) AS entrega_rapida,
+                COALESCE(p.es_servicio,false) AS es_servicio,
                 COALESCE(s.stock,0) AS stock_actual
          FROM productos p
          LEFT JOIN stock_actual s ON s.producto_id = p.id AND s.sucursal_id = $2

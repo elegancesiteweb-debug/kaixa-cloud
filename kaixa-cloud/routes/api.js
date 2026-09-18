@@ -1151,6 +1151,7 @@ router.get('/negocio/tienda', async (req, res) => {
       `SELECT nombre, slug, tienda_imagen_url, tienda_descripcion, tienda_logo_url,
               tienda_telefono, tienda_direccion, tienda_horario,
               COALESCE(tienda_mostrar_kits,false) AS tienda_mostrar_kits,
+              COALESCE(tienda_mostrar_servicios,false) AS tienda_mostrar_servicios,
               COALESCE(domicilio_habilitado,false) AS domicilio_habilitado,
               COALESCE(cotizacion_mostrar_fotos,false) AS cotizacion_mostrar_fotos,
               COALESCE(envio_habilitado,false) AS envio_habilitado,
@@ -1172,7 +1173,7 @@ router.put('/negocio/tienda', async (req, res) => {
     const {
       tienda_imagen_url = null, tienda_descripcion = null, tienda_logo_url = null,
       tienda_telefono = null, tienda_direccion = null, tienda_horario = null,
-      tienda_mostrar_kits = null, domicilio_habilitado = null, cotizacion_mostrar_fotos = null,
+      tienda_mostrar_kits = null, tienda_mostrar_servicios = null, domicilio_habilitado = null, cotizacion_mostrar_fotos = null,
       envio_habilitado = null, envio_costo = null,
       entrega_rapida_habilitado = null, entrega_rapida_costo = null, entrega_rapida_tiempo_min = null,
       nombre = null
@@ -1195,11 +1196,13 @@ router.put('/negocio/tienda', async (req, res) => {
          envio_costo=COALESCE($13, envio_costo),
          entrega_rapida_habilitado=COALESCE($14, entrega_rapida_habilitado),
          entrega_rapida_costo=COALESCE($15, entrega_rapida_costo),
-         entrega_rapida_tiempo_min=COALESCE($16, entrega_rapida_tiempo_min)
+         entrega_rapida_tiempo_min=COALESCE($16, entrega_rapida_tiempo_min),
+         tienda_mostrar_servicios=COALESCE($17, tienda_mostrar_servicios)
        WHERE id=$8`,
       [tienda_imagen_url, tienda_descripcion, tienda_logo_url, tienda_telefono, tienda_direccion, tienda_horario,
        tienda_mostrar_kits, req.caja.negocio_id, domicilio_habilitado, cotizacion_mostrar_fotos, nombreVal,
-       envio_habilitado, envio_costo, entrega_rapida_habilitado, entrega_rapida_costo, entrega_rapida_tiempo_min]
+       envio_habilitado, envio_costo, entrega_rapida_habilitado, entrega_rapida_costo, entrega_rapida_tiempo_min,
+       tienda_mostrar_servicios]
     );
     res.json({ ok: true });
   } catch(e) { res.status(500).json({ error: e.message }); }
@@ -1388,7 +1391,13 @@ router.post('/pedidos-online/:id/confirmar', async (req, res) => {
     );
     if (!pedido.rows.length) throw Object.assign(new Error('Pedido no encontrado o ya procesado'), { status: 404 });
     const p = pedido.rows[0];
-    const items = await client.query('SELECT * FROM pedido_online_items WHERE pedido_id=$1', [p.id]);
+    const items = await client.query(
+      `SELECT poi.*, COALESCE(prod.es_servicio,false) AS es_servicio
+       FROM pedido_online_items poi
+       LEFT JOIN productos prod ON prod.id = poi.producto_id
+       WHERE poi.pedido_id=$1`,
+      [p.id]
+    );
     // El stock ya se reservó (se descontó) cuando se hizo el pedido — ver
     // POST /tienda/:slug/pedidos — así que no hay que revalidar disponibilidad
     // ni volver a descontar aquí, solo re-etiquetar esa reserva como la venta real.
@@ -1437,6 +1446,9 @@ router.post('/pedidos-online/:id/confirmar', async (req, res) => {
         // La reserva de una variante ya restó su stock directamente (no deja
         // movimiento en stock_movimientos) — no hay nada más que descontar.
         if (it.producto_id) await client.query('UPDATE productos SET actualizado_en=now() WHERE id=$1', [it.producto_id]);
+      } else if (it.producto_id && it.es_servicio) {
+        // Un servicio nunca reservó stock (ver /tienda/:slug/pedidos) — no
+        // hay nada que re-etiquetar ni un respaldo que insertar aquí.
       } else if (it.producto_id) {
         const retag = await client.query(
           `UPDATE stock_movimientos SET motivo='venta', venta_id=$1, caja_id=$2, pedido_online_id=NULL

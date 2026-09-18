@@ -117,6 +117,7 @@ async function ensureTiendaTables() {
   await pool.query(`ALTER TABLE negocios ADD COLUMN IF NOT EXISTS tienda_direccion TEXT DEFAULT ''`);
   await pool.query(`ALTER TABLE negocios ADD COLUMN IF NOT EXISTS tienda_horario TEXT DEFAULT ''`);
   await pool.query(`ALTER TABLE negocios ADD COLUMN IF NOT EXISTS tienda_mostrar_kits BOOLEAN DEFAULT false`);
+  await pool.query(`ALTER TABLE negocios ADD COLUMN IF NOT EXISTS tienda_mostrar_servicios BOOLEAN DEFAULT false`);
   await pool.query(`ALTER TABLE negocios ADD COLUMN IF NOT EXISTS domicilio_habilitado BOOLEAN DEFAULT false`);
   await pool.query(`ALTER TABLE negocios ADD COLUMN IF NOT EXISTS cotizacion_mostrar_fotos BOOLEAN DEFAULT false`);
   // Envíos por paquetería (distinto de "domicilio" — entrega local propia del negocio).
@@ -556,6 +557,7 @@ router.get('/tienda/:slug/info', async (req, res) => {
       `SELECT id, nombre, giro_principal, tienda_imagen_url, tienda_descripcion,
               tienda_logo_url, tienda_telefono, tienda_direccion, tienda_horario,
               COALESCE(tienda_mostrar_kits,false) AS tienda_mostrar_kits,
+              COALESCE(tienda_mostrar_servicios,false) AS tienda_mostrar_servicios,
               COALESCE(domicilio_habilitado,false) AS domicilio_habilitado,
               COALESCE(envio_habilitado,false) AS envio_habilitado,
               COALESCE(envio_costo,0) AS envio_costo,
@@ -607,8 +609,14 @@ router.get('/tienda/:slug/productos', async (req, res) => {
     await ensureTiendaTables();
     const { sucursal_id } = req.query;
     if (!sucursal_id) return res.status(400).json({ error: 'Falta sucursal_id' });
-    const neg = await pool.query('SELECT id FROM negocios WHERE slug=$1 AND activo=true', [req.params.slug]);
+    const neg = await pool.query('SELECT id, COALESCE(tienda_mostrar_servicios,false) AS mostrar_servicios FROM negocios WHERE slug=$1 AND activo=true', [req.params.slug]);
     if (!neg.rows.length) return res.status(404).json({ error: 'Tienda no encontrada' });
+    // Un servicio (corte de cabello, reparación, etc.) normalmente no lleva
+    // stock — por eso antes el filtro de "solo lo que tiene stock > 0" lo
+    // excluía siempre de la tienda, sin importar si el negocio quería
+    // mostrarlo. Igual que con los kits (tienda_mostrar_kits), es un
+    // interruptor aparte: si está apagado, los servicios ni se listan aquí.
+    const mostrarServicios = neg.rows[0].mostrar_servicios;
     const r = await pool.query(`
       SELECT p.id, p.nombre, COALESCE(p.descripcion,'') AS descripcion, p.emoji, p.imagen_url, p.imagenes_extra, p.precio, p.categoria_id, c.nombre AS categoria_nombre,
              COALESCE(p.tiene_variantes,false) AS tiene_variantes,
@@ -616,14 +624,19 @@ router.get('/tienda/:slug/productos', async (req, res) => {
              COALESCE(p.disponible_domicilio,true) AS disponible_domicilio,
              COALESCE(p.disponible_envio,true) AS disponible_envio,
              COALESCE(p.entrega_rapida,false) AS entrega_rapida,
+             COALESCE(p.es_servicio,false) AS es_servicio,
              COALESCE(s.stock,0) AS stock
       FROM productos p
       LEFT JOIN stock_actual s ON s.producto_id = p.id AND s.sucursal_id = p.sucursal_id
       LEFT JOIN categorias c ON c.id = p.categoria_id
       WHERE p.negocio_id=$1 AND p.sucursal_id=$2 AND p.activo=true
-        AND (COALESCE(p.tiene_variantes,false) = true OR COALESCE(s.stock,0) > 0)
+        AND (
+          CASE WHEN COALESCE(p.es_servicio,false) THEN $3
+          ELSE (COALESCE(p.tiene_variantes,false) = true OR COALESCE(s.stock,0) > 0)
+          END
+        )
       ORDER BY p.nombre`,
-      [neg.rows[0].id, sucursal_id]
+      [neg.rows[0].id, sucursal_id, mostrarServicios]
     );
     const productos = r.rows;
 
@@ -826,7 +839,7 @@ router.post('/tienda/:slug/pedidos', async (req, res) => {
       }
 
       const prod = await client.query(
-        'SELECT id, nombre, precio, COALESCE(disponible_domicilio,true) AS disponible_domicilio, COALESCE(disponible_envio,true) AS disponible_envio, COALESCE(entrega_rapida,false) AS entrega_rapida FROM productos WHERE id=$1 AND negocio_id=$2 AND sucursal_id=$3 AND activo=true',
+        'SELECT id, nombre, precio, COALESCE(disponible_domicilio,true) AS disponible_domicilio, COALESCE(disponible_envio,true) AS disponible_envio, COALESCE(entrega_rapida,false) AS entrega_rapida, COALESCE(es_servicio,false) AS es_servicio FROM productos WHERE id=$1 AND negocio_id=$2 AND sucursal_id=$3 AND activo=true',
         [it.producto_id, negocioId, sucursal_id]
       );
       if (!prod.rows.length) continue;
@@ -881,7 +894,8 @@ router.post('/tienda/:slug/pedidos', async (req, res) => {
       if (promo) descuentoPromoTotal += descuentoPromoLinea(precioUnit, cantidad, promo);
       itemsValidados.push({
         producto_id: p.id, nombre_producto: p.nombre, cantidad, precio_unitario: precioUnit,
-        variante_id: varianteId, variante_texto: varianteTexto, kit_id: null, componentes: [], extras: extrasValidados
+        variante_id: varianteId, variante_texto: varianteTexto, kit_id: null, componentes: [], extras: extrasValidados,
+        es_servicio: p.es_servicio
       });
     }
     if (!itemsValidados.length) {
@@ -931,7 +945,9 @@ router.post('/tienda/:slug/pedidos', async (req, res) => {
       } else if (it.variante_id) {
         await client.query('UPDATE producto_variantes SET stock = stock - $1, actualizado_en = now() WHERE id=$2',
           [it.cantidad, it.variante_id]);
-      } else if (it.producto_id) {
+      } else if (it.producto_id && !it.es_servicio) {
+        // Un servicio no lleva inventario — reservarle "stock" solo lo
+        // dejaría en negativo poco a poco cada vez que alguien lo pide.
         await client.query(
           `INSERT INTO stock_movimientos (id, negocio_id, sucursal_id, producto_id, cantidad, motivo, pedido_online_id)
            VALUES (gen_random_uuid(),$1,$2,$3,$4,'pedido_online_reserva',$5)`,
