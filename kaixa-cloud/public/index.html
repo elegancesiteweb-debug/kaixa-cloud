@@ -10,6 +10,12 @@
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="kaixa_icon.png">
 <style>
+/* Antes 'Outfit' se cargaba desde Google Fonts por internet (@import más
+   abajo, ya quitado) — dependía de que hubiera conexión. Plus Jakarta Sans
+   se hospeda local, igual que JetBrains Mono, así que funciona sin
+   internet (esta es una app que corre offline como PWA). */
+@font-face{font-family:'Plus Jakarta Sans';font-style:normal;font-weight:200 800;src:url('fonts/plus-jakarta-sans.woff2') format('woff2');font-display:swap}
+@font-face{font-family:'JetBrains Mono';font-style:normal;font-weight:400 700;src:url('fonts/jetbrains.woff2') format('woff2');font-display:swap}
 :root{
   --bg:#ffffff;--s1:#f8f5ff;--s2:#f0ebff;--s3:#e8dfff;
   --border:#e2d9f3;--border2:#c4b5fd;
@@ -17,13 +23,12 @@
   --warn:#f59e0b;--danger:#ef4444;--ok:#10b981;
   --text:#1a1035;--text2:#6b5fa0;--text3:#a89fd4;
   --grad:linear-gradient(135deg,#8b5cf6,#d946ef);
-  --ff:'Outfit',-apple-system,'Segoe UI',sans-serif;
+  --ff:'Plus Jakarta Sans',-apple-system,'Segoe UI',sans-serif;
   --fm:'JetBrains Mono',monospace;
   --nav-h:64px;
 }
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 html,body{width:100%;height:100%;overflow:hidden;font-family:var(--ff);background:var(--bg);color:var(--text)}
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800;900&display=swap');
 .screen{display:none;position:fixed;inset:0;flex-direction:column;overflow:hidden}
 .screen.active{display:flex}
 #sc-splash{background:linear-gradient(160deg,#ffffff 0%,#f3ebff 40%,#ddc6fb 75%,#b98af0 100%);align-items:center;justify-content:center}
