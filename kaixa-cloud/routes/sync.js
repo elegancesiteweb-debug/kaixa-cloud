@@ -99,6 +99,7 @@ router.post('/push', async (req, res) => {
 
     // Proveedores (van primero: los productos pueden referenciarlos por uuid)
     for (const pv of proveedores) {
+      await client.query('SAVEPOINT sp_proveedor');
       try {
         const activoPv = (pv.activo === false || pv.activo === 0) ? false : true;
         await client.query(
@@ -107,7 +108,7 @@ router.post('/push', async (req, res) => {
            ON CONFLICT (id) DO UPDATE SET nombre=$3, telefono=$4, email=$5, activo=$6`,
           [pv.uuid, negocio_id, pv.nombre, pv.telefono||'', pv.email||'', activoPv]
         );
-      } catch(e) { console.warn('Proveedor push error:', e.message); }
+      } catch(e) { await client.query('ROLLBACK TO SAVEPOINT sp_proveedor'); console.warn('Proveedor push error (se omite):', e.message); }
     }
 
     // Productos
@@ -227,6 +228,7 @@ router.post('/push', async (req, res) => {
     // Lotes
     for (const l of lotes) {
       const activoLote = (l.activo === false || l.activo === 0) ? false : true;
+      await client.query('SAVEPOINT sp_lote');
       try {
         await client.query(
           `INSERT INTO lotes (id, negocio_id, sucursal_id, producto_id, nombre_producto, numero_lote, cantidad, fecha_caducidad, activo, actualizado_en)
@@ -237,17 +239,30 @@ router.post('/push', async (req, res) => {
            l.numero_lote, l.cantidad||0, l.fecha_caducidad||null, activoLote]
         );
       } catch(e) {
-        // Si falla por schema diferente, intentar sin id
+        // Si falla por schema diferente, intentar sin id — el primer intento
+        // ya dejó la transacción marcada como abortada, así que hay que
+        // volver al savepoint antes de poder ejecutar cualquier otra cosa.
+        await client.query('ROLLBACK TO SAVEPOINT sp_lote');
+        await client.query('SAVEPOINT sp_lote');
         await client.query(
           `INSERT INTO lotes (negocio_id, sucursal_id, producto_id, nombre_producto, numero_lote, cantidad, fecha_caducidad, activo)
            VALUES ($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT DO NOTHING`,
           [negocio_id, sucursal_id, l.producto_uuid||null, '', l.numero_lote, l.cantidad||0, l.fecha_caducidad||null, activoLote]
-        ).catch(()=>{});
+        ).catch(() => client.query('ROLLBACK TO SAVEPOINT sp_lote').catch(()=>{}));
       }
     }
 
-    // Kits
+    // Kits — cada uno en su propio SAVEPOINT: si UNO falla (dato raro,
+    // producto_id que no llegó a existir, lo que sea), antes eso envenenaba
+    // TODA la transacción en silencio (el catch de abajo solo avisaba y
+    // seguía, pero Postgres ya había marcado la transacción como abortada) —
+    // cada consulta siguiente, hasta el UPDATE final de ultimo_sync, fallaba
+    // con "current transaction is aborted", y como ESE sí se colaba sin
+    // atrapar hasta el catch de arriba, se hacía ROLLBACK de TODO el push
+    // (ventas, movimientos, productos... todo lo que sí iba bien). Esto es
+    // lo que dejaba una caja sin sincronizar por días sin ningún error claro.
     for (const k of (req.body.kits || [])) {
+      await client.query('SAVEPOINT sp_kit');
       try {
         await client.query(`
           INSERT INTO kits (id, negocio_id, sucursal_id, nombre, emoji, descripcion, precio, activo, actualizado_en)
@@ -267,7 +282,7 @@ router.post('/push', async (req, res) => {
             );
           }
         }
-      } catch(e) { console.warn('Kit push error:', e.message); }
+      } catch(e) { await client.query('ROLLBACK TO SAVEPOINT sp_kit'); console.warn('Kit push error (se omite, no tumba el resto):', e.message); }
     }
 
     // Promociones — categoria_nombre se guarda tal cual (texto), no como FK a
@@ -276,6 +291,7 @@ router.post('/push', async (req, res) => {
     // confiable para referenciar en la nube. La tienda en línea evalúa
     // promociones por producto/todos; las de categoría solo aplican en el POS.
     for (const pr of (req.body.promociones || [])) {
+      await client.query('SAVEPOINT sp_promo');
       try {
         await client.query(`
           INSERT INTO promociones (id, negocio_id, sucursal_id, nombre, tipo, categoria_nombre, producto_id,
@@ -289,13 +305,14 @@ router.post('/push', async (req, res) => {
            pr.valor||0, pr.nxm_compra||0, pr.nxm_paga||0, pr.fecha_inicio||null, pr.fecha_fin||null, pr.activo!==false,
            pr.dias_semana||null, pr.hora_inicio||null, pr.hora_fin||null]
         );
-      } catch(e) { console.warn('Promoción push error:', e.message); }
+      } catch(e) { await client.query('ROLLBACK TO SAVEPOINT sp_promo'); console.warn('Promoción push error (se omite):', e.message); }
     }
 
     // Divisas — sin resolución de id/nombre, codigo/nombre/tipo_cambio son
     // valores planos (a diferencia de promociones, no hay tabla local a la
     // que referenciar).
     for (const dv of (req.body.divisas || [])) {
+      await client.query('SAVEPOINT sp_divisa');
       try {
         await client.query(`
           INSERT INTO divisas (id, negocio_id, sucursal_id, codigo, nombre, simbolo, tipo_cambio, activo, actualizado_en)
@@ -304,11 +321,12 @@ router.post('/push', async (req, res) => {
             codigo=$4, nombre=$5, simbolo=$6, tipo_cambio=$7, activo=$8, actualizado_en=now()`,
           [dv.id, negocio_id, dv.sucursal_id||sucursal_id, dv.codigo, dv.nombre, dv.simbolo||'$', dv.tipo_cambio||1, dv.activo!==false]
         );
-      } catch(e) { console.warn('Divisa push error:', e.message); }
+      } catch(e) { await client.query('ROLLBACK TO SAVEPOINT sp_divisa'); console.warn('Divisa push error (se omite):', e.message); }
     }
 
     // Variantes de producto (genéricas, cualquier giro)
     for (const v of variantes) {
+      await client.query('SAVEPOINT sp_variante');
       try {
         await client.query(`
           INSERT INTO producto_variantes
@@ -331,11 +349,12 @@ router.post('/push', async (req, res) => {
             [v.producto_uuid]
           );
         }
-      } catch(e) { console.warn('Variante push error:', e.message); }
+      } catch(e) { await client.query('ROLLBACK TO SAVEPOINT sp_variante'); console.warn('Variante push error (se omite):', e.message); }
     }
 
     // Extras opcionales de producto (mismo patrón que variantes)
     for (const ex of extras) {
+      await client.query('SAVEPOINT sp_extra');
       try {
         await client.query(`
           INSERT INTO producto_extras
@@ -349,11 +368,12 @@ router.post('/push', async (req, res) => {
         if (ex.producto_uuid) {
           await client.query(`UPDATE productos SET tiene_extras=true WHERE id=$1`, [ex.producto_uuid]);
         }
-      } catch(e) { console.warn('Extra push error:', e.message); }
+      } catch(e) { await client.query('ROLLBACK TO SAVEPOINT sp_extra'); console.warn('Extra push error (se omite):', e.message); }
     }
 
     // Pedidos a proveedores
     for (const p of pedidos) {
+      await client.query('SAVEPOINT sp_pedido');
       try {
         await client.query(`
           INSERT INTO pedidos (id, negocio_id, sucursal_id, proveedor_id, proveedor_nombre, estado, total, notas, creado_en, actualizado_en)
@@ -378,7 +398,7 @@ router.post('/push', async (req, res) => {
         // canal genérico de "movimientos" (motivo='recepcion') que la PC arma
         // con el delta exacto — aquí solo se refleja cantidad_recibida arriba,
         // sin volver a tocar stock_movimientos (evita duplicar el stock).
-      } catch(e) { console.warn('Pedido push error:', e.message); }
+      } catch(e) { await client.query('ROLLBACK TO SAVEPOINT sp_pedido'); console.warn('Pedido push error (se omite):', e.message); }
     }
     await client.query('UPDATE cajas SET ultimo_sync = now() WHERE id = $1', [caja_id]);
     await client.query('COMMIT');
