@@ -140,6 +140,10 @@
   </div>
 </div>
 
+<div class="wrap" id="buscarWrap" style="padding:10px 18px 0">
+  <input id="buscarInp" type="search" placeholder="🔍 Buscar un producto..." oninput="buscarProductos(this.value)"
+    style="width:100%;padding:11px 14px;border-radius:20px;border:1.5px solid var(--border);font-size:13px;background:var(--s1);color:var(--text)">
+</div>
 <div class="catbar" id="catBar" style="display:none"></div>
 
 <div class="wrap" style="padding-top:0">
@@ -305,6 +309,7 @@ var kits = [];
 var mostrarKits = false;
 var cart = {}; // { producto_id: {producto, qty} }
 var catActiva = 'Todos';
+var buscarQ = '';
 
 function notif(msg){
   var el = document.getElementById('notif');
@@ -466,6 +471,13 @@ function filtrarCategoria(c){
   renderProductos();
 }
 
+// Busca por nombre y descripción — se combina con el filtro de categoría
+// activo (si estás viendo "Bebidas" y buscas, sigue buscando solo ahí).
+function buscarProductos(q){
+  buscarQ = (q || '').trim().toLowerCase();
+  renderProductos();
+}
+
 function renderProductos(){
   var box = document.getElementById('prodsBox');
   if (!productos.length) {
@@ -473,8 +485,25 @@ function renderProductos(){
     return;
   }
   var lista = catActiva === 'Todos' ? productos : productos.filter(function(p){ return (p.categoria_nombre||'Otros') === catActiva; });
+  if (buscarQ) {
+    lista = lista.filter(function(p){
+      return (p.nombre||'').toLowerCase().includes(buscarQ) || (p.descripcion||'').toLowerCase().includes(buscarQ);
+    });
+  }
   if (!lista.length) {
-    box.innerHTML = '<div class="empty"><div>🔍</div>Nada en esta categoría</div>';
+    if (buscarQ) {
+      // Construido con el DOM (no innerHTML con el texto interpolado) —
+      // lo que el visitante escribió en la búsqueda no debe poder inyectar
+      // HTML en la página.
+      box.innerHTML = '';
+      var vacio = document.createElement('div'); vacio.className = 'empty';
+      var ico = document.createElement('div'); ico.textContent = '🔍'; vacio.appendChild(ico);
+      var msg = document.createTextNode('No encontramos "' + buscarQ + '"');
+      vacio.appendChild(msg);
+      box.appendChild(vacio);
+    } else {
+      box.innerHTML = '<div class="empty"><div>🔍</div>Nada en esta categoría</div>';
+    }
     return;
   }
   box.innerHTML = '<div class="prods">' + lista.map(function(p){
