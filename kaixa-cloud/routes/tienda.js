@@ -108,7 +108,18 @@ async function asignarSlug(negocioId, nombre) {
   return slug;
 }
 
+// Esta función corre 62 consultas (ALTER TABLE / CREATE TABLE, todas
+// "IF NOT EXISTS") — necesarias la primera vez que arranca el servidor,
+// pero a diferencia de TODAS las demás funciones ensureX de este proyecto
+// (ensureClientesFiadoColumns, ensureCoberturaM2Column, etc.), esta nunca
+// tuvo una bandera de "ya corrió" — se ejecutaban las 62 en CADA petición
+// a cualquier ruta de /tienda/*, agregando varios segundos de latencia de
+// red (62 viajes redondos a Postgres) a cada carga de la tienda en línea.
+// Eso era lo que causaba los "tienda no encontrada" / peticiones abortadas
+// por tardar demasiado — no un dato faltante, solo lentitud acumulada.
+let _tiendaTablesOk = false;
 async function ensureTiendaTables() {
+  if (_tiendaTablesOk) return;
   await pool.query(`ALTER TABLE negocios ADD COLUMN IF NOT EXISTS slug TEXT`);
   await pool.query(`ALTER TABLE negocios ADD COLUMN IF NOT EXISTS tienda_imagen_url TEXT DEFAULT ''`);
   await pool.query(`ALTER TABLE negocios ADD COLUMN IF NOT EXISTS tienda_descripcion TEXT DEFAULT ''`);
@@ -295,6 +306,7 @@ async function ensureTiendaTables() {
 
   const sinSlug = await pool.query("SELECT id, nombre FROM negocios WHERE slug IS NULL OR slug=''");
   for (const n of sinSlug.rows) { await asignarSlug(n.id, n.nombre); }
+  _tiendaTablesOk = true;
 }
 
 // ── Horarios disponibles para agendar un pedido (recoger/domicilio/envío) ──
