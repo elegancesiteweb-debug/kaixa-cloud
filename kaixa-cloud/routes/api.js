@@ -1116,14 +1116,20 @@ router.put('/traspasos/:id/rechazar', async (req, res) => {
     }
     if (traspaso.estado !== 'enviado') return res.status(400).json({ error: 'Este traspaso ya fue ' + traspaso.estado });
 
+    // traspaso.cantidad llega como STRING desde Postgres (columna numérica,
+    // ej. "6.000") — mandarlo tal cual a una columna INTEGER (stock_movimientos.cantidad)
+    // truena con "invalid input syntax for type integer". /recibir ya lo
+    // convertía con parseFloat, esta ruta no — por eso rechazar un traspaso
+    // fallaba siempre y el stock se quedaba atorado sin volver a origen.
+    const cantidadDevuelta = parseFloat(traspaso.cantidad);
     await client.query('BEGIN');
     if (traspaso.tipo === 'lote') {
-      await client.query('UPDATE lotes SET cantidad = cantidad + $1, actualizado_en=now() WHERE id=$2', [traspaso.cantidad, traspaso.lote_origen_id]);
+      await client.query('UPDATE lotes SET cantidad = cantidad + $1, actualizado_en=now() WHERE id=$2', [cantidadDevuelta, traspaso.lote_origen_id]);
     } else {
       await client.query(
         `INSERT INTO stock_movimientos (id, negocio_id, sucursal_id, producto_id, caja_id, cantidad, motivo)
-         VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,'traspaso_salida')`,
-        [negocio_id, traspaso.sucursal_origen_id, traspaso.producto_origen_id, cajaId, traspaso.cantidad]
+         VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,'traspaso_rechazado')`,
+        [negocio_id, traspaso.sucursal_origen_id, traspaso.producto_origen_id, cajaId, cantidadDevuelta]
       );
     }
     await client.query(`UPDATE traspasos SET estado='rechazado' WHERE id=$1`, [req.params.id]);
