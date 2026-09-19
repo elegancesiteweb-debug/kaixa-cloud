@@ -140,18 +140,22 @@
   </div>
 </div>
 
+<!-- Cambia entre Productos / Servicios / Kits — solo aparece si el negocio
+     tiene activo más de una de estas secciones (si solo vende productos,
+     no tiene caso mostrar un selector de una sola opción). -->
+<div class="catbar" id="vistaBar" style="display:none"></div>
+
 <div class="wrap" id="buscarWrap" style="padding:10px 18px 0">
   <input id="buscarInp" type="search" placeholder="🔍 Buscar un producto..." oninput="buscarProductos(this.value)"
     style="width:100%;padding:11px 14px;border-radius:20px;border:1.5px solid var(--border);font-size:13px;background:var(--s1);color:var(--text)">
 </div>
 <div class="catbar" id="catBar" style="display:none"></div>
 
-<div class="wrap" style="padding-top:0">
+<div class="wrap" id="prodsWrap" style="padding-top:0">
   <div id="prodsBox"></div>
 </div>
 
 <div id="kitsSection" style="display:none">
-  <div class="kits-title">🎁 Kits y combos</div>
   <div class="wrap" style="padding-top:0"><div class="kits" id="kitsBox"></div></div>
 </div>
 
@@ -307,6 +311,8 @@ var sucursalId = null;
 var productos = [];
 var kits = [];
 var mostrarKits = false;
+var mostrarServicios = false;
+var vistaActiva = 'productos'; // 'productos' | 'servicios' | 'kits'
 var cart = {}; // { producto_id: {producto, qty} }
 var catActiva = 'Todos';
 var buscarQ = '';
@@ -327,6 +333,9 @@ async function init(){
     negocio = d.negocio;
     sucursales = d.sucursales || [];
     mostrarKits = !!negocio.tienda_mostrar_kits;
+    mostrarServicios = !!negocio.tienda_mostrar_servicios;
+    renderVistaBar();
+    actualizarVisibilidadVista();
     document.getElementById('negNombre').textContent = negocio.nombre;
     document.title = negocio.nombre + ' — Pedidos en línea';
     if (negocio.tienda_descripcion) {
@@ -400,10 +409,39 @@ async function cargarKits(){
     var r = await fetch('/api/tienda/' + slug + '/kits?sucursal_id=' + sucursalId);
     kits = r.ok ? await r.json() : [];
   }catch(e){ kits = []; }
-  var section = document.getElementById('kitsSection');
-  if (!kits.length) { section.style.display = 'none'; return; }
-  section.style.display = 'block';
   renderKits();
+  if (vistaActiva === 'kits') actualizarVisibilidadVista();
+}
+
+// ── Selector Productos / Servicios / Kits — solo se muestra si hay más de
+// una sección activa; si el negocio solo vende productos normales, no
+// tiene caso mostrar un selector con una sola opción. ──
+function renderVistaBar(){
+  var bar = document.getElementById('vistaBar');
+  var opciones = [{ id:'productos', label:'🛍️ Productos' }];
+  if (mostrarServicios) opciones.push({ id:'servicios', label:'🔧 Servicios' });
+  if (mostrarKits) opciones.push({ id:'kits', label:'🎁 Kits y combos' });
+  if (opciones.length < 2) { bar.style.display = 'none'; return; }
+  bar.style.display = 'flex';
+  bar.innerHTML = opciones.map(function(o){
+    return '<div class="catchip' + (o.id===vistaActiva?' active':'') + '" onclick="cambiarVista(\''+o.id+'\')">' + o.label + '</div>';
+  }).join('');
+}
+
+function cambiarVista(v){
+  vistaActiva = v;
+  renderVistaBar();
+  actualizarVisibilidadVista();
+  if (v !== 'kits') renderProductos();
+}
+
+function actualizarVisibilidadVista(){
+  var esProdVista = (vistaActiva === 'productos' || vistaActiva === 'servicios');
+  document.getElementById('prodsWrap').style.display = esProdVista ? 'block' : 'none';
+  document.getElementById('buscarWrap').style.display = esProdVista ? 'block' : 'none';
+  if (!esProdVista) document.getElementById('catBar').style.display = 'none';
+  else renderCategorias();
+  document.getElementById('kitsSection').style.display = (vistaActiva === 'kits') ? 'block' : 'none';
 }
 
 function renderKits(){
@@ -451,10 +489,20 @@ function agregarKitCarrito(kitId){
   notif('✅ ' + k.nombre + ' agregado');
 }
 
+// Productos normales y servicios comparten el mismo catálogo del lado del
+// servidor (por eso el backend puede aplicar promociones/categorías igual
+// a ambos) — aquí se separan según la pestaña activa para que un servicio
+// no aparezca mezclado en "Productos" ni al revés.
+function _productosDeVista(){
+  return productos.filter(function(p){
+    return vistaActiva === 'servicios' ? !!p.es_servicio : !p.es_servicio;
+  });
+}
+
 function renderCategorias(){
   var bar = document.getElementById('catBar');
   var cats = ['Todos'];
-  productos.forEach(function(p){
+  _productosDeVista().forEach(function(p){
     var c = p.categoria_nombre || 'Otros';
     if (cats.indexOf(c) === -1) cats.push(c);
   });
@@ -480,11 +528,14 @@ function buscarProductos(q){
 
 function renderProductos(){
   var box = document.getElementById('prodsBox');
-  if (!productos.length) {
-    box.innerHTML = '<div class="empty"><div>📦</div>Sin productos disponibles por ahora</div>';
+  var base = _productosDeVista();
+  if (!base.length) {
+    box.innerHTML = vistaActiva === 'servicios'
+      ? '<div class="empty"><div>🔧</div>Sin servicios disponibles por ahora</div>'
+      : '<div class="empty"><div>📦</div>Sin productos disponibles por ahora</div>';
     return;
   }
-  var lista = catActiva === 'Todos' ? productos : productos.filter(function(p){ return (p.categoria_nombre||'Otros') === catActiva; });
+  var lista = catActiva === 'Todos' ? base : base.filter(function(p){ return (p.categoria_nombre||'Otros') === catActiva; });
   if (buscarQ) {
     lista = lista.filter(function(p){
       return (p.nombre||'').toLowerCase().includes(buscarQ) || (p.descripcion||'').toLowerCase().includes(buscarQ);
