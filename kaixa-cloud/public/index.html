@@ -3706,26 +3706,63 @@ async function probarConexionCFDI() {
   notif(d.mensaje || (d.ok ? '✅ Conexión exitosa' : '❌ Error de conexión'), d.ok ? 'ok' : 'err');
 }
 
-// ══ RECORDATORIOS DE COBRO POR WHATSAPP (Meta Cloud API) ══
+// ══ CONFIGURACIÓN (menú Más) — reúne los ajustes que antes estaban escondidos ══
+function abrirConfiguracionMovil() {
+  var esAdmin = usuario && (usuario.rol || '').toLowerCase().includes('admin');
+  var entradas = [
+    { ico:'bell', title:'Alertas y resumen por WhatsApp', sub:'Tu número de celular para el resumen diario, stock bajo y recordatorios', fn:'abrirWhatsappConfig' },
+    { ico:'creditCard', title:'Pagos con tarjeta', sub:'Conecta Mercado Pago', fn:'abrirPagosConfig' },
+    { ico:'image', title:'Mi tienda en línea', sub:'Logo, teléfono y dirección del negocio', fn:'abrirTiendaConfig' },
+    { ico:'clock', title:'Horarios para agendar pedidos', sub:'Días y horas para recoger o recibir', fn:'abrirHorariosConfig' }
+  ];
+  var html = '<div class="modal-overlay" id="modalConfiguracion"><div class="modal-sheet">' +
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">' +
+      '<h3 style="margin:0">⚙️ Configuración</h3>' +
+      '<span class="modal-close" onclick="document.getElementById(\'modalConfiguracion\').remove()">✕</span>' +
+    '</div>' +
+    (esAdmin ? '' : '<p style="font-size:12px;color:var(--text3);margin-bottom:12px">Algunos ajustes solo los puede cambiar un administrador.</p>') +
+    entradas.map(function(e) {
+      return '<div class="card" style="cursor:pointer;margin-bottom:8px" onclick="' + e.fn + '()"><div class="card-row">' +
+        '<div class="card-ico">' + KICON(e.ico) + '</div>' +
+        '<div class="card-info"><div class="card-title">' + e.title + '</div><div class="card-sub">' + e.sub + '</div></div>' +
+        '<div style="color:var(--text3)">›</div></div></div>';
+    }).join('') +
+  '</div></div>';
+  document.getElementById('modalContainer').innerHTML = html;
+}
+
+// ══ ALERTAS Y RESUMEN POR WHATSAPP (Meta Cloud API) ══
+var _waAlertasTelefonoGuardado = '';
 async function abrirWhatsappConfig() {
   var cfg = {};
   try { var r = await apiFetch('/api/whatsapp/config'); if (r && r.ok) cfg = await r.json(); } catch(e) {}
+  _waAlertasTelefonoGuardado = cfg.whatsapp_alertas_telefono || '';
+  var estado = cfg.configurado
+    ? '<div style="font-size:12px;color:#22c55e;font-weight:700;margin-bottom:10px">✅ WhatsApp Business conectado (' + (cfg.token_preview||'') + ')</div>'
+    : '<div style="font-size:12px;color:#f59e0b;font-weight:700;margin-bottom:10px">⚠️ WhatsApp Business sin conectar: el resumen diario llegará solo a la campana 🔔 de la app. Para recibirlo por WhatsApp llena el token y el Phone Number ID de abajo.</div>';
   var html = '<div class="modal-overlay" id="modalWhatsappConfig"><div class="modal-sheet">' +
     '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">' +
-      '<h3 style="margin:0">📱 WhatsApp Business API</h3>' +
+      '<h3 style="margin:0">📱 Alertas y resumen por WhatsApp</h3>' +
       '<span class="modal-close" onclick="document.getElementById(\'modalWhatsappConfig\').remove()">✕</span>' +
     '</div>' +
+    estado +
+    '<div class="field"><label>Tu número de celular (10 dígitos)</label><input id="cfgWaAlertasTel" type="tel" inputmode="numeric" placeholder="3312345678" value="' + _waAlertasTelefonoGuardado + '"></div>' +
+    '<p style="font-size:11px;color:var(--text3);margin:-6px 0 14px">Aquí te llega el resumen diario de ventas (9 pm) y las alertas del negocio. Es el mismo número que se configura en la app de la PC.</p>' +
+    '<div style="font-size:12px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Conexión con WhatsApp Business (Meta)</div>' +
     '<p style="font-size:12px;color:var(--text3);margin-bottom:12px">Requiere una cuenta de <b>Meta for Developers</b> con WhatsApp Business API. Fuera de una conversación reciente con el cliente, Meta puede exigir una plantilla aprobada para el mensaje.</p>' +
     '<div class="field"><label>Token de acceso</label><input id="cfgWaToken" placeholder="' + (cfg.token_preview || 'EAAG...') + '"></div>' +
     '<div class="field"><label>Phone Number ID</label><input id="cfgWaPhoneId" value="' + (cfg.whatsapp_phone_id||'') + '"></div>' +
-    '<button class="btn-sec" style="margin-bottom:8px" onclick="probarWhatsapp()">🔌 Enviar mensaje de prueba</button>' +
+    '<button class="btn-sec" style="margin-bottom:8px" onclick="probarWhatsapp()">🔌 Enviar mensaje de prueba a mi número</button>' +
     '<button class="btn-primary" onclick="guardarWhatsappConfig()">💾 Guardar</button>' +
   '</div></div>';
   document.getElementById('modalContainer').innerHTML = html;
 }
 
 async function guardarWhatsappConfig() {
-  var body = { phone_id: document.getElementById('cfgWaPhoneId').value.trim() };
+  var body = {
+    phone_id: document.getElementById('cfgWaPhoneId').value.trim(),
+    alertas_telefono: document.getElementById('cfgWaAlertasTel').value.replace(/\D/g, '')
+  };
   var token = document.getElementById('cfgWaToken').value.trim();
   if (token) body.token = token;
   var r = await apiFetch('/api/whatsapp/config', { method: 'PUT', body: JSON.stringify(body) });
@@ -3734,7 +3771,8 @@ async function guardarWhatsappConfig() {
 }
 
 async function probarWhatsapp() {
-  var telefono = prompt('Número de WhatsApp para la prueba (10 dígitos):');
+  var enPantalla = (document.getElementById('cfgWaAlertasTel') || {}).value || '';
+  var telefono = enPantalla.replace(/\D/g, '') || _waAlertasTelefonoGuardado || prompt('Número de WhatsApp para la prueba (10 dígitos):');
   if (!telefono) return;
   var r = await apiFetch('/api/whatsapp/test', { method: 'POST', body: JSON.stringify({ telefono: telefono }) });
   var d = r ? await r.json().catch(function(){return {};}) : {};
@@ -4486,6 +4524,7 @@ function loadMas() {
   document.getElementById('masNombreEmp').textContent = usuario ? usuario.nombre : 'Usuario';
   document.getElementById('masRolEmp').textContent = usuario ? usuario.rol : '';
   var items = [
+    { ico:'settings', title:'Configuración', sub:'Número de WhatsApp para alertas, pagos, tienda y horarios', accion:'abrirConfiguracionMovil' },
     { ico:'shoppingBag', title:'Ventas en línea', sub:'Pedidos, carritos abandonados y cotizaciones', screen:'ventasonline' },
     { ico:'fileText', title:'Facturación CFDI', sub:'Timbrar facturas de tus ventas', screen:'cfdi' },
     { ico:'creditCard', title:'Pagos con tarjeta', sub:'Configura Mercado Pago', accion:'abrirPagosConfig' },
@@ -4528,6 +4567,9 @@ var _KICONS = {
   dollarSign: '<line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>',
   building: '<rect x="4" y="2" width="16" height="20" rx="1"/><line x1="9" y1="6" x2="9" y2="6.01"/><line x1="15" y1="6" x2="15" y2="6.01"/><line x1="9" y1="10" x2="9" y2="10.01"/><line x1="15" y1="10" x2="15" y2="10.01"/><line x1="9" y1="14" x2="9" y2="14.01"/><line x1="15" y1="14" x2="15" y2="14.01"/><line x1="9" y1="18" x2="15" y2="18"/>',
   shuffle: '<polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/>',
+  settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>',
+  bell: '<path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>',
+  clock: '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
 };
 function KICON(name) {
   var inner = _KICONS[name];
