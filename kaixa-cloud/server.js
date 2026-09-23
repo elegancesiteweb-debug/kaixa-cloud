@@ -337,6 +337,21 @@ app.get('/api/admin/auditoria', authAdmin, async (req, res) => {
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// Vista previa (o envío de prueba) del resumen diario de un negocio. Con
+// enviar=true manda el push/WhatsApp de verdad y se salta el "ya se envió hoy".
+app.post('/api/admin/resumen-diario/probar', authAdmin, async (req, res) => {
+  try {
+    const { negocio_id, enviar } = req.body || {};
+    if (!negocio_id) return res.status(400).json({ error: 'negocio_id requerido' });
+    const resumen = require('./routes/resumen');
+    if (enviar) return res.json({ ok: true, ...(await resumen.enviarResumenNegocio(negocio_id, { forzar: true })) });
+    const suc = await pool.query('SELECT id, nombre FROM sucursales WHERE negocio_id=$1 AND activo=true ORDER BY creado_en', [negocio_id]);
+    const out = [];
+    for (const s of suc.rows) out.push({ sucursal: s.nombre, ...(await resumen.construirResumen(negocio_id, s.id)) });
+    res.json({ ok: true, sucursales: out });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.get('/api/admin/stock-duplicado', authAdmin, async (req, res) => {
   try {
     const r = await pool.query(SQL_STOCK_DUPLICADO);
@@ -1003,6 +1018,10 @@ aplicarEsquema().then(async () => {
   // Revisa stock bajo y lotes por caducar cada 45 minutos
   setTimeout(revisarAlertas, 30 * 1000);
   setInterval(revisarAlertas, 45 * 60 * 1000);
+  // Resumen diario de ventas al dueño (actúa solo a partir de las 9 pm hora de México)
+  const { revisarResumenDiario } = require('./routes/resumen');
+  setTimeout(revisarResumenDiario, 60 * 1000);
+  setInterval(revisarResumenDiario, 30 * 60 * 1000);
   // Expira los tickets de caja de cobro que nadie fue a cobrar (ventana de 2h)
   setTimeout(expirarVentasPendientes, 20 * 1000);
   setInterval(expirarVentasPendientes, 5 * 60 * 1000);

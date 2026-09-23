@@ -135,6 +135,20 @@ async function main() {
       const criticas = ((aud.data && aud.data.resultados) || []).filter(x => x.severidad === 'critica');
       const delTest = criticas.filter(x => JSON.stringify(x.muestra).includes('ZZ_TEST_E2E_' + sufijo));
       check('la auditoría no encuentra problemas críticos en el negocio de prueba', delTest.length === 0, delTest.map(x => x.id));
+
+      console.log('\n6. Resumen diario al dueño');
+      const ventaId = uuid();
+      await push(cajaA, {
+        ventas: [{ uuid: ventaId, folio: 'E2E-1', subtotal: 20, total: 20, forma_pago: 'efectivo', estado: 'completada', creado_en: ahora(),
+                   items: [{ uuid: uuid(), producto_uuid: prod, nombre_producto: 'Producto E2E', cantidad: 2, precio_unitario: 10 }] }]
+      });
+      const adm = login.data && login.data.token;
+      const sinVentas = await http('POST', '/api/admin/resumen-diario/probar', { admin: adm, body: { negocio_id: negocioId } });
+      const suc1 = (sinVentas.data.sucursales || []).find(x => x.sucursal === 'Centro');
+      check('el resumen cuenta la venta del día', suc1 && suc1.datos.ventas === 1 && suc1.datos.total === 20, suc1 && suc1.datos);
+      check('el resumen lista lo más vendido', suc1 && suc1.datos.top[0] && suc1.datos.top[0].producto === 'Producto E2E' && suc1.datos.top[0].unidades === 2);
+      const env = await http('POST', '/api/admin/resumen-diario/probar', { admin: adm, body: { negocio_id: negocioId, enviar: true } });
+      check('el envío de prueba genera el resumen solo de la sucursal con ventas', env.status === 200 && env.data.sucursales.length === 1, env.data);
     } else {
       console.log('  (omitida: define KAIXA_ADMIN_USER y KAIXA_ADMIN_PASS para correrla)');
     }
