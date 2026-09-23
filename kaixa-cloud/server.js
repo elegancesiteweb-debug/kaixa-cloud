@@ -332,6 +332,11 @@ const SQL_STOCK_DUPLICADO = `
     )
   ORDER BY r.creado_en DESC`;
 
+app.get('/api/admin/auditoria', authAdmin, async (req, res) => {
+  try { res.json(await require('./routes/auditoria').correrAuditoria()); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.get('/api/admin/stock-duplicado', authAdmin, async (req, res) => {
   try {
     const r = await pool.query(SQL_STOCK_DUPLICADO);

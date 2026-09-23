@@ -5,7 +5,8 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "migrate": "node db/migrate.js"
+    "migrate": "node db/migrate.js",
+    "test": "node tests/e2e.js"
   },
   "dependencies": {
     "express": "^4.19.2",
