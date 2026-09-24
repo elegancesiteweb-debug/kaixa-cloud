@@ -90,6 +90,17 @@ router.post('/cajas', async (req, res) => {
     if (!['madre','extra'].includes(tipo)) {
       return res.status(400).json({ error: "tipo debe ser 'madre' o 'extra'" });
     }
+    // Tope de dispositivos de la licencia vinculada a este negocio (si tiene una,
+    // y si esa licencia trae límite — null/sin licencia = sin restricción).
+    const lic = await pool.query(
+      'SELECT max_usuarios FROM licencias WHERE negocio_id=$1 ORDER BY id LIMIT 1', [negocio_id]);
+    if (lic.rows.length && lic.rows[0].max_usuarios != null) {
+      const max = lic.rows[0].max_usuarios;
+      const activas = await pool.query('SELECT COUNT(*) AS n FROM cajas WHERE negocio_id=$1 AND activo=true', [negocio_id]);
+      if (parseInt(activas.rows[0].n) >= max) {
+        return res.status(409).json({ error: 'La licencia de este negocio permite hasta ' + max + ' dispositivo(s) activo(s). Desactiva alguno o sube de plan para agregar otro.' });
+      }
+    }
     const token = generarToken();
     const r = await pool.query(
       `INSERT INTO cajas (negocio_id, sucursal_id, nombre, tipo, token) VALUES ($1,$2,$3,$4,$5) RETURNING *`,

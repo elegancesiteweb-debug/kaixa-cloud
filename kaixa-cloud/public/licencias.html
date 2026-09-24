@@ -226,6 +226,11 @@ tr:hover td{background:rgba(139,92,246,.05)}
         </select>
       </div>
     </div>
+    <div class="field">
+      <label>Máximo de dispositivos (cajas activas)</label>
+      <input id="moMaxUsu" type="number" min="1" max="999" placeholder="Vacío = sin límite">
+      <div style="font-size:11px;color:var(--text3);margin-top:4px">Se llena solo según el plan — cámbialo aquí si este cliente necesita algo distinto. Vacío = sin límite.</div>
+    </div>
     <div class="field"><label>Notas internas</label><textarea id="moNot" rows="2" placeholder="Notas opcionales..."></textarea></div>
 
     <!-- Clave generada -->
@@ -249,6 +254,7 @@ tr:hover td{background:rgba(139,92,246,.05)}
 
   var GIRO_ICO = { tienda:'🛒', ropa:'👗', farmacia:'🏥', celulares:'📱', restaurante:'🍕', salon:'💈', papeleria:'📚', joyeria:'💍', ferreteria:'🏗️' };
   var GIRO_NM  = { tienda:'Tienda', ropa:'Ropa', farmacia:'Farmacia', celulares:'Celulares', restaurante:'Restaurante', salon:'Salón', papeleria:'Papelería', joyeria:'Joyería', ferreteria:'Ferretería' };
+  var PLAN_MAX_USUARIOS = { basico:1, pro:3, business:10, ilimitado:null };
 
   function g(id){ return document.getElementById(id); }
 
@@ -333,7 +339,7 @@ tr:hover td{background:rgba(139,92,246,.05)}
           +'<td><span class="clave">'+l.clave+'</span></td>'
           +'<td><div class="lic-neg">'+(l.negocio_nombre||'—')+'</div><div class="lic-sub">'+l.cliente_nombre+(l.cliente_tel?' · '+l.cliente_tel:'')+'</div></td>'
           +'<td>'+(GIRO_ICO[l.giro]||'🏪')+' '+(GIRO_NM[l.giro]||l.giro||'—')+'</td>'
-          +'<td style="color:var(--text3);font-size:12px">'+(l.plan||'pro')+'</td>'
+          +'<td style="color:var(--text3);font-size:12px">'+(l.plan||'pro')+'<br><span style="font-size:11px">'+(l.max_usuarios!=null?('máx '+l.max_usuarios+' disp.'):'sin límite')+'</span></td>'
           +'<td>'+badge+'</td>'
           +'<td style="color:var(--text3);font-size:12px">'+(l.vence_en?String(l.vence_en).substring(0,10):'—')+'</td>'
           +'<td><div class="acts">'
@@ -358,6 +364,7 @@ tr:hover td{background:rgba(139,92,246,.05)}
     g('moPlan').value  = lic ? (lic.plan||'pro')         : 'pro';
     g('moMeses').value = '12';
     g('moEst').value   = lic ? (lic.estado||'activa')    : 'activa';
+    g('moMaxUsu').value = lic ? (lic.max_usuarios!=null ? lic.max_usuarios : '') : PLAN_MAX_USUARIOS.pro;
     g('moNot').value   = lic ? (lic.notas||'')           : '';
     g('claveResult').style.display = 'none';
     g('btnGuardar').style.display  = 'inline-block';
@@ -379,6 +386,7 @@ tr:hover td{background:rgba(139,92,246,.05)}
       plan:           g('moPlan').value,
       vence_meses:    parseInt(g('moMeses').value)||12,
       estado:         g('moEst').value,
+      max_usuarios:   g('moMaxUsu').value.trim(),
       notas:          g('moNot').value.trim()
     };
     if(!body.cliente_nombre){ notif('⚠️ El nombre del cliente es requerido', 'err'); return; }
@@ -413,6 +421,10 @@ tr:hover td{background:rgba(139,92,246,.05)}
   g('p').addEventListener('keydown', function(e){ if(e.key==='Enter') entrar(); });
   g('btnLogout').addEventListener('click', function(){ TOKEN=''; location.reload(); });
   g('btnNueva').addEventListener('click', function(){ abrirModal(null); });
+  g('moPlan').addEventListener('change', function(){
+    var d = PLAN_MAX_USUARIOS[g('moPlan').value];
+    g('moMaxUsu').value = (d==null ? '' : d);
+  });
   g('btnGuardar').addEventListener('click', guardar);
   g('btnCerrar').addEventListener('click', cerrarModal);
   g('btnCerrar2').addEventListener('click', cerrarModal);

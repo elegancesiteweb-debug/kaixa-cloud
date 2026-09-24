@@ -252,6 +252,10 @@ const GIROS = {
   farmacia:    { nombre:'Farmacia / Salud',        ico:'🏥', modulos:['pos','inventario','lotes','recetas','monedero','servicios','ventas','reportes','corte','cfdi'] },
   ferreteria:  { nombre:'Ferretería / Materiales', ico:'🏗️', modulos:['pos','inventario','granel','bascula','cotizaciones','credito','proveedores','ventas','reportes','corte','cfdi'] },
 };
+// Tope de dispositivos (cajas) por plan — null = sin límite. El selector de
+// plan en el panel de licencias ya mostraba "Pro — 3 usuarios" etc. pero
+// nunca se traducía a un límite de verdad; esto lo conecta.
+const PLAN_MAX_USUARIOS = { basico: 1, pro: 3, business: 10, ilimitado: null };
 const sesiones = new Map();
 function crearTokenAdmin(u) {
   const t = crypto.randomBytes(32).toString('hex');
@@ -628,26 +632,38 @@ app.get('/api/lic/licencias', authAdmin, async (req, res) => {
     }));
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
+// max_usuarios explícito (número, o '' / null para "sin límite") gana sobre
+// el default del plan — así un admin puede afinar un cliente puntual sin
+// tener que inventarse un plan nuevo.
+function resolverMaxUsuarios(max_usuarios, plan) {
+  if (max_usuarios !== undefined && max_usuarios !== null && max_usuarios !== '') {
+    const n = parseInt(max_usuarios);
+    return isNaN(n) ? null : n;
+  }
+  return PLAN_MAX_USUARIOS.hasOwnProperty(plan) ? PLAN_MAX_USUARIOS[plan] : 3;
+}
 app.post('/api/lic/licencias', authAdmin, async (req, res) => {
   try {
-    const { cliente_nombre, cliente_email='', cliente_tel='', negocio_nombre='', giro='tienda', plan='pro', vence_meses=12, estado='activa', notas='' } = req.body;
+    const { cliente_nombre, cliente_email='', cliente_tel='', negocio_nombre='', giro='tienda', plan='pro', vence_meses=12, estado='activa', notas='', max_usuarios } = req.body;
     if (!cliente_nombre) return res.status(400).json({ error: 'Nombre requerido' });
     const clave = 'KXP-' + crypto.randomBytes(3).toString('hex').toUpperCase() + '-' + crypto.randomBytes(3).toString('hex').toUpperCase();
     const modulos = JSON.stringify(GIROS[giro]?.modulos || []);
     const vence = new Date();
     vence.setMonth(vence.getMonth() + parseInt(vence_meses));
-    const r = await pool.query(`INSERT INTO licencias (clave,cliente_nombre,cliente_email,cliente_tel,negocio_nombre,giro,plan,modulos,estado,notas,vence_en) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
-      [clave, cliente_nombre, cliente_email, cliente_tel, negocio_nombre, giro, plan, modulos, estado, notas, vence.toISOString().substring(0,10)]);
+    const maxU = resolverMaxUsuarios(max_usuarios, plan);
+    const r = await pool.query(`INSERT INTO licencias (clave,cliente_nombre,cliente_email,cliente_tel,negocio_nombre,giro,plan,modulos,estado,notas,vence_en,max_usuarios) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
+      [clave, cliente_nombre, cliente_email, cliente_tel, negocio_nombre, giro, plan, modulos, estado, notas, vence.toISOString().substring(0,10), maxU]);
     res.json({ ok: true, clave, licencia: r.rows[0] });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 app.put('/api/lic/licencias/:id', authAdmin, async (req, res) => {
   try {
-    const { cliente_nombre, cliente_email, cliente_tel, negocio_nombre, giro, plan, vence_meses, estado, notas } = req.body;
+    const { cliente_nombre, cliente_email, cliente_tel, negocio_nombre, giro, plan, vence_meses, estado, notas, max_usuarios } = req.body;
     const vence = new Date();
     vence.setMonth(vence.getMonth() + parseInt(vence_meses || 12));
-    await pool.query(`UPDATE licencias SET cliente_nombre=$1, cliente_email=$2, cliente_tel=$3, negocio_nombre=$4, giro=$5, plan=$6, estado=$7, notas=$8, vence_en=$9 WHERE id=$10`,
-      [cliente_nombre, cliente_email||'', cliente_tel||'', negocio_nombre||'', giro||'tienda', plan||'pro', estado||'activa', notas||'', vence.toISOString().substring(0,10), req.params.id]);
+    const maxU = resolverMaxUsuarios(max_usuarios, plan || 'pro');
+    await pool.query(`UPDATE licencias SET cliente_nombre=$1, cliente_email=$2, cliente_tel=$3, negocio_nombre=$4, giro=$5, plan=$6, estado=$7, notas=$8, vence_en=$9, max_usuarios=$10 WHERE id=$11`,
+      [cliente_nombre, cliente_email||'', cliente_tel||'', negocio_nombre||'', giro||'tienda', plan||'pro', estado||'activa', notas||'', vence.toISOString().substring(0,10), maxU, req.params.id]);
     res.json({ ok: true });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
@@ -850,6 +866,13 @@ app.post('/api/lic/elegir-sucursal', async (req, res) => {
     if (caja.rows.length) {
       token = caja.rows[0].token;
     } else {
+      // Mismo tope de dispositivos que /api/admin/cajas — esta ruta también crea una caja nueva.
+      if (lic.max_usuarios != null) {
+        const activas = await pool.query('SELECT COUNT(*) AS n FROM cajas WHERE negocio_id=$1 AND activo=true', [lic.negocio_id]);
+        if (parseInt(activas.rows[0].n) >= lic.max_usuarios) {
+          return res.json({ ok: false, mensaje: 'Esta licencia permite hasta ' + lic.max_usuarios + ' dispositivo(s) activo(s). Contacta a tu proveedor para subir de plan.' });
+        }
+      }
       token = 'app_' + crypto.randomBytes(20).toString('hex');
       await pool.query('INSERT INTO cajas (negocio_id, sucursal_id, nombre, tipo, token, activo) VALUES ($1,$2,$3,$4,$5,true)', [lic.negocio_id, sucursalId, 'App móvil', 'extra', token]);
     }

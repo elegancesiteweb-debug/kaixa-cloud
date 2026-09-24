@@ -287,6 +287,38 @@ async function main() {
       check('el resumen lista lo más vendido', suc1 && suc1.datos.top[0] && suc1.datos.top[0].producto === 'Producto E2E' && suc1.datos.top[0].unidades === 2);
       const env = await http('POST', '/api/admin/resumen-diario/probar', { admin: adm, body: { negocio_id: negocioId, enviar: true } });
       check('el envío de prueba genera el resumen solo de la sucursal con ventas', env.status === 200 && env.data.sucursales.length === 1, env.data);
+
+      console.log('\n7. Tope de dispositivos por licencia');
+      const licCrear = await http('POST', '/api/lic/licencias', { admin: adm, body: { cliente_nombre: 'ZZ_TEST_E2E_' + sufijo, plan: 'basico', vence_meses: 1 } });
+      check('crear licencia sin max_usuarios explícito toma el default del plan (básico = 1)', licCrear.status === 200 && licCrear.data.licencia.max_usuarios === 1, licCrear.data);
+      const licId = licCrear.data.licencia && licCrear.data.licencia.id;
+      const licEditar = await http('PUT', '/api/lic/licencias/' + licId, { admin: adm, body: { cliente_nombre: 'ZZ_TEST_E2E_' + sufijo, plan: 'pro', max_usuarios: 2 } });
+      const licLista = await http('GET', '/api/lic/licencias?q=ZZ_TEST_E2E_' + sufijo, { admin: adm });
+      const licGuardada = (licLista.data || []).find(l => l.id === licId);
+      check('editar la licencia con max_usuarios explícito lo respeta (2, no el default de pro=3)', licEditar.status === 200 && licGuardada && licGuardada.max_usuarios === 2, licGuardada);
+      const licVincular = await http('PUT', '/api/lic/licencias/' + licId + '/vincular', { admin: adm, body: { negocio_id: negocioId } });
+      check('vincular la licencia al negocio de prueba', licVincular.status === 200 && licVincular.data.ok, licVincular.data);
+
+      // El negocio de prueba ya tiene 3 cajas activas (A, B, C) de las pruebas anteriores — de sobra para 2.
+      const cajaExtra = await http('POST', '/api/admin/cajas', { body: { negocio_id: negocioId, sucursal_id: s1, nombre: 'Caja Extra Tope', tipo: 'extra' } });
+      check('con el tope ya rebasado (3 activas, límite 2), crear una caja más se rechaza', cajaExtra.status === 409, cajaExtra.data);
+
+      // Con límite 2 y 3 activas (A,B,C), hay que liberar DOS para quedar bajo el límite (1 activa) y poder crear otra.
+      const listaCajas = await http('GET', '/api/admin/cajas/' + negocioId);
+      const cajaBId = (listaCajas.data || []).find(c => c.nombre === 'B');
+      const cajaCId = (listaCajas.data || []).find(c => c.nombre === 'C');
+      await http('PUT', '/api/admin/cajas/' + (cajaBId && cajaBId.id) + '/desactivar', { body: {} });
+      const desactivarC = await http('PUT', '/api/admin/cajas/' + (cajaCId && cajaCId.id) + '/desactivar', { body: {} });
+      check('desactivar cajas responde ok', desactivarC.status === 200, desactivarC.data);
+      const cajaTrasLiberar = await http('POST', '/api/admin/cajas', { body: { negocio_id: negocioId, sucursal_id: s1, nombre: 'Caja Extra Tope 2', tipo: 'extra' } });
+      check('tras liberar lugares (1 activa de 2), sí se puede crear otra caja', cajaTrasLiberar.status === 200 && cajaTrasLiberar.data.ok, cajaTrasLiberar.data);
+      const cajaTrasLimite = await http('POST', '/api/admin/cajas', { body: { negocio_id: negocioId, sucursal_id: s1, nombre: 'Caja Extra Tope 3', tipo: 'extra' } });
+      check('al volver a llegar al límite (2/2), se rechaza de nuevo', cajaTrasLimite.status === 409, cajaTrasLimite.data);
+
+      const licSinLimite = await http('POST', '/api/lic/licencias', { admin: adm, body: { cliente_nombre: 'ZZ_TEST_E2E_' + sufijo + '_ilimitado', plan: 'ilimitado' } });
+      check('el plan "ilimitado" guarda max_usuarios = null (sin límite)', licSinLimite.status === 200 && licSinLimite.data.licencia.max_usuarios === null, licSinLimite.data);
+      await http('DELETE', '/api/lic/licencias/' + (licSinLimite.data.licencia && licSinLimite.data.licencia.id), { admin: adm });
+      await http('DELETE', '/api/lic/licencias/' + licId, { admin: adm });
     } else {
       console.log('  (omitida: define KAIXA_ADMIN_USER y KAIXA_ADMIN_PASS para correrla)');
     }
