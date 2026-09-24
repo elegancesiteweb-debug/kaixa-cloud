@@ -131,6 +131,24 @@ async function aplicarEsquema() {
     try { await pool.query('ALTER TABLE licencias ADD COLUMN IF NOT EXISTS sucursal_id UUID'); } catch(e) {}
     console.log('✅ Tabla licencias lista');
   } catch(e) { console.error('⚠️ licencias:', e.message); }
+  // Qué dispositivos han activado cada licencia — antes /api/verificar no
+  // sabía ni le importaba desde qué PC le preguntaban, así que compartir una
+  // clave entre varios equipos no se podía detectar ni frenar.
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS licencia_dispositivos (
+        id              SERIAL PRIMARY KEY,
+        licencia_id     INTEGER NOT NULL REFERENCES licencias(id) ON DELETE CASCADE,
+        dispositivo_id  TEXT NOT NULL,
+        nombre_equipo   TEXT DEFAULT '',
+        activo          BOOLEAN DEFAULT true,
+        primera_vez     TIMESTAMPTZ DEFAULT now(),
+        ultima_vez      TIMESTAMPTZ DEFAULT now(),
+        UNIQUE(licencia_id, dispositivo_id)
+      )
+    `);
+    console.log('✅ Tabla licencia_dispositivos lista');
+  } catch(e) { console.error('⚠️ licencia_dispositivos:', e.message); }
   try {
     await pool.query(`
       CREATE TABLE IF NOT EXISTS admins_licencias (
@@ -675,6 +693,25 @@ app.delete('/api/lic/licencias/:id', authAdmin, async (req, res) => {
   try { await pool.query('DELETE FROM licencias WHERE id=$1', [req.params.id]); res.json({ ok: true }); }
   catch(e) { res.status(500).json({ error: e.message }); }
 });
+// ── Dispositivos que han activado una licencia (control de reparto de clave) ──
+app.get('/api/lic/licencias/:id/dispositivos', authAdmin, async (req, res) => {
+  try {
+    const r = await pool.query(
+      `SELECT id, dispositivo_id, nombre_equipo, activo, primera_vez, ultima_vez
+       FROM licencia_dispositivos WHERE licencia_id=$1 ORDER BY activo DESC, ultima_vez DESC`,
+      [req.params.id]);
+    res.json(r.rows);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+app.put('/api/lic/licencias/:id/dispositivos/:dispId/liberar', authAdmin, async (req, res) => {
+  try {
+    const r = await pool.query(
+      'UPDATE licencia_dispositivos SET activo=false WHERE id=$1 AND licencia_id=$2 RETURNING id',
+      [req.params.dispId, req.params.id]);
+    if (!r.rows.length) return res.status(404).json({ error: 'Dispositivo no encontrado' });
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
 async function verificarLicenciaHandler(req, res) {
   try {
     const clave = (req.body.clave || '').trim().toUpperCase();
@@ -703,6 +740,39 @@ async function verificarLicenciaHandler(req, res) {
         modulos = [...new Set([...modulos, ...modulosDeOpcionales(opcionales)])];
       } catch(e) { /* si falla, seguimos con los módulos del giro/plan tal cual */ }
     }
+
+    // Control de dispositivos: la PC manda un id propio generado la primera
+    // vez que se instala (no es un dato de hardware, ver main.js). Una PC ya
+    // conocida siempre pasa — el tope solo frena un dispositivo NUEVO una vez
+    // alcanzado el máximo. Si la app todavía no manda dispositivo_id (versión
+    // vieja instalada antes de este cambio), se omite el control por
+    // completo para no romperle la licencia a nadie que ya esté trabajando.
+    const dispositivoId = (req.body.dispositivo_id || '').trim();
+    if (dispositivoId) {
+      try {
+        const yaConocido = await pool.query(
+          'SELECT id FROM licencia_dispositivos WHERE licencia_id=$1 AND dispositivo_id=$2', [lic.id, dispositivoId]);
+        if (yaConocido.rows.length) {
+          await pool.query(
+            'UPDATE licencia_dispositivos SET ultima_vez=now(), nombre_equipo=COALESCE(NULLIF($1,\'\'), nombre_equipo), activo=true WHERE id=$2',
+            [(req.body.nombre_equipo || '').trim().slice(0,120), yaConocido.rows[0].id]);
+        } else if (lic.max_usuarios != null) {
+          const activos = await pool.query(
+            'SELECT COUNT(*) AS n FROM licencia_dispositivos WHERE licencia_id=$1 AND activo=true', [lic.id]);
+          if (parseInt(activos.rows[0].n) >= lic.max_usuarios) {
+            return res.json({ ok: false, mensaje: 'Esta licencia ya está activada en el máximo de dispositivos permitidos (' + lic.max_usuarios + '). Contacta a tu proveedor para liberar un dispositivo o subir de plan.' });
+          }
+          await pool.query(
+            'INSERT INTO licencia_dispositivos (licencia_id, dispositivo_id, nombre_equipo) VALUES ($1,$2,$3)',
+            [lic.id, dispositivoId, (req.body.nombre_equipo || '').trim().slice(0,120)]);
+        } else {
+          await pool.query(
+            'INSERT INTO licencia_dispositivos (licencia_id, dispositivo_id, nombre_equipo) VALUES ($1,$2,$3) ON CONFLICT (licencia_id, dispositivo_id) DO NOTHING',
+            [lic.id, dispositivoId, (req.body.nombre_equipo || '').trim().slice(0,120)]);
+        }
+      } catch(e) { console.error('⚠️ Control de dispositivos omitido:', e.message); }
+    }
+
     await pool.query('UPDATE licencias SET ultima_verificacion=NOW() WHERE clave=$1', [clave]);
     res.json({ ok: true, mensaje: 'Licencia activa', licencia: { clave: lic.clave, cliente: lic.cliente_nombre, nombre_negocio: lic.negocio_nombre, negocio: lic.negocio_nombre, dias_restantes: diasRestantes, giro: lic.giro || 'tienda', plan: lic.plan || 'pro', modulos, max_usuarios: lic.max_usuarios, vence_en: lic.vence_en, estado: lic.estado } });
   } catch(e) { res.status(500).json({ ok: false, mensaje: e.message }); }

@@ -345,6 +345,7 @@ tr:hover td{background:rgba(139,92,246,.05)}
           +'<td><div class="acts">'
             +'<button class="abtn" data-id="'+l.id+'" data-act="editar">✏️</button>'
             +'<button class="abtn" data-id="'+l.id+'" data-act="vincular" style="color:var(--accent);border-color:var(--accent)">🔗 Vincular</button>'
+            +'<button class="abtn" data-id="'+l.id+'" data-act="dispositivos">📱 Dispositivos</button>'
             +estBtn
             +'<button class="abtn abtn-d" data-id="'+l.id+'" data-act="eliminar">🗑️</button>'
           +'</div></td>'
@@ -449,6 +450,7 @@ tr:hover td{background:rgba(139,92,246,.05)}
       catch(e){ notif('Error: '+e.message,'err'); }
     }
     else if(act==='vincular'){ abrirVincular(id); }
+    else if(act==='dispositivos'){ abrirDispositivos(id); }
     else if(act==='eliminar'){
       if(!confirm('¿Eliminar esta licencia? No se puede deshacer.')) return;
       try{ await api('DELETE','/api/lic/licencias/'+id); notif('Licencia eliminada','ok'); loadLics(); loadStats(); }
@@ -489,6 +491,53 @@ tr:hover td{background:rgba(139,92,246,.05)}
     } catch(e){ notif('Error: '+e.message, 'err'); }
   };
   window.abrirVincular = abrirVincular;
+
+  // ── Modal de dispositivos que han activado una licencia ──────────────────
+  async function abrirDispositivos(licId) {
+    var lic = LICS.find(function(l){ return l.id===licId; });
+    var dispos = [];
+    try { dispos = await api('GET', '/api/lic/licencias/'+licId+'/dispositivos'); }
+    catch(e){ notif('Error cargando dispositivos: '+e.message, 'err'); return; }
+    var activos = dispos.filter(function(d){ return d.activo; });
+    var tope = lic && lic.max_usuarios!=null
+      ? ' · '+activos.length+' de '+lic.max_usuarios+' dispositivo(s) activos'
+      : ' · '+activos.length+' dispositivo(s) activos (sin límite)';
+
+    function filaDisp(d){
+      var fecha = function(s){ return s ? String(s).substring(0,16).replace('T',' ') : '—'; };
+      return '<div class="card" style="background:#231544;border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:10px">' +
+        '<div>' +
+          '<div style="font-weight:800;font-size:13px">'+(d.nombre_equipo||'Equipo sin nombre')+(d.activo?'':' <span style="color:var(--text3);font-weight:600">(liberado)</span>')+'</div>' +
+          '<div style="font-size:11px;color:var(--text3);margin-top:4px">Primera activación: '+fecha(d.primera_vez)+' · Última vez: '+fecha(d.ultima_vez)+'</div>' +
+          '<div style="font-size:10px;color:var(--text3);margin-top:2px;font-family:monospace">'+d.dispositivo_id+'</div>' +
+        '</div>' +
+        (d.activo ? '<button class="abtn abtn-d" onclick="liberarDispositivo(\''+licId+'\',\''+d.id+'\')">Liberar</button>' : '') +
+      '</div>';
+    }
+
+    var html = '<div class="mo show" id="moDispositivos">' +
+      '<div class="mo-box">' +
+        '<h3>📱 Dispositivos de esta licencia <button class="mo-close" onclick="document.getElementById(\'moDispositivos\').remove()">✕</button></h3>' +
+        '<p style="font-size:12px;color:var(--text3);margin-bottom:6px">Cada equipo que activa esta clave queda registrado aquí. "Liberar" quita un dispositivo del conteo — úsalo cuando el cliente cambie de PC, para que la nueva pueda activarse sin pedirte una licencia distinta.</p>' +
+        '<p style="font-size:12px;color:var(--text2);font-weight:700;margin-bottom:16px">'+(lic?lic.clave:'')+tope+'</p>' +
+        '<div style="max-height:340px;overflow-y:auto">' +
+        (dispos.length ? dispos.map(filaDisp).join('') :
+          '<div style="text-align:center;padding:24px;color:var(--text3)">Ningún dispositivo ha activado esta clave todavía<br><span style="font-size:11px">(o se activó desde una versión de la app anterior a este control)</span></div>') +
+        '</div>' +
+      '</div></div>';
+    document.body.insertAdjacentHTML('beforeend', html);
+  }
+
+  window.liberarDispositivo = async function(licId, dispId) {
+    if(!confirm('¿Liberar este dispositivo? Dejará de contar contra el límite de la licencia.')) return;
+    try {
+      await api('PUT', '/api/lic/licencias/'+licId+'/dispositivos/'+dispId+'/liberar');
+      notif('✅ Dispositivo liberado', 'ok');
+      var m = document.getElementById('moDispositivos'); if(m) m.remove();
+      abrirDispositivos(licId);
+    } catch(e){ notif('Error: '+e.message, 'err'); }
+  };
+  window.abrirDispositivos = abrirDispositivos;
 })();
 </script>
 </body>

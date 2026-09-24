@@ -315,6 +315,25 @@ async function main() {
       const cajaTrasLimite = await http('POST', '/api/admin/cajas', { body: { negocio_id: negocioId, sucursal_id: s1, nombre: 'Caja Extra Tope 3', tipo: 'extra' } });
       check('al volver a llegar al límite (2/2), se rechaza de nuevo', cajaTrasLimite.status === 409, cajaTrasLimite.data);
 
+      console.log('\n8. Control de dispositivos que activan una licencia (misma clave, límite 2)');
+      const clave = licCrear.data.licencia.clave;
+      const verif = (dispId, nombre) => http('POST', '/api/verificar', { body: { clave, dispositivo_id: dispId, nombre_equipo: nombre } });
+      const d1 = await verif('e2e-dispositivo-1', 'PC Mostrador');
+      check('primer dispositivo activa sin problema', d1.status === 200 && d1.data.ok, d1.data);
+      const d1otra = await verif('e2e-dispositivo-1', 'PC Mostrador');
+      check('el mismo dispositivo vuelve a verificar sin gastar otro lugar', d1otra.status === 200 && d1otra.data.ok, d1otra.data);
+      const d2 = await verif('e2e-dispositivo-2', 'Laptop Bodega');
+      check('segundo dispositivo (distinto) activa hasta llegar al límite (2/2)', d2.status === 200 && d2.data.ok, d2.data);
+      const d3 = await verif('e2e-dispositivo-3', 'PC Pirata');
+      check('un tercer dispositivo nuevo se rechaza por exceder el límite', d3.status === 200 && d3.data.ok === false, d3.data);
+      const listaDisp = await http('GET', '/api/lic/licencias/' + licId + '/dispositivos', { admin: adm });
+      check('el panel lista los 2 dispositivos activos y sus nombres', Array.isArray(listaDisp.data) && listaDisp.data.filter(x => x.activo).length === 2 && listaDisp.data.some(x => x.nombre_equipo === 'PC Mostrador'), listaDisp.data);
+      const dispALiberar = listaDisp.data.find(x => x.dispositivo_id === 'e2e-dispositivo-2');
+      const liberar = await http('PUT', '/api/lic/licencias/' + licId + '/dispositivos/' + dispALiberar.id + '/liberar', { admin: adm });
+      check('liberar un dispositivo responde ok', liberar.status === 200 && liberar.data.ok, liberar.data);
+      const d3tras = await verif('e2e-dispositivo-3', 'PC Pirata');
+      check('tras liberar un lugar, el dispositivo que antes se rechazó ahora sí activa', d3tras.status === 200 && d3tras.data.ok, d3tras.data);
+
       const licSinLimite = await http('POST', '/api/lic/licencias', { admin: adm, body: { cliente_nombre: 'ZZ_TEST_E2E_' + sufijo + '_ilimitado', plan: 'ilimitado' } });
       check('el plan "ilimitado" guarda max_usuarios = null (sin límite)', licSinLimite.status === 200 && licSinLimite.data.licencia.max_usuarios === null, licSinLimite.data);
       await http('DELETE', '/api/lic/licencias/' + (licSinLimite.data.licencia && licSinLimite.data.licencia.id), { admin: adm });
