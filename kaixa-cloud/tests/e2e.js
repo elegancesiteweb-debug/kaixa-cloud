@@ -230,6 +230,17 @@ async function main() {
     check('la tienda sabe que se ofrece servicio a domicilio y su costo', disp.data.domicilio === true && disp.data.costo_domicilio === 50, [disp.data.domicilio, disp.data.costo_domicilio]);
     const domSinDir = await tiendaHttp('POST', '/api/tienda/' + slug + '/citas', null, Object.assign(cuerpoCita(hora2), { a_domicilio: true }));
     check('una cita a domicilio exige la dirección', domSinDir.status === 400, domSinDir.data);
+    // Un servicio con la casilla "A domicilio" apagada (Inventario → Otros) no se ofrece a domicilio.
+    const servSoloNeg = uuid();
+    await push(cajaA, { productos: [{ uuid: servSoloNeg, nombre: 'Servicio Solo Negocio', precio: 80, costo: 0, sucursal_id: s1, es_servicio: true, disponible_domicilio: false }] });
+    const catSolo = await http('GET', '/api/tienda/' + slug + '/productos?sucursal_id=' + s1);
+    const pSolo = Array.isArray(catSolo.data) && catSolo.data.find(p => p.id === servSoloNeg);
+    check('la tienda sabe que ese servicio no es a domicilio', pSolo && pSolo.disponible_domicilio === false, pSolo && pSolo.disponible_domicilio);
+    const domNo = await tiendaHttp('POST', '/api/tienda/' + slug + '/citas', null, Object.assign(cuerpoCita(hora2, servSoloNeg), {
+      a_domicilio: true, direccion_calle: 'Av. Prueba', direccion_colonia: 'Centro' }));
+    check('no deja agendar a domicilio un servicio que no se ofrece a domicilio', domNo.status === 400, domNo.data);
+    const enNeg = await tiendaHttp('POST', '/api/tienda/' + slug + '/citas', null, Object.assign(cuerpoCita(dia1.horas[2] || hora2, servSoloNeg), { cliente_telefono: '3388888888' }));
+    check('ese mismo servicio sí se puede agendar en el negocio', enNeg.status === 200 && enNeg.data.ok, enNeg.data);
     const domOk = await tiendaHttp('POST', '/api/tienda/' + slug + '/citas', null, Object.assign(cuerpoCita(hora2), {
       cliente_nombre: 'Cliente Domicilio', a_domicilio: true, direccion_calle: 'Av. Prueba', direccion_numero: '123', direccion_colonia: 'Centro', direccion_ciudad: 'Guadalajara', direccion_cp: '44100', direccion_referencias: 'casa azul' }));
     check('agendar una cita a domicilio con dirección funciona y cobra el costo', domOk.status === 200 && domOk.data.ok && domOk.data.a_domicilio === true && domOk.data.costo_domicilio === 50, domOk.data);

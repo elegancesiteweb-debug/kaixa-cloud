@@ -1426,7 +1426,7 @@ function renderCita(){
       '<div style="font-size:12px;color:var(--text2)">$' + Number(p.precio).toFixed(2) + ' · dura ' + c.duracion + ' min</div></div>' +
     '<div class="field"><label>¿Qué día?</label><div id="citaDias" style="display:flex;gap:8px;overflow-x:auto;padding-bottom:4px"></div></div>' +
     '<div class="field" id="citaHorasWrap" style="display:none"><label>¿A qué hora?</label><div id="citaHoras" style="display:flex;gap:8px;flex-wrap:wrap"></div></div>' +
-    (c.domicilioOfrecido
+    ((c.domicilioOfrecido && p.disponible_domicilio !== false)
       ? '<div class="field"><label>¿Dónde quieres tu cita?</label><div style="display:flex;gap:8px">' +
           '<button type="button" id="citaLugarNeg" class="seg-btn active" onclick="setCitaDomicilio(false)">🏪 En el negocio</button>' +
           '<button type="button" id="citaLugarDom" class="seg-btn" onclick="setCitaDomicilio(true)">🏠 A mi domicilio' + (c.costoDomicilio > 0 ? ' (+$' + c.costoDomicilio.toFixed(2) + ')' : '') + '</button></div></div>' +

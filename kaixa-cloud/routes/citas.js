@@ -169,7 +169,6 @@ publicRouter.post('/tienda/:slug/citas', async (req, res) => {
   const client = await pool.connect();
   let enTransaccion = false;
   try {
-    if (frenoIp(req)) return res.status(429).json({ error: 'Demasiados intentos, espera unos minutos.' });
     const neg = await negocioDeSlug(req.params.slug);
     if (!neg) return res.status(404).json({ error: 'Tienda no encontrada' });
     const cfg = await cargarConfig(neg.id);
@@ -197,15 +196,24 @@ publicRouter.post('/tienda/:slug/citas', async (req, res) => {
     const suc = await pool.query('SELECT id FROM sucursales WHERE id=$1 AND negocio_id=$2 AND activo=true', [sucursal_id, neg.id]).catch(() => ({ rows: [] }));
     if (!suc.rows.length) return res.status(400).json({ error: 'Sucursal no válida' });
     const serv = await pool.query(
-      `SELECT id, nombre, precio FROM productos WHERE id=$1 AND negocio_id=$2 AND sucursal_id=$3 AND activo=true AND COALESCE(es_servicio,false)=true`,
+      `SELECT id, nombre, precio, COALESCE(disponible_domicilio,true) AS disponible_domicilio
+       FROM productos WHERE id=$1 AND negocio_id=$2 AND sucursal_id=$3 AND activo=true AND COALESCE(es_servicio,false)=true`,
       [producto_id, neg.id, sucursal_id]).catch(() => ({ rows: [] }));
     if (!serv.rows.length) return res.status(400).json({ error: 'Ese servicio no está disponible' });
+    // La casilla "A domicilio" del servicio (Inventario → Otros) manda sobre el interruptor general.
+    if (aDomicilio && serv.rows[0].disponible_domicilio === false) {
+      return res.status(400).json({ error: 'Este servicio no se ofrece a domicilio, solo en el negocio' });
+    }
 
     // Tope por teléfono: evita reservar todos los horarios "de mentiras".
     const pend = await pool.query(
       `SELECT COUNT(*)::int AS n FROM citas WHERE negocio_id=$1 AND cliente_telefono=$2 AND estado = ANY($3) AND fecha >= $4`,
       [neg.id, tel, ESTADOS_ACTIVOS, ahoraMx().fecha]);
     if (pend.rows[0].n >= 3) return res.status(429).json({ error: 'Ya tienes 3 citas pendientes con este negocio. Espera a que pasen o cancela alguna.' });
+
+    // Freno por IP: solo cuenta los intentos que ya pasaron todas las validaciones (los errores
+    // de captura del cliente no deben gastar su cupo).
+    if (frenoIp(req)) return res.status(429).json({ error: 'Demasiados intentos, espera unos minutos.' });
 
     // La cuenta del cliente (si inició sesión) se resuelve ANTES de abrir la transacción.
     let clienteCuenta = null;
