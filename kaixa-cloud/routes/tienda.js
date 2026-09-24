@@ -810,6 +810,12 @@ router.post('/tienda/:slug/pedidos', async (req, res) => {
       }
     }
 
+    // Las tablas de cuenta de cliente se aseguran ANTES de abrir la transacción
+    // (un ALTER TABLE sobre pedidos_online se bloquearía a sí mismo dentro de ella).
+    if (req.headers['authorization']) {
+      try { await require('./tienda-cuenta').ensureCuentaTables(); } catch (eEns) {}
+    }
+
     await client.query('BEGIN');
 
     // Promociones vigentes de este negocio, evaluadas una sola vez para todo el pedido
@@ -928,6 +934,16 @@ router.post('/tienda/:slug/pedidos', async (req, res) => {
        fecha_entrega || null, hora_entrega, destinatario_nombre, destinatario_telefono, mensaje_tarjeta]
     );
     const pedidoId = pedido.rows[0].id;
+
+    // Si el cliente inició sesión en su cuenta de la tienda, el pedido queda
+    // ligado a ella (para su historial y "volver a pedir").
+    if (req.headers['authorization']) {
+      try {
+        const cuenta = require('./tienda-cuenta');
+        const cli = await cuenta.clienteDeRequest(req, negocioId);
+        if (cli) await client.query('UPDATE pedidos_online SET tienda_cliente_id=$1 WHERE id=$2', [cli.id, pedidoId]);
+      } catch (eCta) { console.warn('Pedido sin ligar a cuenta de cliente:', eCta.message); }
+    }
 
     for (const it of itemsValidados) {
       await client.query(

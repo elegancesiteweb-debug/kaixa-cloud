@@ -35,6 +35,17 @@ async function crearVentaCompletada(client, { negocio_id, sucursal_id, caja_id, 
      Math.max(0,(v.efectivo_recibido||total)-total), v.cajero||'', giroReal,
      v.referencia_externa||null, v.fecha_pago||null]
   );
+  // Un servicio no lleva inventario: se vende sin mover stock.
+  const idsServicio = new Set();
+  const idsItems = v.items.map(i => i.kit_id ? null : (i.producto_id || i.id || null)).filter(Boolean);
+  if (idsItems.length && !saltarStock) {
+    await client.query('SAVEPOINT sp_servicios');
+    try {
+      const rs = await client.query(
+        `SELECT id FROM productos WHERE id = ANY($1::uuid[]) AND COALESCE(es_servicio,false) = true`, [idsItems]);
+      rs.rows.forEach(r => idsServicio.add(r.id));
+    } catch (e) { await client.query('ROLLBACK TO SAVEPOINT sp_servicios'); }
+  }
   for (const item of v.items) {
     // Los kits no son un producto real — no llevan producto_id propio,
     // se venden como una sola línea y su stock se descuenta por
@@ -49,7 +60,7 @@ async function crearVentaCompletada(client, { negocio_id, sucursal_id, caja_id, 
       [uuid(), ventaId, itemId, itemNom, itemQty, itemPrc, itemQty*itemPrc]
     );
     if (saltarStock) continue;
-    if (itemId) {
+    if (itemId && !idsServicio.has(itemId)) {
       await client.query(
         `INSERT INTO stock_movimientos (id, negocio_id, sucursal_id, producto_id, caja_id, cantidad, motivo, venta_id)
          VALUES ($1,$2,$3,$4,$5,$6,'venta',$7)`,

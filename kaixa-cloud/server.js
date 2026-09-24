@@ -862,6 +862,7 @@ app.post('/api/lic/elegir-sucursal', async (req, res) => {
 });
 app.use('/api/admin',    require('./routes/negocios'));
 app.use('/api',          require('./routes/tienda').router); // público: /api/tienda/:slug/*
+app.use('/api',          require('./routes/tienda-cuenta').router); // público: /api/tienda/:slug/cuenta/*
 app.use('/api',          require('./routes/pagos').webhookRouter); // público: /api/pagos/mp/webhook/:negocio_id
 app.use('/api',          require('./routes/autofactura').router); // público: /api/autofactura/:token
 app.use('/api',          require('./routes/delivery').router); // público: /api/delivery/webhook/:webhook_token

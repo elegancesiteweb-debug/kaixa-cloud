@@ -17,6 +17,11 @@
   .hero-logo img{width:100%;height:100%;object-fit:cover}
   .hero h1{margin:0;font-size:21px;font-weight:900;text-shadow:0 2px 8px rgba(0,0,0,.25)}
   .hero p{margin:6px 0 0;font-size:12.5px;opacity:.92;line-height:1.5}
+  .cuenta-btn{position:absolute;top:12px;right:12px;z-index:5;background:rgba(255,255,255,.2);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);border:1px solid rgba(255,255,255,.45);color:#fff;border-radius:20px;padding:7px 13px;font-size:12px;font-weight:800;cursor:pointer;max-width:60%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .ped-card{border:1.5px solid var(--border);border-radius:12px;padding:11px 12px;margin-bottom:10px}
+  .ped-top{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12px;margin-bottom:4px}
+  .ped-items{font-size:12px;color:var(--text2);line-height:1.5;margin-bottom:8px}
+  .tabs2{display:flex;gap:8px;margin-bottom:14px}
   .infobar{max-width:var(--maxw);margin:0 auto;padding:10px 18px 0;display:flex;flex-wrap:wrap;gap:10px 18px;font-size:11.5px;color:var(--text2)}
   .infobar span{display:flex;align-items:center;gap:5px}
   .wrap{max-width:var(--maxw);margin:0 auto;padding:14px}
@@ -119,6 +124,7 @@
 <body>
 
 <div class="hero">
+  <button class="cuenta-btn" id="btnCuenta" onclick="abrirCuenta()">👤 Mi cuenta</button>
   <div class="hero-bg" id="heroBg" style="display:none"></div>
   <div class="hero-fade" id="heroFade" style="display:none"></div>
   <div class="hero-inner">
@@ -206,6 +212,13 @@
     <div id="extrasSheetBody"></div>
     <div class="totalrow"><span>Total</span><span id="extrasSheetTotal">$0.00</span></div>
     <button class="btn" style="margin-top:10px" onclick="confirmarExtrasTienda()">Agregar al carrito</button>
+  </div>
+</div>
+
+<div class="overlay" id="ovCuenta">
+  <div class="sheet" style="position:relative">
+    <button class="close" onclick="cerrar('ovCuenta')">✕</button>
+    <div id="cuentaBody"></div>
   </div>
 </div>
 
@@ -585,7 +598,7 @@ function renderProductos(){
       '<div class="p-nm">'+p.nombre+'</div>' +
       (p.descripcion ? '<div class="p-desc">'+p.descripcion+'</div>' : '') +
       '<div class="p-pr">'+precioHtml+'</div>' +
-      '<div class="p-st">Disponibles: '+p.stock+'</div>' +
+      (p.es_servicio ? '<div class="p-st">🔧 Servicio</div>' : '<div class="p-st">Disponibles: '+p.stock+'</div>') +
       accion +
       '</div></div>';
   }).join('') + '</div>';
@@ -740,7 +753,8 @@ function agregarCarritoVariante(prodId, varianteId){
 function cambiarQty(key, delta){
   var it = cart[key];
   if (!it) return;
-  var maxStock = it.variante ? it.variante.stock : (it.kit ? it.kit.stock : it.producto.stock);
+  var esServ = !it.variante && !it.kit && it.producto && it.producto.es_servicio;
+  var maxStock = esServ ? 999 : (it.variante ? it.variante.stock : (it.kit ? it.kit.stock : it.producto.stock));
   it.qty += delta;
   if (it.qty <= 0 || it.qty > maxStock) {
     if (it.qty > maxStock) { notif('Solo hay ' + maxStock + ' disponibles'); it.qty = maxStock; }
@@ -816,6 +830,7 @@ function irACheckout(){
   document.getElementById('btnRapida').style.display = (negocio && negocio.entrega_rapida_habilitado) ? 'inline-block' : 'none';
   document.getElementById('ckEntregaProgramadaBox').style.display = (negocio && negocio.entregas_habilitado) ? 'block' : 'none';
   setTipoEntrega('recoger');
+  prefillCheckoutCuenta();
   document.getElementById('ovCheckout').classList.add('show');
 }
 
@@ -1066,9 +1081,11 @@ async function enviarPedido(){
         : { producto_id: it.producto.id, cantidad: it.qty, variante_id: it.variante ? it.variante.id : null,
             extras: (it.extras||[]).map(function(e){ return { id: e.id }; }) };
     });
+    var hdrsPedido = { 'Content-Type': 'application/json' };
+    if (cuentaToken) hdrsPedido['Authorization'] = 'Bearer ' + cuentaToken;
     var r = await fetch('/api/tienda/' + slug + '/pedidos', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: hdrsPedido,
       body: JSON.stringify({
         sucursal_id: sucursalId,
         cliente_nombre: nombre,
@@ -1104,6 +1121,9 @@ async function enviarPedido(){
       ? 'La tienda revisará tu pedido y te lo enviará por paquetería a la dirección que registraste. Te avisarán con la guía de rastreo.'
       : 'La tienda revisará tu pedido y te contactará para confirmarlo. Puedes recogerlo en la tienda.';
     _ultimoPedidoId = d.id;
+    guardarDireccionEnCuenta(calle, document.getElementById('ckNumero').value.trim(), colonia,
+      document.getElementById('ckCiudad').value.trim(), document.getElementById('ckCP').value.trim(),
+      document.getElementById('ckReferencias').value.trim());
     document.getElementById('okPagarBox').style.display = (negocio && negocio.mp_habilitado) ? 'block' : 'none';
     document.getElementById('ovOk').classList.add('show');
     cart = {};
@@ -1129,7 +1149,230 @@ async function pagarConTarjeta(){
 
 function cerrar(id){ document.getElementById(id).classList.remove('show'); }
 
+// ══ Cuenta de cliente: entrar / crear cuenta, mis pedidos, volver a pedir, puntos ══
+var cuentaToken = null, cuentaPerfil = null, cuentaPuntos = null, cuentaPedidos = [];
+var _ctaKey = 'kx_cuenta_' + slug;
+try { cuentaToken = localStorage.getItem(_ctaKey); } catch(e) {}
+
+function escHtml(s){
+  return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
+    return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c];
+  });
+}
+function guardarTokenCuenta(t){
+  cuentaToken = t || null;
+  try { if (t) localStorage.setItem(_ctaKey, t); else localStorage.removeItem(_ctaKey); } catch(e) {}
+}
+async function cuentaFetch(path, opts){
+  opts = opts || {};
+  opts.headers = Object.assign({ 'Content-Type': 'application/json' }, opts.headers || {});
+  if (cuentaToken) opts.headers['Authorization'] = 'Bearer ' + cuentaToken;
+  var r = await fetch('/api/tienda/' + slug + '/cuenta' + path, opts);
+  var d = await r.json().catch(function(){ return {}; });
+  if (r.status === 401 && cuentaToken && (path === '/me' || path === '/pedidos')) {
+    guardarTokenCuenta(null); cuentaPerfil = null; cuentaPuntos = null; actualizarBotonCuenta();
+  }
+  return { ok: r.ok, status: r.status, data: d };
+}
+function actualizarBotonCuenta(){
+  var b = document.getElementById('btnCuenta');
+  if (!b) return;
+  b.textContent = cuentaPerfil ? '👤 ' + (cuentaPerfil.nombre || 'Mi cuenta').split(' ')[0] : '👤 Mi cuenta';
+}
+async function iniciarCuenta(){
+  if (!cuentaToken) return;
+  var r = await cuentaFetch('/me');
+  if (r.ok && r.data.ok) { cuentaPerfil = r.data.perfil; cuentaPuntos = r.data.puntos; }
+  actualizarBotonCuenta();
+}
+
+function abrirCuenta(){
+  document.getElementById('ovCuenta').classList.add('show');
+  if (cuentaPerfil) renderCuentaSesion(); else renderCuentaAcceso('entrar');
+}
+
+function renderCuentaAcceso(modo){
+  var esReg = modo === 'registro';
+  document.getElementById('cuentaBody').innerHTML =
+    '<h2>👤 Mi cuenta</h2>' +
+    '<p style="font-size:12.5px;color:var(--text2);margin:-6px 0 12px">Guarda tus datos, revisa tus pedidos y vuelve a pedir en un toque.</p>' +
+    '<div class="tabs2">' +
+      '<button class="seg-btn' + (esReg ? '' : ' active') + '" onclick="renderCuentaAcceso(\'entrar\')">Entrar</button>' +
+      '<button class="seg-btn' + (esReg ? ' active' : '') + '" onclick="renderCuentaAcceso(\'registro\')">Crear cuenta</button>' +
+    '</div>' +
+    (esReg ? '<div class="field"><label>Tu nombre *</label><input id="ctaNombre" placeholder="Nombre completo" maxlength="120"></div>' : '') +
+    '<div class="field"><label>Teléfono (10 dígitos) *</label><input id="ctaTel" type="tel" inputmode="numeric" placeholder="3312345678" maxlength="14"></div>' +
+    (esReg ? '<div class="field"><label>Email (opcional)</label><input id="ctaEmail" type="email" placeholder="tu@correo.com"></div>' : '') +
+    '<div class="field"><label>' + (esReg ? 'Crea un PIN (4 a 8 números) *' : 'Tu PIN *') + '</label><input id="ctaPin" type="password" inputmode="numeric" maxlength="8" placeholder="••••••"></div>' +
+    (esReg ? '<div class="field"><label>Repite tu PIN *</label><input id="ctaPin2" type="password" inputmode="numeric" maxlength="8" placeholder="••••••"></div>' +
+             '<p style="font-size:11px;color:var(--text3);margin:-4px 0 10px">Anota tu PIN: con tu teléfono y tu PIN entras a tu cuenta desde cualquier celular.</p>' : '') +
+    '<div id="ctaErr" style="display:none;color:#dc2626;font-size:12px;font-weight:700;margin-bottom:8px"></div>' +
+    '<button class="btn" id="ctaBtn" onclick="' + (esReg ? 'cuentaRegistrar()' : 'cuentaEntrar()') + '">' + (esReg ? 'Crear mi cuenta' : 'Entrar') + '</button>';
+}
+function _ctaError(msg){ var e = document.getElementById('ctaErr'); if (e) { e.textContent = msg; e.style.display = 'block'; } }
+function _ctaValor(id){ var e = document.getElementById(id); return e ? e.value.trim() : ''; }
+
+async function cuentaEntrar(){
+  var btn = document.getElementById('ctaBtn'); btn.disabled = true;
+  try {
+    var r = await cuentaFetch('/login', { method: 'POST', body: JSON.stringify({ telefono: _ctaValor('ctaTel'), pin: _ctaValor('ctaPin') }) });
+    if (!r.ok || !r.data.ok) { _ctaError(r.data.error || 'No se pudo entrar'); btn.disabled = false; return; }
+    guardarTokenCuenta(r.data.token); await iniciarCuenta();
+    renderCuentaSesion(); notif('✅ Bienvenido');
+  } catch(e) { _ctaError('Error de conexión'); btn.disabled = false; }
+}
+async function cuentaRegistrar(){
+  var pin = _ctaValor('ctaPin');
+  if (pin !== _ctaValor('ctaPin2')) { _ctaError('Los PIN no coinciden'); return; }
+  var btn = document.getElementById('ctaBtn'); btn.disabled = true;
+  try {
+    var r = await cuentaFetch('/registro', { method: 'POST', body: JSON.stringify({
+      nombre: _ctaValor('ctaNombre'), telefono: _ctaValor('ctaTel'), email: _ctaValor('ctaEmail'), pin: pin }) });
+    if (!r.ok || !r.data.ok) { _ctaError(r.data.error || 'No se pudo crear la cuenta'); btn.disabled = false; return; }
+    guardarTokenCuenta(r.data.token); await iniciarCuenta();
+    renderCuentaSesion(); notif('✅ Cuenta creada');
+  } catch(e) { _ctaError('Error de conexión'); btn.disabled = false; }
+}
+async function cuentaSalir(){
+  try { await cuentaFetch('/logout', { method: 'POST' }); } catch(e) {}
+  guardarTokenCuenta(null); cuentaPerfil = null; cuentaPuntos = null; cuentaPedidos = [];
+  actualizarBotonCuenta(); cerrar('ovCuenta'); notif('Sesión cerrada');
+}
+
+function renderCuentaSesion(vista){
+  var p = cuentaPerfil; if (!p) { renderCuentaAcceso('entrar'); return; }
+  vista = vista || 'inicio';
+  var puntosHtml = cuentaPuntos != null
+    ? '<div class="card" style="background:rgba(139,92,246,.08);box-shadow:none;margin:0 0 12px"><div style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase">Tus puntos</div><div style="font-size:24px;font-weight:900;color:var(--acc)">⭐ ' + escHtml(cuentaPuntos) + '</div></div>'
+    : '';
+  var tabs = '<div class="tabs2">' +
+    '<button class="seg-btn' + (vista === 'inicio' ? ' active' : '') + '" onclick="renderCuentaSesion(\'inicio\')">Inicio</button>' +
+    '<button class="seg-btn' + (vista === 'pedidos' ? ' active' : '') + '" onclick="cuentaVerPedidos()">Mis pedidos</button>' +
+    '<button class="seg-btn' + (vista === 'datos' ? ' active' : '') + '" onclick="renderCuentaSesion(\'datos\')">Mis datos</button></div>';
+  var body = document.getElementById('cuentaBody');
+  if (vista === 'pedidos') { body.innerHTML = '<h2>👤 Hola, ' + escHtml(p.nombre.split(' ')[0]) + '</h2>' + tabs; return; }
+  if (vista === 'datos') {
+    body.innerHTML = '<h2>👤 ' + escHtml(p.nombre) + '</h2>' + tabs +
+      '<div class="field"><label>Nombre</label><input id="cdNombre" value="' + escHtml(p.nombre) + '" maxlength="120"></div>' +
+      '<div class="field"><label>Email</label><input id="cdEmail" type="email" value="' + escHtml(p.email) + '"></div>' +
+      '<div style="font-size:12px;font-weight:800;margin:6px 0 8px">Dirección para entregas</div>' +
+      '<div class="field"><label>Calle</label><input id="cdCalle" value="' + escHtml(p.direccion_calle) + '"></div>' +
+      '<div class="field"><label>Número</label><input id="cdNumero" value="' + escHtml(p.direccion_numero) + '"></div>' +
+      '<div class="field"><label>Colonia</label><input id="cdColonia" value="' + escHtml(p.direccion_colonia) + '"></div>' +
+      '<div class="field"><label>Ciudad</label><input id="cdCiudad" value="' + escHtml(p.direccion_ciudad) + '"></div>' +
+      '<div class="field"><label>Código postal</label><input id="cdCP" inputmode="numeric" maxlength="5" value="' + escHtml(p.direccion_cp) + '"></div>' +
+      '<div class="field"><label>Referencias</label><textarea id="cdRef" rows="2">' + escHtml(p.direccion_referencias) + '</textarea></div>' +
+      '<div style="font-size:12px;font-weight:800;margin:6px 0 8px">Cambiar PIN (opcional)</div>' +
+      '<div class="field"><label>PIN actual</label><input id="cdPinActual" type="password" inputmode="numeric" maxlength="8"></div>' +
+      '<div class="field"><label>PIN nuevo</label><input id="cdPinNuevo" type="password" inputmode="numeric" maxlength="8"></div>' +
+      '<div id="ctaErr" style="display:none;color:#dc2626;font-size:12px;font-weight:700;margin-bottom:8px"></div>' +
+      '<button class="btn" onclick="cuentaGuardarDatos()">Guardar cambios</button>';
+    return;
+  }
+  body.innerHTML = '<h2>👤 Hola, ' + escHtml(p.nombre.split(' ')[0]) + '</h2>' + tabs + puntosHtml +
+    '<p style="font-size:12.5px;color:var(--text2)">Tus pedidos hechos con tu cuenta aparecen en <b>Mis pedidos</b>, y ahí puedes repetirlos con un toque. Tus datos se llenan solos al pedir.</p>' +
+    '<button class="btn btn-o" style="margin-top:10px" onclick="cuentaSalir()">Cerrar sesión</button>';
+}
+
+async function cuentaGuardarDatos(){
+  var body = { nombre: _ctaValor('cdNombre'), email: _ctaValor('cdEmail'), direccion_calle: _ctaValor('cdCalle'),
+    direccion_numero: _ctaValor('cdNumero'), direccion_colonia: _ctaValor('cdColonia'), direccion_ciudad: _ctaValor('cdCiudad'),
+    direccion_cp: _ctaValor('cdCP'), direccion_referencias: _ctaValor('cdRef') };
+  var pinNuevo = _ctaValor('cdPinNuevo');
+  if (pinNuevo) { body.pin_nuevo = pinNuevo; body.pin_actual = _ctaValor('cdPinActual'); }
+  var r = await cuentaFetch('/me', { method: 'PUT', body: JSON.stringify(body) });
+  if (!r.ok || !r.data.ok) { _ctaError(r.data.error || 'No se pudo guardar'); return; }
+  cuentaPerfil = r.data.perfil; actualizarBotonCuenta();
+  notif('✅ Datos guardados'); renderCuentaSesion('inicio');
+}
+
+var _ESTADOS_PEDIDO = { pendiente: '⏳ Pendiente', confirmado: '✅ Confirmado', rechazado: '❌ Rechazado', enviado: '📦 Enviado', entregado: '🎉 Entregado' };
+async function cuentaVerPedidos(){
+  var body = document.getElementById('cuentaBody');
+  renderCuentaSesion('pedidos');
+  body = document.getElementById('cuentaBody');
+  body.innerHTML += '<div class="empty" id="cpCargando"><div>⏳</div>Cargando tus pedidos…</div>';
+  var r = await cuentaFetch('/pedidos');
+  var cargando = document.getElementById('cpCargando'); if (cargando) cargando.remove();
+  if (!r.ok) { body.innerHTML += '<div class="empty"><div>⚠️</div>' + escHtml(r.data.error || 'No se pudieron cargar') + '</div>'; return; }
+  cuentaPedidos = r.data.pedidos || [];
+  if (!cuentaPedidos.length) { body.innerHTML += '<div class="empty"><div>🛍️</div>Aún no tienes pedidos con tu cuenta</div>'; return; }
+  body.innerHTML += cuentaPedidos.map(function(p, i){
+    var fecha = new Date(p.creado_en).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' });
+    var items = p.items.map(function(it){
+      return it.cantidad + ' × ' + escHtml(it.nombre_producto) + (it.variante_texto ? ' · ' + escHtml(it.variante_texto) : '');
+    }).join('<br>');
+    return '<div class="ped-card">' +
+      '<div class="ped-top"><b>Folio ' + escHtml(p.folio) + '</b><span>' + escHtml(_ESTADOS_PEDIDO[p.estado] || p.estado) + '</span></div>' +
+      '<div style="font-size:11px;color:var(--text3);margin-bottom:6px">' + fecha + ' · $' + Number(p.total).toFixed(2) + '</div>' +
+      '<div class="ped-items">' + items + '</div>' +
+      '<button class="btn btn-o" onclick="volverAPedir(' + i + ')">🔁 Volver a pedir</button></div>';
+  }).join('');
+}
+
+// Reconstruye el carrito con los precios y existencias de HOY (no los de aquel pedido).
+async function volverAPedir(idx){
+  var ped = cuentaPedidos[idx]; if (!ped) return;
+  if (sucursalId !== ped.sucursal_id) {
+    if (!sucursales.some(function(s){ return s.id === ped.sucursal_id; })) { notif('Esa sucursal ya no está disponible'); return; }
+    sucursalId = ped.sucursal_id;
+    var sel = document.getElementById('sucSel'); if (sel) sel.value = sucursalId;
+    cart = {}; actualizarCartBar();
+    await cargarProductos();
+  }
+  var agregados = 0, omitidos = [], conExtras = false;
+  ped.items.forEach(function(it){
+    if (it.extras && it.extras.length) conExtras = true;
+    if (it.kit_id) {
+      var k = kits.find(function(x){ return x.id === it.kit_id; });
+      if (!k || k.stock < 1) { omitidos.push(it.nombre_producto); return; }
+      cart['kit_' + k.id] = { kit: k, qty: Math.min(it.cantidad, k.stock), nombreMostrado: (k.emoji || '🎁') + ' ' + k.nombre, precioMostrado: Number(k.precio) };
+      agregados++; return;
+    }
+    var p = productos.find(function(x){ return x.id === it.producto_id; });
+    if (!p) { omitidos.push(it.nombre_producto); return; }
+    if (it.variante_id) {
+      var v = (p.variantes || []).find(function(x){ return x.id === it.variante_id; });
+      if (!v || v.stock < 1) { omitidos.push(it.nombre_producto); return; }
+      var etq = [v.atributo1_valor, v.atributo2_valor].filter(Boolean).join(' / ') || 'Opción';
+      cart[p.id + '::' + v.id] = { producto: p, variante: v, qty: Math.min(it.cantidad, v.stock),
+        nombreMostrado: p.nombre + ' · ' + etq, precioMostrado: Number(p.precio) + Number(v.precio_extra || 0) };
+      agregados++; return;
+    }
+    var maxQ = p.es_servicio ? 999 : (Number(p.stock) || 0);
+    if (maxQ < 1) { omitidos.push(it.nombre_producto); return; }
+    cart[p.id] = { producto: p, qty: Math.min(it.cantidad, maxQ) };
+    agregados++;
+  });
+  renderProductos(); if (mostrarKits) renderKits(); actualizarCartBar();
+  if (!agregados) { notif('Ya no hay disponibles los productos de ese pedido'); return; }
+  cerrar('ovCuenta'); abrirCarrito();
+  var aviso = '✅ Agregamos ' + agregados + ' producto(s) con los precios de hoy';
+  if (omitidos.length) aviso += ' · No disponibles: ' + omitidos.length;
+  if (conExtras) aviso += ' · Los extras hay que elegirlos otra vez';
+  notif(aviso);
+}
+
+// Al pedir con sesión iniciada, se llenan solos los datos guardados.
+function prefillCheckoutCuenta(){
+  if (!cuentaPerfil) return;
+  var mapa = { ckNombre: 'nombre', ckTel: 'telefono', ckEmail: 'email', ckCalle: 'direccion_calle', ckNumero: 'direccion_numero',
+    ckColonia: 'direccion_colonia', ckCiudad: 'direccion_ciudad', ckCP: 'direccion_cp', ckReferencias: 'direccion_referencias' };
+  Object.keys(mapa).forEach(function(id){
+    var el = document.getElementById(id);
+    if (el && !el.value) el.value = cuentaPerfil[mapa[id]] || '';
+  });
+}
+// Si el cliente escribió una dirección y su cuenta no tenía, se la guarda para la próxima.
+function guardarDireccionEnCuenta(calle, numero, colonia, ciudad, cp, ref){
+  if (!cuentaToken || !cuentaPerfil || cuentaPerfil.direccion_calle || !calle || !colonia) return;
+  cuentaFetch('/me', { method: 'PUT', body: JSON.stringify({ direccion_calle: calle, direccion_numero: numero,
+    direccion_colonia: colonia, direccion_ciudad: ciudad, direccion_cp: cp, direccion_referencias: ref }) })
+    .then(function(r){ if (r.ok && r.data.ok) cuentaPerfil = r.data.perfil; }).catch(function(){});
+}
+
 init();
+iniciarCuenta();
 </script>
 </body>
 </html>

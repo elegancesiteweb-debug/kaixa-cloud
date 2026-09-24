@@ -962,7 +962,7 @@ async function loadDash() {
     if (rp && rp.ok) {
       var prods2 = await rp.json();
       if (Array.isArray(prods2)) {
-        document.getElementById('dashStock').textContent = prods2.filter(function(p) { return p.stock <= (p.stock_minimo || 5); }).length;
+        document.getElementById('dashStock').textContent = prods2.filter(function(p) { return !p.es_servicio && p.stock <= (p.stock_minimo || 5); }).length;
       }
     }
   } catch(e) {}
@@ -1048,7 +1048,7 @@ function renderPosGrid(prods) {
       '<div class="prod-emoji" id="pe-'+p.id+'">' + ((p.imagen_url || imgCache[p.id]) ? '<img src="'+(p.imagen_url || imgCache[p.id])+'" style="width:36px;height:36px;object-fit:cover;border-radius:8px;">' : (p.emoji || '📦')) + '</div>' +
       '<div class="prod-name">' + p.nombre + '</div>' +
       '<div class="prod-price">' + fmt(p.precio) + '</div>' +
-      '<div class="prod-stock">Stock: ' + (p.stock || 0) + '</div>' +
+      '<div class="prod-stock">' + (p.es_servicio ? '🔧 Servicio' : 'Stock: ' + (p.stock || 0)) + '</div>' +
       '</div>';
   }).join('');
 }
@@ -1528,8 +1528,8 @@ function renderInvList(prods) {
   var cont = document.getElementById('invList');
   if (!prods.length) { cont.innerHTML = '<div class="empty"><div class="ico">📦</div><p>Sin productos</p></div>'; return; }
   cont.innerHTML = prods.map(function(p) {
-    var stockCls = p.stock <= 0 ? 'stock-out' : p.stock <= (p.stock_minimo || 5) ? 'stock-low' : '';
-    var stockTxt = p.stock <= 0 ? '🔴 Agotado' : p.stock <= (p.stock_minimo || 5) ? '🟡 ' + p.stock + ' uds' : '🟢 ' + p.stock + ' uds';
+    var stockCls = p.es_servicio ? '' : p.stock <= 0 ? 'stock-out' : p.stock <= (p.stock_minimo || 5) ? 'stock-low' : '';
+    var stockTxt = p.es_servicio ? '🔧 Servicio (sin stock)' : p.stock <= 0 ? '🔴 Agotado' : p.stock <= (p.stock_minimo || 5) ? '🟡 ' + p.stock + ' uds' : '🟢 ' + p.stock + ' uds';
     var imgSrc = p.imagen_url || imgCache[p.id];
     var icoHtml = imgSrc ? '<img src="' + imgSrc + '" style="width:100%;height:100%;object-fit:cover;border-radius:8px;">' : (p.emoji || '📦');
     return '<div class="inv-item ' + stockCls + '" onclick="abrirEditProd(\'' + p.id + '\')">' +
@@ -1606,7 +1606,7 @@ function abrirModalProd(p) {
         '<div class="form-field"><label>Precio</label><input id="pPrecio" type="number" step="0.01" value="' + (p ? p.precio : '') + '"></div>' +
         '<div class="form-field"><label>Costo</label><input id="pCosto" type="number" step="0.01" value="' + (p ? p.costo : '') + '"></div>' +
       '</div>' +
-      '<div class="form-row">' +
+      '<div class="form-row"' + ((p && p.es_servicio) ? ' style="display:none"' : '') + '>' +
         '<div class="form-field"><label>Stock</label><input id="pStock" type="number" value="' + (p ? p.stock : '0') + '"></div>' +
         '<div class="form-field"><label>Stock mínimo</label><input id="pStockMin" type="number" value="' + (p ? p.stock_minimo || 5 : '5') + '"></div>' +
       '</div>' +

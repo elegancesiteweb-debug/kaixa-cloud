@@ -126,6 +126,76 @@ async function main() {
     check('al rechazar, el stock regresa al origen (1)', (await stockDe(cajaA, prod)) === 1);
     check('el destino no recibió nada de lo rechazado (3)', (await stockDe(cajaC, t1.producto_destino_id)) === 3);
 
+    // ── 4b. Servicios (no llevan inventario) ──
+    console.log('\n4b. Servicios sin inventario');
+    const serv = uuid();
+    await push(cajaA, {
+      productos: [{ uuid: serv, nombre: 'Servicio E2E', precio: 100, costo: 0, sucursal_id: s1, es_servicio: true }],
+      movimientos: [{ uuid: uuid(), producto_uuid: serv, cantidad: -2, motivo: 'venta', sucursal_id: s1, creado_en: ahora() }]
+    });
+    check('vender un servicio no mueve stock (queda en 0, no en -2)', (await stockDe(cajaA, serv)) === 0);
+    const listaProd = await http('GET', '/api/productos', { token: cajaA });
+    const pServ = (Array.isArray(listaProd.data) ? listaProd.data : []).find(p => p.id === serv);
+    check('la app móvil recibe el servicio marcado como servicio y con stock 0', pServ && pServ.es_servicio === true && Number(pServ.stock) === 0, pServ);
+    const sug = await http('GET', '/api/pedidos/sugeridos', { token: cajaA });
+    check('un servicio no aparece en pedidos sugeridos por stock bajo', Array.isArray(sug.data) && !sug.data.some(p => p.id === serv), sug.status);
+
+    // ── 4c. Cuenta de cliente de la tienda en línea ──
+    console.log('\n4c. Cuenta de cliente en la tienda en línea');
+    const pc = uuid();
+    await push(cajaA, {
+      productos: [{ uuid: pc, nombre: 'Producto Tienda E2E', precio: 50, costo: 20, sucursal_id: s1 }],
+      movimientos: [{ uuid: uuid(), producto_uuid: pc, cantidad: 10, motivo: 'recepcion', sucursal_id: s1, creado_en: ahora() }]
+    });
+    const cuenta = '/api/tienda/' + slug + '/cuenta';
+    const tel = '33' + String(Math.floor(10000000 + Math.random() * 89999999));
+    let rr = await http('POST', cuenta + '/registro', { body: { nombre: 'Cliente E2E', telefono: tel, pin: '123456' } });
+    check('crear cuenta responde ok y da sesión', rr.status === 200 && rr.data.ok && rr.data.token, rr);
+    const tokCli = rr.data && rr.data.token;
+    rr = await http('POST', cuenta + '/registro', { body: { nombre: 'Otro', telefono: tel, pin: '999999' } });
+    check('no se puede crear otra cuenta con el mismo teléfono', rr.status === 409, rr.status);
+    rr = await http('POST', cuenta + '/registro', { body: { nombre: 'X', telefono: '12', pin: '1' } });
+    check('rechaza teléfono y PIN inválidos', rr.status === 400, rr.status);
+    rr = await http('POST', cuenta + '/login', { body: { telefono: tel, pin: '000000' } });
+    check('un PIN incorrecto no entra', rr.status === 401, rr.status);
+    rr = await http('POST', cuenta + '/login', { body: { telefono: tel, pin: '123456' } });
+    check('con el PIN correcto entra', rr.status === 200 && rr.data.ok, rr.status);
+    const tokCli2 = rr.data && rr.data.token;
+
+    async function tiendaHttp(method, ruta, t, body) {
+      const headers = { 'Content-Type': 'application/json' };
+      if (t) headers['Authorization'] = 'Bearer ' + t;
+      const res = await fetch(BASE + ruta, { method, headers, body: body ? JSON.stringify(body) : undefined });
+      let data = null; try { data = await res.json(); } catch (e) {}
+      return { status: res.status, data };
+    }
+    rr = await tiendaHttp('GET', cuenta + '/me', null);
+    check('sin sesión no se ve el perfil', rr.status === 401, rr.status);
+    rr = await tiendaHttp('GET', cuenta + '/me', tokCli);
+    check('con sesión se ve el perfil', rr.status === 200 && rr.data.perfil && rr.data.perfil.nombre === 'Cliente E2E', rr.data);
+
+    rr = await tiendaHttp('POST', '/api/tienda/' + slug + '/pedidos', tokCli, {
+      sucursal_id: s1, cliente_nombre: 'Cliente E2E', cliente_telefono: tel, items: [{ producto_id: pc, cantidad: 2 }] });
+    check('pedir con la sesión iniciada funciona', rr.status === 200 && rr.data.ok, rr.data);
+    rr = await tiendaHttp('POST', '/api/tienda/' + slug + '/pedidos', null, {
+      sucursal_id: s1, cliente_nombre: 'Anónimo', cliente_telefono: tel, items: [{ producto_id: pc, cantidad: 1 }] });
+    check('pedir sin cuenta sigue funcionando', rr.status === 200 && rr.data.ok, rr.data);
+    rr = await tiendaHttp('GET', cuenta + '/pedidos', tokCli);
+    check('el historial muestra solo el pedido hecho con la cuenta', rr.status === 200 && rr.data.pedidos.length === 1 && rr.data.pedidos[0].items[0].cantidad === 2, rr.data);
+    rr = await tiendaHttp('PUT', cuenta + '/me', tokCli, { direccion_calle: 'Calle Prueba', direccion_colonia: 'Centro' });
+    check('se guarda la dirección en la cuenta', rr.status === 200 && rr.data.perfil.direccion_calle === 'Calle Prueba', rr.data);
+    rr = await tiendaHttp('POST', cuenta + '/logout', tokCli);
+    rr = await tiendaHttp('GET', cuenta + '/me', tokCli);
+    check('al cerrar sesión el token deja de servir', rr.status === 401, rr.status);
+    rr = await tiendaHttp('GET', cuenta + '/me', tokCli2);
+    check('otra sesión de la misma cuenta sigue activa', rr.status === 200, rr.status);
+
+    const tel2 = '33' + String(Math.floor(10000000 + Math.random() * 89999999));
+    await http('POST', cuenta + '/registro', { body: { nombre: 'Bloqueo E2E', telefono: tel2, pin: '654321' } });
+    for (let i = 0; i < 5; i++) await http('POST', cuenta + '/login', { body: { telefono: tel2, pin: '111111' } });
+    rr = await http('POST', cuenta + '/login', { body: { telefono: tel2, pin: '654321' } });
+    check('tras 5 PIN incorrectos la cuenta se bloquea unos minutos (aunque luego se acierte)', rr.status === 429, rr.status);
+
     // ── 5. Auditoría ──
     console.log('\n5. Auditoría de datos');
     if (ADMIN_USER && ADMIN_PASS) {

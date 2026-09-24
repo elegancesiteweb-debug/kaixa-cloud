@@ -219,7 +219,20 @@ router.post('/push', async (req, res) => {
     // sincronizado=1 porque el push entero se revertía), así que chocaba
     // con esta protección de duplicados una y otra vez — este era el
     // verdadero origen del bloqueo.
+    // Un servicio no lleva inventario: su venta no debe generar movimientos de
+    // stock (quedaban en negativo y se veían "con stock" en la tienda y la app).
+    const idsServicioMov = new Set();
+    const idsMov = [...new Set(movimientos.map(m => m.producto_uuid).filter(Boolean))];
+    if (idsMov.length) {
+      await client.query('SAVEPOINT sp_serv_mov');
+      try {
+        const rs = await client.query(
+          `SELECT id FROM productos WHERE id = ANY($1::uuid[]) AND COALESCE(es_servicio,false) = true`, [idsMov]);
+        rs.rows.forEach(r => idsServicioMov.add(r.id));
+      } catch (eServ) { await client.query('ROLLBACK TO SAVEPOINT sp_serv_mov'); }
+    }
     for (const m of movimientos) {
+      if (idsServicioMov.has(m.producto_uuid)) continue;
       await client.query('SAVEPOINT sp_mov');
       try {
         await client.query(
@@ -467,7 +480,7 @@ router.get('/pull', async (req, res) => {
                 COALESCE(p.disponible_envio,true) AS disponible_envio,
                 COALESCE(p.entrega_rapida,false) AS entrega_rapida,
                 COALESCE(p.es_servicio,false) AS es_servicio,
-                COALESCE(s.stock,0) AS stock_actual
+                CASE WHEN COALESCE(p.es_servicio,false) THEN 0 ELSE COALESCE(s.stock,0) END AS stock_actual
          FROM productos p
          LEFT JOIN stock_actual s ON s.producto_id = p.id AND s.sucursal_id = $2
          WHERE p.negocio_id=$1 AND p.sucursal_id=$2 AND p.actualizado_en > $3

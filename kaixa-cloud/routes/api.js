@@ -67,7 +67,9 @@ router.get('/productos', async (req, res) => {
              p.unidad_peso, p.tiene_prescripcion, p.activo, p.creado_en, p.actualizado_en,
              CASE WHEN p.imagen_url IS NOT NULL AND p.imagen_url != '' THEN true ELSE false END as tiene_imagen,
              p.imagen_url, p.imagenes_extra,
-             COALESCE(s.stock,0) AS stock, c.nombre AS categoria_nombre, c.emoji AS categoria_emoji
+             COALESCE(p.es_servicio,false) AS es_servicio,
+             CASE WHEN COALESCE(p.es_servicio,false) THEN 0 ELSE COALESCE(s.stock,0) END AS stock,
+             c.nombre AS categoria_nombre, c.emoji AS categoria_emoji
       FROM productos p
       LEFT JOIN stock_actual s ON s.producto_id = p.id AND s.sucursal_id = $2
       LEFT JOIN categorias c ON c.id = p.categoria_id
@@ -745,6 +747,7 @@ router.get('/pedidos/sugeridos', async (req, res) => {
       LEFT JOIN proveedores pv ON pv.id = p.proveedor_id
       LEFT JOIN stock_actual s ON s.producto_id = p.id AND s.sucursal_id = p.sucursal_id
       WHERE p.negocio_id=$1 AND p.sucursal_id=$2 AND p.activo=true
+        AND COALESCE(p.es_servicio,false) = false
         AND COALESCE(s.stock,0) <= p.stock_minimo`;
     if (proveedor_id) { params.push(proveedor_id); sql += ` AND p.proveedor_id=$${params.length}`; }
     sql += ' ORDER BY stock ASC';
