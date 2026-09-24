@@ -863,6 +863,7 @@ app.post('/api/lic/elegir-sucursal', async (req, res) => {
 app.use('/api/admin',    require('./routes/negocios'));
 app.use('/api',          require('./routes/tienda').router); // público: /api/tienda/:slug/*
 app.use('/api',          require('./routes/tienda-cuenta').router); // público: /api/tienda/:slug/cuenta/*
+app.use('/api',          require('./routes/citas').publicRouter); // público: /api/tienda/:slug/citas/* y /cuenta/citas
 app.use('/api',          require('./routes/pagos').webhookRouter); // público: /api/pagos/mp/webhook/:negocio_id
 app.use('/api',          require('./routes/autofactura').router); // público: /api/autofactura/:token
 app.use('/api',          require('./routes/delivery').router); // público: /api/delivery/webhook/:webhook_token
@@ -982,6 +983,7 @@ app.use('/api',           authCaja, require('./routes/tarjetas-regalo').router);
 app.use('/api',           authCaja, require('./routes/ventas-pendientes').router);
 app.use('/api',           authCaja, require('./routes/delivery').authRouter);
 app.use('/api',           authCaja, require('./routes/encuestas').authRouter);
+app.use('/api',           authCaja, require('./routes/citas').authRouter);
 app.use('/api',           authCaja, require('./routes/api'));
 app.get('*', (req, res) => {
   const idx = path.join(__dirname, 'public', 'index.html');

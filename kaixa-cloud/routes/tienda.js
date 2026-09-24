@@ -129,6 +129,9 @@ async function ensureTiendaTables() {
   await pool.query(`ALTER TABLE negocios ADD COLUMN IF NOT EXISTS tienda_horario TEXT DEFAULT ''`);
   await pool.query(`ALTER TABLE negocios ADD COLUMN IF NOT EXISTS tienda_mostrar_kits BOOLEAN DEFAULT false`);
   await pool.query(`ALTER TABLE negocios ADD COLUMN IF NOT EXISTS tienda_mostrar_servicios BOOLEAN DEFAULT false`);
+  // Citas para servicios (ver routes/citas.js) — /info las lee, así que las columnas se aseguran aquí también.
+  await pool.query(`ALTER TABLE negocios ADD COLUMN IF NOT EXISTS citas_activo BOOLEAN DEFAULT false`);
+  await pool.query(`ALTER TABLE negocios ADD COLUMN IF NOT EXISTS citas_config TEXT DEFAULT ''`);
   await pool.query(`ALTER TABLE negocios ADD COLUMN IF NOT EXISTS domicilio_habilitado BOOLEAN DEFAULT false`);
   await pool.query(`ALTER TABLE negocios ADD COLUMN IF NOT EXISTS cotizacion_mostrar_fotos BOOLEAN DEFAULT false`);
   // Envíos por paquetería (distinto de "domicilio" — entrega local propia del negocio).
@@ -570,6 +573,7 @@ router.get('/tienda/:slug/info', async (req, res) => {
               tienda_logo_url, tienda_telefono, tienda_direccion, tienda_horario,
               COALESCE(tienda_mostrar_kits,false) AS tienda_mostrar_kits,
               COALESCE(tienda_mostrar_servicios,false) AS tienda_mostrar_servicios,
+              COALESCE(citas_activo,false) AS citas_activo,
               COALESCE(domicilio_habilitado,false) AS domicilio_habilitado,
               COALESCE(envio_habilitado,false) AS envio_habilitado,
               COALESCE(envio_costo,0) AS envio_costo,
@@ -621,7 +625,7 @@ router.get('/tienda/:slug/productos', async (req, res) => {
     await ensureTiendaTables();
     const { sucursal_id } = req.query;
     if (!sucursal_id) return res.status(400).json({ error: 'Falta sucursal_id' });
-    const neg = await pool.query('SELECT id, COALESCE(tienda_mostrar_servicios,false) AS mostrar_servicios FROM negocios WHERE slug=$1 AND activo=true', [req.params.slug]);
+    const neg = await pool.query('SELECT id, (COALESCE(tienda_mostrar_servicios,false) OR COALESCE(citas_activo,false)) AS mostrar_servicios FROM negocios WHERE slug=$1 AND activo=true', [req.params.slug]);
     if (!neg.rows.length) return res.status(404).json({ error: 'Tienda no encontrada' });
     // Un servicio (corte de cabello, reparación, etc.) normalmente no lleva
     // stock — por eso antes el filtro de "solo lo que tiene stock > 0" lo

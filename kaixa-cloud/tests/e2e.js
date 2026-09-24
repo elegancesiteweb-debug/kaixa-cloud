@@ -196,6 +196,49 @@ async function main() {
     rr = await http('POST', cuenta + '/login', { body: { telefono: tel2, pin: '654321' } });
     check('tras 5 PIN incorrectos la cuenta se bloquea unos minutos (aunque luego se acierte)', rr.status === 429, rr.status);
 
+    // ── 4d. Citas para servicios ──
+    console.log('\n4d. Citas para servicios');
+    const horarioAbierto = {};
+    for (let d = 0; d <= 6; d++) horarioAbierto[d] = { abierto: true, desde: '09:00', hasta: '18:00' };
+    let cr = await http('PUT', '/api/citas-config', { token: cajaA, body: { activo: true, duracion_min: 60, simultaneas: 1, anticipacion_horas: 0, dias_adelante: 14, horario: horarioAbierto } });
+    check('el negocio activa las citas y define su horario', cr.status === 200 && cr.data.ok, cr);
+    cr = await http('PUT', '/api/citas-config', { token: cajaA, body: { horario: { 1: { abierto: true, desde: '18:00', hasta: '09:00' } } } });
+    check('rechaza un horario donde cierra antes de abrir', cr.status === 400, cr.status);
+    const info = await http('GET', '/api/tienda/' + slug + '/info');
+    check('la tienda sabe que las citas están activas', info.data && info.data.negocio && info.data.negocio.citas_activo === true, info.data && info.data.negocio && info.data.negocio.citas_activo);
+    const cat = await http('GET', '/api/tienda/' + slug + '/productos?sucursal_id=' + s1);
+    check('con citas activas el servicio aparece en el catálogo de la tienda', Array.isArray(cat.data) && cat.data.some(p => p.id === serv && p.es_servicio === true));
+
+    const disp = await http('GET', '/api/tienda/' + slug + '/citas/disponibilidad?sucursal_id=' + s1);
+    check('la tienda ofrece días y horas libres', disp.status === 200 && disp.data.activo && disp.data.dias.length > 0 && disp.data.dias[0].horas.length > 0, disp.data);
+    const dia1 = disp.data.dias[0], hora1 = dia1.horas[0], hora2 = dia1.horas[1];
+    const cuerpoCita = (hora, prod) => ({ sucursal_id: s1, producto_id: prod || serv, fecha: dia1.fecha, hora, cliente_nombre: 'Cliente Cita', cliente_telefono: tel, notas: 'prueba' });
+    let cita = await tiendaHttp('POST', '/api/tienda/' + slug + '/citas', tokCli2, cuerpoCita(hora1));
+    check('agendar una cita funciona', cita.status === 200 && cita.data.ok && cita.data.folio, cita.data);
+    const citaId = cita.data && cita.data.id;
+    const otra = await tiendaHttp('POST', '/api/tienda/' + slug + '/citas', null, Object.assign(cuerpoCita(hora1), { cliente_nombre: 'Otra persona', cliente_telefono: '3399999999' }));
+    check('el mismo horario ya no se puede reservar dos veces', otra.status === 409, otra.data);
+    const noServ = await tiendaHttp('POST', '/api/tienda/' + slug + '/citas', null, cuerpoCita(hora2, prod));
+    check('no se puede agendar cita de un producto que no es servicio', noServ.status === 400, noServ.data);
+    const sinTel = await tiendaHttp('POST', '/api/tienda/' + slug + '/citas', null, Object.assign(cuerpoCita(hora2), { cliente_telefono: '12' }));
+    check('pide un teléfono válido para confirmar', sinTel.status === 400, sinTel.status);
+    const disp2 = await http('GET', '/api/tienda/' + slug + '/citas/disponibilidad?sucursal_id=' + s1);
+    check('el horario reservado desaparece de la disponibilidad', !disp2.data.dias[0] || disp2.data.dias[0].fecha !== dia1.fecha || !disp2.data.dias[0].horas.includes(hora1), disp2.data.dias[0]);
+
+    const lista = await http('GET', '/api/citas', { token: cajaA });
+    const enLista = Array.isArray(lista.data) && lista.data.find(c => c.id === citaId);
+    check('el negocio ve la cita pendiente en su app', enLista && enLista.estado === 'pendiente' && enLista.cliente_nombre === 'Cliente Cita', lista.data);
+    cr = await http('PUT', '/api/citas/' + citaId + '/estado', { token: cajaA, body: { estado: 'confirmada' } });
+    check('el negocio confirma la cita', cr.status === 200 && cr.data.ok, cr);
+    cr = await http('PUT', '/api/citas/' + citaId + '/estado', { token: cajaA, body: { estado: 'confirmada' } });
+    check('no se puede confirmar dos veces la misma cita', cr.status === 404, cr.status);
+    const misCitas = await tiendaHttp('GET', cuenta + '/citas', tokCli2);
+    check('el cliente ve su cita en su cuenta como confirmada', misCitas.status === 200 && misCitas.data.citas.length === 1 && misCitas.data.citas[0].estado === 'confirmada', misCitas.data);
+    const canc = await tiendaHttp('PUT', cuenta + '/citas/' + citaId + '/cancelar', tokCli2);
+    check('el cliente puede cancelar su cita', canc.status === 200 && canc.data.ok, canc.data);
+    const disp3 = await http('GET', '/api/tienda/' + slug + '/citas/disponibilidad?sucursal_id=' + s1);
+    check('al cancelar, el horario vuelve a quedar libre', disp3.data.dias[0].fecha === dia1.fecha && disp3.data.dias[0].horas.includes(hora1), disp3.data.dias[0]);
+
     // ── 5. Auditoría ──
     console.log('\n5. Auditoría de datos');
     if (ADMIN_USER && ADMIN_PASS) {

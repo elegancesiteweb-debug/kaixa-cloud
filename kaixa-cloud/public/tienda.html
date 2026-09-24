@@ -21,7 +21,14 @@
   .ped-card{border:1.5px solid var(--border);border-radius:12px;padding:11px 12px;margin-bottom:10px}
   .ped-top{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12px;margin-bottom:4px}
   .ped-items{font-size:12px;color:var(--text2);line-height:1.5;margin-bottom:8px}
-  .tabs2{display:flex;gap:8px;margin-bottom:14px}
+  .tabs2{display:flex;gap:6px;margin-bottom:14px}
+  .tabs2 .seg-btn{padding:9px 4px;font-size:12px}
+  .dia-chip{flex-shrink:0;min-width:64px;padding:9px 10px;border-radius:12px;border:1.5px solid var(--border);background:#fff;text-align:center;cursor:pointer;font-size:11px;color:var(--text2);font-weight:700}
+  .dia-chip b{display:block;font-size:17px;color:var(--text);margin:1px 0}
+  .dia-chip.active{border-color:var(--acc);background:rgba(139,92,246,.08)}
+  .dia-chip.active b{color:var(--acc)}
+  .hora-chip{padding:9px 14px;border-radius:10px;border:1.5px solid var(--border);background:#fff;font-size:13px;font-weight:800;cursor:pointer;color:var(--text)}
+  .hora-chip.active{border-color:var(--acc);background:var(--acc);color:#fff}
   .infobar{max-width:var(--maxw);margin:0 auto;padding:10px 18px 0;display:flex;flex-wrap:wrap;gap:10px 18px;font-size:11.5px;color:var(--text2)}
   .infobar span{display:flex;align-items:center;gap:5px}
   .wrap{max-width:var(--maxw);margin:0 auto;padding:14px}
@@ -222,6 +229,13 @@
   </div>
 </div>
 
+<div class="overlay" id="ovCita">
+  <div class="sheet" style="position:relative">
+    <button class="close" onclick="cerrar('ovCita')">✕</button>
+    <div id="citaBody"></div>
+  </div>
+</div>
+
 <div class="overlay" id="ovCarrito">
   <div class="sheet" style="position:relative">
     <button class="close" onclick="cerrar('ovCarrito')">✕</button>
@@ -346,7 +360,7 @@ async function init(){
     negocio = d.negocio;
     sucursales = d.sucursales || [];
     mostrarKits = !!negocio.tienda_mostrar_kits;
-    mostrarServicios = !!negocio.tienda_mostrar_servicios;
+    mostrarServicios = !!negocio.tienda_mostrar_servicios || !!negocio.citas_activo;
     renderVistaBar();
     actualizarVisibilidadVista();
     document.getElementById('negNombre').textContent = negocio.nombre;
@@ -577,7 +591,9 @@ function renderProductos(){
     var enCarrito = !tieneVar && cart[p.id];
     var enCarritoCount = tieneVar ? Object.keys(cart).filter(function(k){ return cart[k].producto && cart[k].producto.id === p.id; }).reduce(function(s,k){ return s+cart[k].qty; }, 0) : 0;
     var accion;
-    if (tieneVar) {
+    if (negocio && negocio.citas_activo && p.es_servicio) {
+      accion = '<button class="btn" onclick="abrirCita(\''+p.id+'\')">📅 Agendar cita</button>';
+    } else if (tieneVar) {
       accion = '<button class="btn" onclick="abrirSelectorVariante(\''+p.id+'\')">' + (enCarritoCount ? enCarritoCount + ' en carrito · Agregar más' : 'Elegir opción') + '</button>';
     } else if (enCarrito) {
       accion = '<div class="qty"><button onclick="cambiarQty(\''+p.id+'\',-1)">−</button><b>'+enCarrito.qty+'</b><button onclick="cambiarQty(\''+p.id+'\',1)">+</button></div>';
@@ -1247,10 +1263,11 @@ function renderCuentaSesion(vista){
     : '';
   var tabs = '<div class="tabs2">' +
     '<button class="seg-btn' + (vista === 'inicio' ? ' active' : '') + '" onclick="renderCuentaSesion(\'inicio\')">Inicio</button>' +
-    '<button class="seg-btn' + (vista === 'pedidos' ? ' active' : '') + '" onclick="cuentaVerPedidos()">Mis pedidos</button>' +
-    '<button class="seg-btn' + (vista === 'datos' ? ' active' : '') + '" onclick="renderCuentaSesion(\'datos\')">Mis datos</button></div>';
+    '<button class="seg-btn' + (vista === 'pedidos' ? ' active' : '') + '" onclick="cuentaVerPedidos()">Pedidos</button>' +
+    ((negocio && negocio.citas_activo) ? '<button class="seg-btn' + (vista === 'citas' ? ' active' : '') + '" onclick="cuentaVerCitas()">Citas</button>' : '') +
+    '<button class="seg-btn' + (vista === 'datos' ? ' active' : '') + '" onclick="renderCuentaSesion(\'datos\')">Datos</button></div>';
   var body = document.getElementById('cuentaBody');
-  if (vista === 'pedidos') { body.innerHTML = '<h2>👤 Hola, ' + escHtml(p.nombre.split(' ')[0]) + '</h2>' + tabs; return; }
+  if (vista === 'pedidos' || vista === 'citas') { body.innerHTML = '<h2>👤 Hola, ' + escHtml(p.nombre.split(' ')[0]) + '</h2>' + tabs; return; }
   if (vista === 'datos') {
     body.innerHTML = '<h2>👤 ' + escHtml(p.nombre) + '</h2>' + tabs +
       '<div class="field"><label>Nombre</label><input id="cdNombre" value="' + escHtml(p.nombre) + '" maxlength="120"></div>' +
@@ -1369,6 +1386,132 @@ function guardarDireccionEnCuenta(calle, numero, colonia, ciudad, cp, ref){
   cuentaFetch('/me', { method: 'PUT', body: JSON.stringify({ direccion_calle: calle, direccion_numero: numero,
     direccion_colonia: colonia, direccion_ciudad: ciudad, direccion_cp: cp, direccion_referencias: ref }) })
     .then(function(r){ if (r.ok && r.data.ok) cuentaPerfil = r.data.perfil; }).catch(function(){});
+}
+
+// ══ Citas para servicios ══
+var _cita = { prod: null, dias: [], fecha: null, hora: null, duracion: 60 };
+var _MESES_CORTOS = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+function _fechaBonita(f){
+  try { return new Date(f + 'T12:00:00').toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' }); } catch(e) { return f; }
+}
+
+async function abrirCita(prodId){
+  var p = productos.find(function(x){ return x.id === prodId; });
+  if (!p) return;
+  if (!sucursalId) { notif('Elige una sucursal primero'); return; }
+  _cita = { prod: p, dias: [], fecha: null, hora: null, duracion: 60 };
+  var body = document.getElementById('citaBody');
+  document.getElementById('ovCita').classList.add('show');
+  body.innerHTML = '<div class="empty"><div>⏳</div>Buscando horarios…</div>';
+  try {
+    var r = await fetch('/api/tienda/' + slug + '/citas/disponibilidad?sucursal_id=' + sucursalId);
+    var d = await r.json();
+    if (!r.ok || !d.activo) { body.innerHTML = '<div class="empty"><div>⚠️</div>' + escHtml(d.error || 'Este negocio no está recibiendo citas por ahora') + '</div>'; return; }
+    _cita.dias = d.dias || []; _cita.duracion = d.duracion_min || 60;
+    renderCita();
+  } catch(e) { body.innerHTML = '<div class="empty"><div>⚠️</div>Error de conexión</div>'; }
+}
+
+function renderCita(){
+  var c = _cita, p = c.prod, pf = cuentaPerfil || {};
+  var body = document.getElementById('citaBody');
+  if (!c.dias.length) {
+    body.innerHTML = '<h2>📅 Agendar cita</h2><div class="empty"><div>🗓️</div>No hay horarios disponibles por ahora. Intenta más tarde.</div>';
+    return;
+  }
+  body.innerHTML =
+    '<h2>📅 Agendar cita</h2>' +
+    '<div class="card" style="box-shadow:none;background:rgba(139,92,246,.07);margin-bottom:12px"><div style="font-weight:800;font-size:14px">' + escHtml(p.nombre) + '</div>' +
+      '<div style="font-size:12px;color:var(--text2)">$' + Number(p.precio).toFixed(2) + ' · dura ' + c.duracion + ' min</div></div>' +
+    '<div class="field"><label>¿Qué día?</label><div id="citaDias" style="display:flex;gap:8px;overflow-x:auto;padding-bottom:4px"></div></div>' +
+    '<div class="field" id="citaHorasWrap" style="display:none"><label>¿A qué hora?</label><div id="citaHoras" style="display:flex;gap:8px;flex-wrap:wrap"></div></div>' +
+    '<div class="field"><label>Tu nombre *</label><input id="citaNombre" maxlength="120" placeholder="Nombre completo" value="' + escHtml(pf.nombre || '') + '"></div>' +
+    '<div class="field"><label>Teléfono * (te confirmamos por aquí)</label><input id="citaTel" type="tel" inputmode="numeric" placeholder="10 dígitos" value="' + escHtml(pf.telefono || '') + '"></div>' +
+    '<div class="field"><label>Notas (opcional)</label><textarea id="citaNotas" rows="2" maxlength="300" placeholder="Algo que debamos saber"></textarea></div>' +
+    '<div id="citaResumen" style="font-size:12.5px;font-weight:700;color:var(--acc);margin-bottom:8px;display:none"></div>' +
+    '<button class="btn" id="citaBtn" onclick="enviarCita()" disabled>Elige día y hora</button>';
+  document.getElementById('citaDias').innerHTML = c.dias.map(function(d){
+    var f = d.fecha.split('-');
+    return '<div class="dia-chip" data-f="' + d.fecha + '" onclick="elegirDiaCita(\'' + d.fecha + '\')">' + escHtml(d.dia_nombre.slice(0, 3)) +
+      '<b>' + parseInt(f[2], 10) + '</b>' + _MESES_CORTOS[parseInt(f[1], 10) - 1] + '</div>';
+  }).join('');
+}
+
+function elegirDiaCita(fecha){
+  _cita.fecha = fecha; _cita.hora = null;
+  Array.from(document.querySelectorAll('.dia-chip')).forEach(function(e){ e.classList.toggle('active', e.getAttribute('data-f') === fecha); });
+  var dia = _cita.dias.find(function(d){ return d.fecha === fecha; });
+  document.getElementById('citaHorasWrap').style.display = 'block';
+  document.getElementById('citaHoras').innerHTML = dia.horas.map(function(h){
+    return '<button type="button" class="hora-chip" data-h="' + h + '" onclick="elegirHoraCita(\'' + h + '\')">' + h + '</button>';
+  }).join('');
+  _actualizarBotonCita();
+}
+function elegirHoraCita(h){
+  _cita.hora = h;
+  Array.from(document.querySelectorAll('.hora-chip')).forEach(function(e){ e.classList.toggle('active', e.getAttribute('data-h') === h); });
+  _actualizarBotonCita();
+}
+function _actualizarBotonCita(){
+  var btn = document.getElementById('citaBtn'), res = document.getElementById('citaResumen');
+  var listo = _cita.fecha && _cita.hora;
+  btn.disabled = !listo;
+  btn.textContent = listo ? 'Solicitar cita' : 'Elige día y hora';
+  res.style.display = listo ? 'block' : 'none';
+  if (listo) res.textContent = '📅 ' + _fechaBonita(_cita.fecha) + ' a las ' + _cita.hora;
+}
+
+async function enviarCita(){
+  var nombre = document.getElementById('citaNombre').value.trim();
+  var tel = document.getElementById('citaTel').value.trim();
+  if (!nombre) { notif('Escribe tu nombre'); return; }
+  if (tel.replace(/\D/g, '').length < 10) { notif('Escribe tu teléfono de 10 dígitos'); return; }
+  var btn = document.getElementById('citaBtn'); btn.disabled = true; btn.textContent = 'Enviando…';
+  try {
+    var headers = { 'Content-Type': 'application/json' };
+    if (cuentaToken) headers['Authorization'] = 'Bearer ' + cuentaToken;
+    var r = await fetch('/api/tienda/' + slug + '/citas', { method: 'POST', headers: headers, body: JSON.stringify({
+      sucursal_id: sucursalId, producto_id: _cita.prod.id, fecha: _cita.fecha, hora: _cita.hora,
+      cliente_nombre: nombre, cliente_telefono: tel, notas: document.getElementById('citaNotas').value.trim() }) });
+    var d = await r.json();
+    if (!r.ok || !d.ok) {
+      notif('❌ ' + (d.error || 'No se pudo agendar'));
+      if (r.status === 409) { await abrirCita(_cita.prod.id); } else { btn.disabled = false; btn.textContent = 'Solicitar cita'; }
+      return;
+    }
+    document.getElementById('citaBody').innerHTML =
+      '<div style="text-align:center;padding:10px 0"><div style="font-size:44px">✅</div>' +
+      '<h2 style="margin:8px 0">¡Cita solicitada!</h2>' +
+      '<p style="font-size:13px;color:var(--text2);margin:0 0 6px">' + escHtml(d.servicio) + '</p>' +
+      '<p style="font-size:14px;font-weight:800;margin:0 0 6px;text-transform:capitalize">' + escHtml(_fechaBonita(d.fecha)) + ' · ' + escHtml(d.hora) + '</p>' +
+      '<p style="font-size:12px;color:var(--text3);margin:0 0 14px">Folio ' + escHtml(d.folio) + '. El negocio la confirmará y te avisará al ' + escHtml(tel) + '.</p>' +
+      '<button class="btn" onclick="cerrar(\'ovCita\')">Listo</button></div>';
+  } catch(e) { notif('❌ Error de conexión'); btn.disabled = false; btn.textContent = 'Solicitar cita'; }
+}
+
+var _ESTADOS_CITA = { pendiente: '⏳ Por confirmar', confirmada: '✅ Confirmada', rechazada: '❌ No confirmada', cancelada: '🚫 Cancelada', completada: '✔️ Realizada', no_asistio: 'No asististe' };
+async function cuentaVerCitas(){
+  renderCuentaSesion('citas');
+  var body = document.getElementById('cuentaBody');
+  body.innerHTML += '<div class="empty" id="ccCargando"><div>⏳</div>Cargando tus citas…</div>';
+  var r = await cuentaFetch('/citas');
+  var cg = document.getElementById('ccCargando'); if (cg) cg.remove();
+  if (!r.ok) { body.innerHTML += '<div class="empty"><div>⚠️</div>' + escHtml(r.data.error || 'No se pudieron cargar') + '</div>'; return; }
+  var citas = r.data.citas || [];
+  if (!citas.length) { body.innerHTML += '<div class="empty"><div>📅</div>Aún no tienes citas con tu cuenta</div>'; return; }
+  body.innerHTML += citas.map(function(c){
+    var activa = c.estado === 'pendiente' || c.estado === 'confirmada';
+    return '<div class="ped-card"><div class="ped-top"><b>' + escHtml(c.servicio_nombre) + '</b><span>' + escHtml(_ESTADOS_CITA[c.estado] || c.estado) + '</span></div>' +
+      '<div style="font-size:12px;color:var(--text2);margin-bottom:' + (activa ? '8' : '0') + 'px;text-transform:capitalize">' + escHtml(_fechaBonita(c.fecha)) + ' · ' + escHtml(c.hora) + ' · Folio ' + escHtml(c.folio) +
+      (c.motivo && !activa ? '<br><span style="text-transform:none;color:var(--text3)">' + escHtml(c.motivo) + '</span>' : '') + '</div>' +
+      (activa ? '<button class="btn btn-o" onclick="cancelarCitaCliente(\'' + c.id + '\')">Cancelar cita</button>' : '') + '</div>';
+  }).join('');
+}
+async function cancelarCitaCliente(id){
+  if (!confirm('¿Cancelar esta cita?')) return;
+  var r = await cuentaFetch('/citas/' + id + '/cancelar', { method: 'PUT' });
+  if (r.ok && r.data.ok) { notif('Cita cancelada'); cuentaVerCitas(); }
+  else notif('❌ ' + (r.data.error || 'No se pudo cancelar'));
 }
 
 init();
