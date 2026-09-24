@@ -122,7 +122,7 @@ router.post('/push', async (req, res) => {
            stock_minimo, categoria_id, giro, por_peso, unidad_peso, tiene_prescripcion, cobertura_m2,
            peso_kg, largo_cm, ancho_cm, alto_cm, activo, proveedor_id, actualizado_en, moneda_costo, costo_moneda, imagenes_extra, descripcion,
            disponible_domicilio, disponible_envio, entrega_rapida, es_servicio)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22, now(), $23,$24,$25,$26,$27,$28,$29,$30)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22, now(), $23,$24,$25,$26,$27,$28,$29,COALESCE($30::boolean,false))
          ON CONFLICT (id) DO UPDATE SET
            sucursal_id=COALESCE(productos.sucursal_id, $3),
            nombre=$4, emoji=$5, imagen_url=COALESCE(NULLIF($6,''), productos.imagen_url), codigo_barras=$7, precio=$8, costo=$9,
@@ -132,13 +132,17 @@ router.post('/push', async (req, res) => {
            moneda_costo=$23, costo_moneda=$24,
            imagenes_extra=COALESCE(NULLIF($25,'[]'), productos.imagenes_extra),
            descripcion=$26,
-           disponible_domicilio=$27, disponible_envio=$28, entrega_rapida=$29, es_servicio=$30`,
+           disponible_domicilio=$27, disponible_envio=$28, entrega_rapida=$29,
+           es_servicio=COALESCE($30::boolean, productos.es_servicio)`,
         [p.uuid, negocio_id, prodSucursalId, p.nombre, p.emoji||'📦', p.imagen_url||'', p.codigo_barras||'',
          p.precio||0, p.costo||0, p.stock_minimo||5, p.categoria_id||null, p.giro||'tienda',
          !!p.por_peso, p.unidad_peso||'kg', !!p.tiene_prescripcion, parseFloat(p.cobertura_m2)||0,
          parseFloat(p.peso_kg)||0, parseFloat(p.largo_cm)||0, parseFloat(p.ancho_cm)||0, parseFloat(p.alto_cm)||0,
          activoProd, p.proveedor_uuid||null, p.moneda_costo||'MXN', parseFloat(p.costo_moneda)||0, imagenesExtraStr, p.descripcion||'',
-         p.disponible_domicilio !== false, p.disponible_envio !== false, p.entrega_rapida === true, p.es_servicio === true]
+         p.disponible_domicilio !== false, p.disponible_envio !== false, p.entrega_rapida === true,
+         // El envío de fotos (segundo push) no trae este campo: si no viene, NO se sobreescribe
+         // (antes lo dejaba en "no es servicio" y el servicio desaparecía de la tienda en línea).
+         (p.es_servicio === undefined || p.es_servicio === null) ? null : (p.es_servicio === true || p.es_servicio === 1)]
       );
       // Ajuste de stock si viene stock — leer + insertar en una sola
       // sentencia (evita la ventana de carrera entre leer el stock actual

@@ -1408,6 +1408,7 @@ async function abrirCita(prodId){
     var d = await r.json();
     if (!r.ok || !d.activo) { body.innerHTML = '<div class="empty"><div>⚠️</div>' + escHtml(d.error || 'Este negocio no está recibiendo citas por ahora') + '</div>'; return; }
     _cita.dias = d.dias || []; _cita.duracion = d.duracion_min || 60;
+    _cita.domicilioOfrecido = !!d.domicilio; _cita.costoDomicilio = Number(d.costo_domicilio) || 0; _cita.aDomicilio = false;
     renderCita();
   } catch(e) { body.innerHTML = '<div class="empty"><div>⚠️</div>Error de conexión</div>'; }
 }
@@ -1425,6 +1426,19 @@ function renderCita(){
       '<div style="font-size:12px;color:var(--text2)">$' + Number(p.precio).toFixed(2) + ' · dura ' + c.duracion + ' min</div></div>' +
     '<div class="field"><label>¿Qué día?</label><div id="citaDias" style="display:flex;gap:8px;overflow-x:auto;padding-bottom:4px"></div></div>' +
     '<div class="field" id="citaHorasWrap" style="display:none"><label>¿A qué hora?</label><div id="citaHoras" style="display:flex;gap:8px;flex-wrap:wrap"></div></div>' +
+    (c.domicilioOfrecido
+      ? '<div class="field"><label>¿Dónde quieres tu cita?</label><div style="display:flex;gap:8px">' +
+          '<button type="button" id="citaLugarNeg" class="seg-btn active" onclick="setCitaDomicilio(false)">🏪 En el negocio</button>' +
+          '<button type="button" id="citaLugarDom" class="seg-btn" onclick="setCitaDomicilio(true)">🏠 A mi domicilio' + (c.costoDomicilio > 0 ? ' (+$' + c.costoDomicilio.toFixed(2) + ')' : '') + '</button></div></div>' +
+        '<div id="citaDomBox" style="display:none">' +
+          '<div class="field"><label>Calle *</label><input id="citaCalle" maxlength="200" value="' + escHtml(pf.direccion_calle || '') + '"></div>' +
+          '<div class="field"><label>Número</label><input id="citaNumero" maxlength="40" value="' + escHtml(pf.direccion_numero || '') + '"></div>' +
+          '<div class="field"><label>Colonia *</label><input id="citaColonia" maxlength="200" value="' + escHtml(pf.direccion_colonia || '') + '"></div>' +
+          '<div class="field"><label>Ciudad</label><input id="citaCiudad" maxlength="120" value="' + escHtml(pf.direccion_ciudad || '') + '"></div>' +
+          '<div class="field"><label>Código postal</label><input id="citaCP" inputmode="numeric" maxlength="5" value="' + escHtml(pf.direccion_cp || '') + '"></div>' +
+          '<div class="field"><label>Referencias (opcional)</label><textarea id="citaRefs" rows="2" maxlength="200" placeholder="Ej: casa azul, portón negro">' + escHtml(pf.direccion_referencias || '') + '</textarea></div>' +
+        '</div>'
+      : '') +
     '<div class="field"><label>Tu nombre *</label><input id="citaNombre" maxlength="120" placeholder="Nombre completo" value="' + escHtml(pf.nombre || '') + '"></div>' +
     '<div class="field"><label>Teléfono * (te confirmamos por aquí)</label><input id="citaTel" type="tel" inputmode="numeric" placeholder="10 dígitos" value="' + escHtml(pf.telefono || '') + '"></div>' +
     '<div class="field"><label>Notas (opcional)</label><textarea id="citaNotas" rows="2" maxlength="300" placeholder="Algo que debamos saber"></textarea></div>' +
@@ -1435,6 +1449,13 @@ function renderCita(){
     return '<div class="dia-chip" data-f="' + d.fecha + '" onclick="elegirDiaCita(\'' + d.fecha + '\')">' + escHtml(d.dia_nombre.slice(0, 3)) +
       '<b>' + parseInt(f[2], 10) + '</b>' + _MESES_CORTOS[parseInt(f[1], 10) - 1] + '</div>';
   }).join('');
+}
+
+function setCitaDomicilio(v){
+  _cita.aDomicilio = !!v;
+  document.getElementById('citaLugarNeg').classList.toggle('active', !v);
+  document.getElementById('citaLugarDom').classList.toggle('active', !!v);
+  document.getElementById('citaDomBox').style.display = v ? 'block' : 'none';
 }
 
 function elegirDiaCita(fecha){
@@ -1466,13 +1487,25 @@ async function enviarCita(){
   var tel = document.getElementById('citaTel').value.trim();
   if (!nombre) { notif('Escribe tu nombre'); return; }
   if (tel.replace(/\D/g, '').length < 10) { notif('Escribe tu teléfono de 10 dígitos'); return; }
+  var domic = !!_cita.aDomicilio;
+  var calle = domic ? document.getElementById('citaCalle').value.trim() : '';
+  var colonia = domic ? document.getElementById('citaColonia').value.trim() : '';
+  if (domic && (!calle || !colonia)) { notif('Escribe la calle y la colonia donde te atenderemos'); return; }
   var btn = document.getElementById('citaBtn'); btn.disabled = true; btn.textContent = 'Enviando…';
   try {
     var headers = { 'Content-Type': 'application/json' };
     if (cuentaToken) headers['Authorization'] = 'Bearer ' + cuentaToken;
-    var r = await fetch('/api/tienda/' + slug + '/citas', { method: 'POST', headers: headers, body: JSON.stringify({
+    var cuerpo = {
       sucursal_id: sucursalId, producto_id: _cita.prod.id, fecha: _cita.fecha, hora: _cita.hora,
-      cliente_nombre: nombre, cliente_telefono: tel, notas: document.getElementById('citaNotas').value.trim() }) });
+      cliente_nombre: nombre, cliente_telefono: tel, notas: document.getElementById('citaNotas').value.trim(), a_domicilio: domic };
+    if (domic) {
+      cuerpo.direccion_calle = calle; cuerpo.direccion_colonia = colonia;
+      cuerpo.direccion_numero = document.getElementById('citaNumero').value.trim();
+      cuerpo.direccion_ciudad = document.getElementById('citaCiudad').value.trim();
+      cuerpo.direccion_cp = document.getElementById('citaCP').value.trim();
+      cuerpo.direccion_referencias = document.getElementById('citaRefs').value.trim();
+    }
+    var r = await fetch('/api/tienda/' + slug + '/citas', { method: 'POST', headers: headers, body: JSON.stringify(cuerpo) });
     var d = await r.json();
     if (!r.ok || !d.ok) {
       notif('❌ ' + (d.error || 'No se pudo agendar'));
@@ -1484,6 +1517,8 @@ async function enviarCita(){
       '<h2 style="margin:8px 0">¡Cita solicitada!</h2>' +
       '<p style="font-size:13px;color:var(--text2);margin:0 0 6px">' + escHtml(d.servicio) + '</p>' +
       '<p style="font-size:14px;font-weight:800;margin:0 0 6px;text-transform:capitalize">' + escHtml(_fechaBonita(d.fecha)) + ' · ' + escHtml(d.hora) + '</p>' +
+      (d.a_domicilio ? '<p style="font-size:12.5px;color:var(--text2);margin:0 0 6px">🏠 A domicilio: ' + escHtml(calle + (cuerpo.direccion_numero ? ' ' + cuerpo.direccion_numero : '') + ', ' + colonia) +
+        (d.costo_domicilio > 0 ? '<br>Costo del servicio a domicilio: $' + Number(d.costo_domicilio).toFixed(2) : '') + '</p>' : '') +
       '<p style="font-size:12px;color:var(--text3);margin:0 0 14px">Folio ' + escHtml(d.folio) + '. El negocio la confirmará y te avisará al ' + escHtml(tel) + '.</p>' +
       '<button class="btn" onclick="cerrar(\'ovCita\')">Listo</button></div>';
   } catch(e) { notif('❌ Error de conexión'); btn.disabled = false; btn.textContent = 'Solicitar cita'; }
@@ -1503,6 +1538,7 @@ async function cuentaVerCitas(){
     var activa = c.estado === 'pendiente' || c.estado === 'confirmada';
     return '<div class="ped-card"><div class="ped-top"><b>' + escHtml(c.servicio_nombre) + '</b><span>' + escHtml(_ESTADOS_CITA[c.estado] || c.estado) + '</span></div>' +
       '<div style="font-size:12px;color:var(--text2);margin-bottom:' + (activa ? '8' : '0') + 'px;text-transform:capitalize">' + escHtml(_fechaBonita(c.fecha)) + ' · ' + escHtml(c.hora) + ' · Folio ' + escHtml(c.folio) +
+      (c.a_domicilio ? '<br><span style="text-transform:none">🏠 A domicilio: ' + escHtml((c.direccion_calle || '') + (c.direccion_numero ? ' ' + c.direccion_numero : '') + ', ' + (c.direccion_colonia || '')) + '</span>' : '') +
       (c.motivo && !activa ? '<br><span style="text-transform:none;color:var(--text3)">' + escHtml(c.motivo) + '</span>' : '') + '</div>' +
       (activa ? '<button class="btn btn-o" onclick="cancelarCitaCliente(\'' + c.id + '\')">Cancelar cita</button>' : '') + '</div>';
   }).join('');

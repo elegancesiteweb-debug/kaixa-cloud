@@ -2856,6 +2856,8 @@ async function loadCitasMovil() {
       html += '<div class="card" style="margin:6px 16px"><div class="card-row"><div class="card-info">' +
         '<div class="card-title">' + _escCita(c.hora) + ' · ' + _escCita(c.servicio_nombre) + '</div>' +
         '<div class="card-sub">' + _escCita(c.cliente_nombre) + (c.cliente_telefono ? ' · ' + _escCita(c.cliente_telefono) : '') + '</div>' +
+        (c.a_domicilio ? '<div class="card-sub" style="color:#0ea5e9;font-weight:700">🏠 A domicilio: ' + _escCita((c.direccion_calle || '') + (c.direccion_numero ? ' ' + c.direccion_numero : '') + ', ' + (c.direccion_colonia || '') + (c.direccion_ciudad ? ', ' + c.direccion_ciudad : '') + (c.direccion_cp ? ' C.P. ' + c.direccion_cp : '')) +
+          (c.direccion_referencias ? ' — ' + _escCita(c.direccion_referencias) : '') + (Number(c.costo_domicilio) > 0 ? ' · +$' + Number(c.costo_domicilio).toFixed(2) + ' por domicilio' : '') + '</div>' : '') +
         (c.notas ? '<div class="card-sub">📝 ' + _escCita(c.notas) + '</div>' : '') +
         (c.motivo ? '<div class="card-sub">' + _escCita(c.motivo) + '</div>' : '') +
         '</div><div style="font-size:11px;font-weight:800;color:' + est[1] + ';text-align:right">' + est[0] + '</div></div>' +
@@ -2899,6 +2901,11 @@ async function abrirCitasConfigMovil() {
     '<div class="form-field"><label>Citas al mismo tiempo</label><input id="ctSim" type="number" min="1" max="50" value="' + cfg.simultaneas + '"></div></div>' +
     '<div class="form-row"><div class="form-field"><label>Anticipación mínima (horas)</label><input id="ctAnt" type="number" min="0" max="72" value="' + cfg.anticipacion_horas + '"></div>' +
     '<div class="form-field"><label>Cuántos días hacia adelante</label><input id="ctDias" type="number" min="1" max="60" value="' + cfg.dias_adelante + '"></div></div>' +
+    '<div style="border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin:6px 0 10px">' +
+      '<label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:800"><input type="checkbox" id="ctDom" ' + (cfg.domicilio ? 'checked' : '') + ' style="width:auto"> 🏠 Ofrecer servicio a domicilio</label>' +
+      '<p style="font-size:11px;color:var(--text3);margin:4px 0 8px">El cliente elige si quiere su cita en tu negocio o en su domicilio; si es a domicilio, la tienda le pide su dirección.</p>' +
+      '<div class="form-field" style="margin:0"><label>Costo extra por ir a domicilio ($, opcional)</label><input id="ctCostoDom" type="number" min="0" max="5000" step="1" value="' + (Number(cfg.costo_domicilio) || 0) + '"></div>' +
+    '</div>' +
     '<div style="font-size:12px;font-weight:700;color:var(--text3);text-transform:uppercase;margin:8px 0 4px">Horario de atención</div>' + dias +
     '<p style="font-size:11px;color:var(--text3);margin:8px 0">Solo se pueden agendar los productos marcados como <b>servicio</b>.</p>' +
     '<button class="btn-primary" onclick="guardarCitasConfigMovil()">💾 Guardar</button></div></div>';
@@ -2912,7 +2919,8 @@ async function guardarCitasConfigMovil() {
   }
   var body = { activo: document.getElementById('ctActivo').checked, duracion_min: document.getElementById('ctDur').value,
     simultaneas: document.getElementById('ctSim').value, anticipacion_horas: document.getElementById('ctAnt').value,
-    dias_adelante: document.getElementById('ctDias').value, horario: horario };
+    dias_adelante: document.getElementById('ctDias').value, horario: horario,
+    domicilio: document.getElementById('ctDom').checked, costo_domicilio: document.getElementById('ctCostoDom').value };
   var r = await apiFetch('/api/citas-config', { method: 'PUT', body: JSON.stringify(body) });
   var d = r ? await r.json().catch(function() { return {}; }) : {};
   if (r && r.ok) { notif('✅ Configuración de citas guardada', 'ok'); document.getElementById('modalCitasConfig').remove(); }

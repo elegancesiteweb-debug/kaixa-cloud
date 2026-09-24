@@ -14,7 +14,7 @@ const HORARIO_DEFAULT = () => {
   for (let d = 0; d <= 6; d++) h[d] = { abierto: d >= 1 && d <= 6, desde: '09:00', hasta: d === 6 ? '14:00' : '18:00' };
   return h;
 };
-const CONFIG_DEFAULT = () => ({ duracion_min: 60, simultaneas: 1, anticipacion_horas: 2, dias_adelante: 14, horario: HORARIO_DEFAULT() });
+const CONFIG_DEFAULT = () => ({ duracion_min: 60, simultaneas: 1, anticipacion_horas: 2, dias_adelante: 14, domicilio: false, costo_domicilio: 0, horario: HORARIO_DEFAULT() });
 
 let _ok = false;
 async function ensureCitasTables() {
@@ -44,6 +44,17 @@ async function ensureCitasTables() {
     );
     CREATE INDEX IF NOT EXISTS idx_citas_sucursal_fecha ON citas(sucursal_id, fecha);
     CREATE INDEX IF NOT EXISTS idx_citas_cliente ON citas(tienda_cliente_id);
+  `);
+  // Servicio a domicilio: la cita puede ser en el negocio o en el domicilio del cliente.
+  await pool.query(`
+    ALTER TABLE citas ADD COLUMN IF NOT EXISTS a_domicilio BOOLEAN DEFAULT false;
+    ALTER TABLE citas ADD COLUMN IF NOT EXISTS costo_domicilio NUMERIC(10,2) DEFAULT 0;
+    ALTER TABLE citas ADD COLUMN IF NOT EXISTS direccion_calle TEXT DEFAULT '';
+    ALTER TABLE citas ADD COLUMN IF NOT EXISTS direccion_numero TEXT DEFAULT '';
+    ALTER TABLE citas ADD COLUMN IF NOT EXISTS direccion_colonia TEXT DEFAULT '';
+    ALTER TABLE citas ADD COLUMN IF NOT EXISTS direccion_ciudad TEXT DEFAULT '';
+    ALTER TABLE citas ADD COLUMN IF NOT EXISTS direccion_cp TEXT DEFAULT '';
+    ALTER TABLE citas ADD COLUMN IF NOT EXISTS direccion_referencias TEXT DEFAULT '';
   `);
   _ok = true;
 }
@@ -149,7 +160,7 @@ publicRouter.get('/tienda/:slug/citas/disponibilidad', async (req, res) => {
       const horas = horasLibres(cfg, fecha, existentes.filter(c => c.fecha === fecha), ahora);
       if (horas.length) dias.push({ fecha, dia_nombre: DIAS[diaSemana(fecha)], horas });
     }
-    res.json({ activo: true, duracion_min: cfg.duracion_min, dias });
+    res.json({ activo: true, duracion_min: cfg.duracion_min, domicilio: !!cfg.domicilio, costo_domicilio: Number(cfg.costo_domicilio) || 0, dias });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -170,6 +181,18 @@ publicRouter.post('/tienda/:slug/citas', async (req, res) => {
     if (!nombre) return res.status(400).json({ error: 'Escribe tu nombre' });
     if (tel.length !== 10) return res.status(400).json({ error: 'Escribe un teléfono de 10 dígitos para confirmarte la cita' });
     if (!fechaValida(fecha) || !hhmmValido(hora)) return res.status(400).json({ error: 'Elige día y hora' });
+
+    // Servicio a domicilio: solo si el negocio lo ofrece, y entonces la dirección es obligatoria.
+    const aDomicilio = req.body.a_domicilio === true || req.body.a_domicilio === 'true';
+    const dir = {};
+    ['calle', 'numero', 'colonia', 'ciudad', 'cp', 'referencias'].forEach(k => {
+      dir[k] = String(req.body['direccion_' + k] || '').trim().slice(0, 200);
+    });
+    if (aDomicilio) {
+      if (!cfg.domicilio) return res.status(400).json({ error: 'Este negocio no ofrece servicio a domicilio' });
+      if (!dir.calle || !dir.colonia) return res.status(400).json({ error: 'Escribe la calle y la colonia donde te atenderemos' });
+    }
+    const costoDomicilio = aDomicilio ? (Number(cfg.costo_domicilio) || 0) : 0;
 
     const suc = await pool.query('SELECT id FROM sucursales WHERE id=$1 AND negocio_id=$2 AND activo=true', [sucursal_id, neg.id]).catch(() => ({ rows: [] }));
     if (!suc.rows.length) return res.status(400).json({ error: 'Sucursal no válida' });
@@ -201,16 +224,20 @@ publicRouter.post('/tienda/:slug/citas', async (req, res) => {
     const folio = 'C-' + Date.now().toString(36).toUpperCase().slice(-6);
     const ins = await client.query(
       `INSERT INTO citas (negocio_id, sucursal_id, producto_id, servicio_nombre, servicio_precio, folio, cliente_nombre,
-         cliente_telefono, tienda_cliente_id, fecha, hora, duracion_min, notas)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id`,
+         cliente_telefono, tienda_cliente_id, fecha, hora, duracion_min, notas,
+         a_domicilio, costo_domicilio, direccion_calle, direccion_numero, direccion_colonia, direccion_ciudad, direccion_cp, direccion_referencias)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21) RETURNING id`,
       [neg.id, sucursal_id, serv.rows[0].id, serv.rows[0].nombre, serv.rows[0].precio, folio, nombre, tel,
-       clienteCuenta ? clienteCuenta.id : null, fecha, hora, cfg.duracion_min, String(notas).slice(0, 300)]);
+       clienteCuenta ? clienteCuenta.id : null, fecha, hora, cfg.duracion_min, String(notas).slice(0, 300),
+       aDomicilio, costoDomicilio, aDomicilio ? dir.calle : '', aDomicilio ? dir.numero : '', aDomicilio ? dir.colonia : '',
+       aDomicilio ? dir.ciudad : '', aDomicilio ? dir.cp : '', aDomicilio ? dir.referencias : '']);
     await client.query('COMMIT'); enTransaccion = false;
 
-    avisarDueno(neg.id, sucursal_id, '📅 Nueva cita', nombre + ' — ' + serv.rows[0].nombre + ' el ' + fecha + ' a las ' + hora, ins.rows[0].id);
+    avisarDueno(neg.id, sucursal_id, '📅 Nueva cita' + (aDomicilio ? ' a domicilio' : ''),
+      nombre + ' — ' + serv.rows[0].nombre + ' el ' + fecha + ' a las ' + hora + (aDomicilio ? ' · ' + dir.calle + ' ' + dir.numero + ', ' + dir.colonia : ''), ins.rows[0].id);
     const io = req.app.get('io');
     if (io) io.to('negocio:' + neg.id).emit('cita:nueva', { id: ins.rows[0].id, folio, sucursal_id });
-    res.json({ ok: true, folio, id: ins.rows[0].id, fecha, hora, servicio: serv.rows[0].nombre });
+    res.json({ ok: true, folio, id: ins.rows[0].id, fecha, hora, servicio: serv.rows[0].nombre, a_domicilio: aDomicilio, costo_domicilio: costoDomicilio });
   } catch (e) {
     if (enTransaccion) { try { await client.query('ROLLBACK'); } catch (er) {} }
     res.status(500).json({ error: e.message });
@@ -225,7 +252,8 @@ publicRouter.get('/tienda/:slug/cuenta/citas', async (req, res) => {
     const cli = await require('./tienda-cuenta').clienteDeRequest(req, neg.id);
     if (!cli) return res.status(401).json({ error: 'Sesión vencida' });
     const r = await pool.query(
-      `SELECT id, folio, servicio_nombre, to_char(fecha,'YYYY-MM-DD') AS fecha, hora, estado, motivo
+      `SELECT id, folio, servicio_nombre, to_char(fecha,'YYYY-MM-DD') AS fecha, hora, estado, motivo,
+              a_domicilio, direccion_calle, direccion_numero, direccion_colonia
        FROM citas WHERE tienda_cliente_id=$1 AND negocio_id=$2 ORDER BY fecha DESC, hora DESC LIMIT 30`, [cli.id, neg.id]);
     res.json({ ok: true, citas: r.rows });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -262,7 +290,11 @@ authRouter.get('/citas', async (req, res) => {
     const params = [negocio_id, sucursal_id]; if (!req.query.todas) params.push(sumarDias(hoy, -1));
     const r = await pool.query(
       `SELECT id, folio, producto_id, servicio_nombre, servicio_precio, cliente_nombre, cliente_telefono,
-              to_char(fecha,'YYYY-MM-DD') AS fecha, hora, duracion_min, estado, notas, motivo, creado_en
+              to_char(fecha,'YYYY-MM-DD') AS fecha, hora, duracion_min, estado, notas, motivo, creado_en,
+              COALESCE(a_domicilio,false) AS a_domicilio, COALESCE(costo_domicilio,0) AS costo_domicilio,
+              COALESCE(direccion_calle,'') AS direccion_calle, COALESCE(direccion_numero,'') AS direccion_numero,
+              COALESCE(direccion_colonia,'') AS direccion_colonia, COALESCE(direccion_ciudad,'') AS direccion_ciudad,
+              COALESCE(direccion_cp,'') AS direccion_cp, COALESCE(direccion_referencias,'') AS direccion_referencias
        FROM citas WHERE negocio_id=$1 AND sucursal_id=$2 ${filtroFecha}
        ORDER BY fecha ASC, hora ASC LIMIT 300`, params);
     res.json(r.rows);
@@ -277,7 +309,9 @@ const TRANSICIONES = {
   no_asistio: ['confirmada']
 };
 const MENSAJES = {
-  confirmada: (c, neg) => `Hola ${c.cliente_nombre}, tu cita de ${c.servicio_nombre} en ${neg} quedó CONFIRMADA para el ${c.fecha} a las ${c.hora}. ¡Te esperamos!`,
+  confirmada: (c, neg) => c.a_domicilio
+    ? `Hola ${c.cliente_nombre}, tu cita de ${c.servicio_nombre} con ${neg} quedó CONFIRMADA para el ${c.fecha} a las ${c.hora}. Iremos a tu domicilio: ${c.direccion_calle} ${c.direccion_numero || ''}, ${c.direccion_colonia}.`
+    : `Hola ${c.cliente_nombre}, tu cita de ${c.servicio_nombre} en ${neg} quedó CONFIRMADA para el ${c.fecha} a las ${c.hora}. ¡Te esperamos!`,
   rechazada:  (c, neg, m) => `Hola ${c.cliente_nombre}, no pudimos confirmar tu cita de ${c.servicio_nombre} del ${c.fecha} a las ${c.hora} en ${neg}.${m ? ' Motivo: ' + m + '.' : ''} Puedes agendar otro horario.`,
   cancelada:  (c, neg, m) => `Hola ${c.cliente_nombre}, tu cita de ${c.servicio_nombre} del ${c.fecha} a las ${c.hora} en ${neg} fue cancelada.${m ? ' Motivo: ' + m + '.' : ''}`
 };
@@ -292,7 +326,8 @@ authRouter.put('/citas/:id/estado', async (req, res) => {
     const r = await pool.query(
       `UPDATE citas SET estado=$1, motivo=$2, actualizado_en=now()
        WHERE id=$3 AND negocio_id=$4 AND sucursal_id=$5 AND estado = ANY($6)
-       RETURNING id, cliente_nombre, cliente_telefono, servicio_nombre, to_char(fecha,'YYYY-MM-DD') AS fecha, hora`,
+       RETURNING id, cliente_nombre, cliente_telefono, servicio_nombre, to_char(fecha,'YYYY-MM-DD') AS fecha, hora,
+                 a_domicilio, direccion_calle, direccion_numero, direccion_colonia`,
       [estado, String(motivo).slice(0, 200), req.params.id, negocio_id, sucursal_id, TRANSICIONES[estado]]);
     if (!r.rows.length) return res.status(404).json({ error: 'La cita no existe o ya no se puede cambiar a ese estado' });
     const c = r.rows[0];
@@ -329,6 +364,9 @@ authRouter.put('/citas-config', async (req, res) => {
       simultaneas: num(b.simultaneas, 1, 50, actual.simultaneas),
       anticipacion_horas: num(b.anticipacion_horas, 0, 72, actual.anticipacion_horas),
       dias_adelante: num(b.dias_adelante, 1, 60, actual.dias_adelante),
+      domicilio: b.domicilio === undefined ? !!actual.domicilio : !!b.domicilio,
+      costo_domicilio: b.costo_domicilio === undefined ? (Number(actual.costo_domicilio) || 0)
+        : Math.min(5000, Math.max(0, parseFloat(b.costo_domicilio) || 0)),
       horario: actual.horario
     };
     if (b.horario && typeof b.horario === 'object') {

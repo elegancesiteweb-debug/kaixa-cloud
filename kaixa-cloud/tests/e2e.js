@@ -139,6 +139,11 @@ async function main() {
     check('la app móvil recibe el servicio marcado como servicio y con stock 0', pServ && pServ.es_servicio === true && Number(pServ.stock) === 0, pServ);
     const sug = await http('GET', '/api/pedidos/sugeridos', { token: cajaA });
     check('un servicio no aparece en pedidos sugeridos por stock bajo', Array.isArray(sug.data) && !sug.data.some(p => p.id === serv), sug.status);
+    // La PC manda las fotos en un segundo envío que no trae "es_servicio": no debe quitarle la marca.
+    await push(cajaA, { productos: [{ uuid: serv, nombre: 'Servicio E2E', precio: 100, costo: 0, sucursal_id: s1, imagen_url: 'data:image/png;base64,iVBORw0KGgo=' }] });
+    const listaFoto = await http('GET', '/api/productos', { token: cajaA });
+    const pServFoto = (Array.isArray(listaFoto.data) ? listaFoto.data : []).find(p => p.id === serv);
+    check('el envío de la foto de un servicio no le quita la marca de servicio', pServFoto && pServFoto.es_servicio === true, pServFoto && pServFoto.es_servicio);
 
     // ── 4c. Cuenta de cliente de la tienda en línea ──
     console.log('\n4c. Cuenta de cliente en la tienda en línea');
@@ -200,7 +205,7 @@ async function main() {
     console.log('\n4d. Citas para servicios');
     const horarioAbierto = {};
     for (let d = 0; d <= 6; d++) horarioAbierto[d] = { abierto: true, desde: '09:00', hasta: '18:00' };
-    let cr = await http('PUT', '/api/citas-config', { token: cajaA, body: { activo: true, duracion_min: 60, simultaneas: 1, anticipacion_horas: 0, dias_adelante: 14, horario: horarioAbierto } });
+    let cr = await http('PUT', '/api/citas-config', { token: cajaA, body: { activo: true, duracion_min: 60, simultaneas: 1, anticipacion_horas: 0, dias_adelante: 14, domicilio: true, costo_domicilio: 50, horario: horarioAbierto } });
     check('el negocio activa las citas y define su horario', cr.status === 200 && cr.data.ok, cr);
     cr = await http('PUT', '/api/citas-config', { token: cajaA, body: { horario: { 1: { abierto: true, desde: '18:00', hasta: '09:00' } } } });
     check('rechaza un horario donde cierra antes de abrir', cr.status === 400, cr.status);
@@ -222,6 +227,15 @@ async function main() {
     check('no se puede agendar cita de un producto que no es servicio', noServ.status === 400, noServ.data);
     const sinTel = await tiendaHttp('POST', '/api/tienda/' + slug + '/citas', null, Object.assign(cuerpoCita(hora2), { cliente_telefono: '12' }));
     check('pide un teléfono válido para confirmar', sinTel.status === 400, sinTel.status);
+    check('la tienda sabe que se ofrece servicio a domicilio y su costo', disp.data.domicilio === true && disp.data.costo_domicilio === 50, [disp.data.domicilio, disp.data.costo_domicilio]);
+    const domSinDir = await tiendaHttp('POST', '/api/tienda/' + slug + '/citas', null, Object.assign(cuerpoCita(hora2), { a_domicilio: true }));
+    check('una cita a domicilio exige la dirección', domSinDir.status === 400, domSinDir.data);
+    const domOk = await tiendaHttp('POST', '/api/tienda/' + slug + '/citas', null, Object.assign(cuerpoCita(hora2), {
+      cliente_nombre: 'Cliente Domicilio', a_domicilio: true, direccion_calle: 'Av. Prueba', direccion_numero: '123', direccion_colonia: 'Centro', direccion_ciudad: 'Guadalajara', direccion_cp: '44100', direccion_referencias: 'casa azul' }));
+    check('agendar una cita a domicilio con dirección funciona y cobra el costo', domOk.status === 200 && domOk.data.ok && domOk.data.a_domicilio === true && domOk.data.costo_domicilio === 50, domOk.data);
+    const listaDom = await http('GET', '/api/citas', { token: cajaA });
+    const citaDom = Array.isArray(listaDom.data) && listaDom.data.find(c => c.id === (domOk.data && domOk.data.id));
+    check('el negocio ve la dirección del cliente en la cita a domicilio', citaDom && citaDom.a_domicilio === true && citaDom.direccion_calle === 'Av. Prueba' && citaDom.direccion_colonia === 'Centro', citaDom);
     const disp2 = await http('GET', '/api/tienda/' + slug + '/citas/disponibilidad?sucursal_id=' + s1);
     check('el horario reservado desaparece de la disponibilidad', !disp2.data.dias[0] || disp2.data.dias[0].fecha !== dia1.fecha || !disp2.data.dias[0].horas.includes(hora1), disp2.data.dias[0]);
 
