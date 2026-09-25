@@ -326,6 +326,7 @@ async function main() {
       check('segundo dispositivo (distinto) activa hasta llegar al límite (2/2)', d2.status === 200 && d2.data.ok, d2.data);
       const d3 = await verif('e2e-dispositivo-3', 'PC Pirata');
       check('un tercer dispositivo nuevo se rechaza por exceder el límite', d3.status === 200 && d3.data.ok === false, d3.data);
+      check('el rechazo por límite trae estado "limite_dispositivos" (para que la app sepa bloquear sin dar opción de bypass)', d3.data.estado === 'limite_dispositivos', d3.data);
       const listaDisp = await http('GET', '/api/lic/licencias/' + licId + '/dispositivos', { admin: adm });
       check('el panel lista los 2 dispositivos activos y sus nombres', Array.isArray(listaDisp.data) && listaDisp.data.filter(x => x.activo).length === 2 && listaDisp.data.some(x => x.nombre_equipo === 'PC Mostrador'), listaDisp.data);
       const dispALiberar = listaDisp.data.find(x => x.dispositivo_id === 'e2e-dispositivo-2');
@@ -333,6 +334,17 @@ async function main() {
       check('liberar un dispositivo responde ok', liberar.status === 200 && liberar.data.ok, liberar.data);
       const d3tras = await verif('e2e-dispositivo-3', 'PC Pirata');
       check('tras liberar un lugar, el dispositivo que antes se rechazó ahora sí activa', d3tras.status === 200 && d3tras.data.ok, d3tras.data);
+
+      console.log('\n9. Suspender / reactivar licencia (botón del panel)');
+      const suspender = await http('PUT', '/api/lic/licencias/' + licId + '/estado', { admin: adm, body: { estado: 'suspendida' } });
+      check('el botón "Suspender" responde ok', suspender.status === 200 && suspender.data.ok, suspender.data);
+      const verTrasSuspender = await verif('e2e-dispositivo-1', 'PC Mostrador');
+      check('un dispositivo YA activado se rechaza en cuanto la licencia se suspende (no solo los nuevos)', verTrasSuspender.status === 200 && verTrasSuspender.data.ok === false, verTrasSuspender.data);
+      check('el rechazo por suspensión trae estado "suspendida" (para que la app bloquee sin dar opción de bypass)', verTrasSuspender.data.estado === 'suspendida', verTrasSuspender.data);
+      const activar = await http('PUT', '/api/lic/licencias/' + licId + '/estado', { admin: adm, body: { estado: 'activa' } });
+      check('el botón "Activar" responde ok', activar.status === 200 && activar.data.ok, activar.data);
+      const verTrasActivar = await verif('e2e-dispositivo-1', 'PC Mostrador');
+      check('al reactivar, ese mismo dispositivo vuelve a pasar de inmediato', verTrasActivar.status === 200 && verTrasActivar.data.ok, verTrasActivar.data);
 
       const licSinLimite = await http('POST', '/api/lic/licencias', { admin: adm, body: { cliente_nombre: 'ZZ_TEST_E2E_' + sufijo + '_ilimitado', plan: 'ilimitado' } });
       check('el plan "ilimitado" guarda max_usuarios = null (sin límite)', licSinLimite.status === 200 && licSinLimite.data.licencia.max_usuarios === null, licSinLimite.data);

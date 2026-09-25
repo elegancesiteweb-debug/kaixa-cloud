@@ -717,15 +717,20 @@ async function verificarLicenciaHandler(req, res) {
     const clave = (req.body.clave || '').trim().toUpperCase();
     if (!clave) return res.status(400).json({ ok: false, mensaje: 'Clave requerida' });
     const r = await pool.queryConReintento('SELECT * FROM licencias WHERE clave=$1', [clave]);
-    if (!r.rows.length) return res.json({ ok: false, mensaje: 'Clave inválida' });
+    if (!r.rows.length) return res.json({ ok: false, estado: 'sin_licencia', mensaje: 'Clave inválida' });
     const lic = r.rows[0];
-    if (lic.estado === 'suspendida') return res.json({ ok: false, mensaje: 'Licencia suspendida. Contacta a tu proveedor.' });
-    if (lic.estado === 'cancelada')  return res.json({ ok: false, mensaje: 'Licencia cancelada.' });
+    // El campo "estado" en la respuesta es lo que la app usa para distinguir un
+    // rechazo DEFINITIVO del servidor (bloquea sin dar opción a "entrar sin
+    // verificar") de una simple falla de conexión (esa sí deja seguir
+    // trabajando offline). Antes esta respuesta no traía "estado" y la app
+    // nunca podía distinguirlos — ver abajo, en el manejo del lado del cliente.
+    if (lic.estado === 'suspendida') return res.json({ ok: false, estado: 'suspendida', mensaje: 'Licencia suspendida. Contacta a tu proveedor.' });
+    if (lic.estado === 'cancelada')  return res.json({ ok: false, estado: 'cancelada', mensaje: 'Licencia cancelada.' });
     let diasRestantes = null;
     if (lic.vence_en) {
       const ms = new Date(lic.vence_en).getTime() - Date.now();
       diasRestantes = Math.ceil(ms / (1000 * 60 * 60 * 24));
-      if (diasRestantes < 0) return res.json({ ok: false, mensaje: 'Licencia vencida. Renueva tu suscripción.' });
+      if (diasRestantes < 0) return res.json({ ok: false, estado: 'vencida', mensaje: 'Licencia vencida. Renueva tu suscripción.' });
     }
     let modulos = [];
     try { modulos = JSON.parse(lic.modulos || '[]'); } catch(e) {}
@@ -760,7 +765,7 @@ async function verificarLicenciaHandler(req, res) {
           const activos = await pool.query(
             'SELECT COUNT(*) AS n FROM licencia_dispositivos WHERE licencia_id=$1 AND activo=true', [lic.id]);
           if (parseInt(activos.rows[0].n) >= lic.max_usuarios) {
-            return res.json({ ok: false, mensaje: 'Esta licencia ya está activada en el máximo de dispositivos permitidos (' + lic.max_usuarios + '). Contacta a tu proveedor para liberar un dispositivo o subir de plan.' });
+            return res.json({ ok: false, estado: 'limite_dispositivos', mensaje: 'Esta licencia ya está activada en el máximo de dispositivos permitidos (' + lic.max_usuarios + '). Contacta a tu proveedor para liberar un dispositivo o subir de plan.' });
           }
           await pool.query(
             'INSERT INTO licencia_dispositivos (licencia_id, dispositivo_id, nombre_equipo) VALUES ($1,$2,$3)',
