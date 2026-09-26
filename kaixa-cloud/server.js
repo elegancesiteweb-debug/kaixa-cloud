@@ -106,6 +106,20 @@ async function aplicarEsquema() {
     await pool.query(`ALTER TABLE productos ALTER COLUMN stock_minimo TYPE NUMERIC`);
     console.log('✅ productos.stock_minimo admite decimales (granel)');
   } catch(e) { console.error('⚠️ Migración productos.stock_minimo decimal:', e.message); }
+  // Mismo caso que arriba pero para lotes.cantidad — un lote de un producto a
+  // granel (ej. 5.5 kg de un lote) también necesita decimales.
+  try {
+    await pool.query(`ALTER TABLE lotes ALTER COLUMN cantidad TYPE NUMERIC`);
+    console.log('✅ lotes.cantidad admite decimales (granel)');
+  } catch(e) { console.error('⚠️ Migración lotes.cantidad decimal:', e.message); }
+  // Clasificación de medicamentos controlados (grupo I-VI, NOM-072-SSA1) —
+  // antes solo existía tiene_prescripcion (sí/no), sin distinguir qué tan
+  // estricto debe ser el control (identificación del comprador, folio que
+  // tenga que existir de verdad, etc.)
+  try {
+    await pool.query(`ALTER TABLE productos ADD COLUMN IF NOT EXISTS grupo_control TEXT DEFAULT 'ninguno'`);
+    console.log('✅ productos.grupo_control listo');
+  } catch(e) { console.error('⚠️ Migración productos.grupo_control:', e.message); }
   try {
     await pool.query(`ALTER TABLE productos ADD COLUMN IF NOT EXISTS imagenes_extra TEXT DEFAULT '[]'`);
     console.log('✅ productos.imagenes_extra listo');

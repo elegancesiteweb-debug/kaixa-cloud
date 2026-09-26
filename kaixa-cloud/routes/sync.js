@@ -76,6 +76,38 @@ async function ensureEsServicioColumn() {
   _esServicioColOk = true;
 }
 
+let _grupoControlColOk = false;
+async function ensureGrupoControlColumn() {
+  if (_grupoControlColOk) return;
+  await pool.query(`ALTER TABLE productos ADD COLUMN IF NOT EXISTS grupo_control TEXT DEFAULT 'ninguno'`);
+  _grupoControlColOk = true;
+}
+
+let _recetasTablesOk = false;
+async function ensureRecetasTables() {
+  if (_recetasTablesOk) return;
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS recetas (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      negocio_id UUID NOT NULL REFERENCES negocios(id) ON DELETE CASCADE,
+      sucursal_id UUID REFERENCES sucursales(id),
+      folio TEXT DEFAULT '', paciente_nombre TEXT DEFAULT '', paciente_edad TEXT DEFAULT '',
+      paciente_tel TEXT DEFAULT '', paciente_email TEXT DEFAULT '',
+      medico_nombre TEXT DEFAULT '', medico_cedula TEXT DEFAULT '', indicaciones TEXT DEFAULT '',
+      estado TEXT DEFAULT 'vigente', fecha_receta DATE, fecha_surtida TIMESTAMPTZ,
+      cajero TEXT DEFAULT '', notas TEXT DEFAULT '', activo BOOLEAN DEFAULT true,
+      creado_en TIMESTAMPTZ DEFAULT now(), actualizado_en TIMESTAMPTZ DEFAULT now()
+    )`);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS receta_items (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      receta_id UUID NOT NULL REFERENCES recetas(id) ON DELETE CASCADE,
+      producto_id UUID REFERENCES productos(id) ON DELETE SET NULL,
+      nombre TEXT DEFAULT '', cantidad NUMERIC DEFAULT 1
+    )`);
+  _recetasTablesOk = true;
+}
+
 // ── POST /api/sync/push ──────────────────────────────────────
 router.post('/push', async (req, res) => {
   const { negocio_id, sucursal_id, id: caja_id } = req.caja;
@@ -95,6 +127,8 @@ router.post('/push', async (req, res) => {
     await ensureMonedaCostoColumns();
     await ensureDescripcionColumn();
     await ensureEsServicioColumn();
+    await ensureGrupoControlColumn();
+    await ensureRecetasTables();
     await client.query('BEGIN');
 
     // Proveedores (van primero: los productos pueden referenciarlos por uuid)
@@ -121,8 +155,8 @@ router.post('/push', async (req, res) => {
           (id, negocio_id, sucursal_id, nombre, emoji, imagen_url, codigo_barras, precio, costo,
            stock_minimo, categoria_id, giro, por_peso, unidad_peso, tiene_prescripcion, cobertura_m2,
            peso_kg, largo_cm, ancho_cm, alto_cm, activo, proveedor_id, actualizado_en, moneda_costo, costo_moneda, imagenes_extra, descripcion,
-           disponible_domicilio, disponible_envio, entrega_rapida, es_servicio)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22, now(), $23,$24,$25,$26,$27,$28,$29,COALESCE($30::boolean,false))
+           disponible_domicilio, disponible_envio, entrega_rapida, es_servicio, grupo_control)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22, now(), $23,$24,$25,$26,$27,$28,$29,COALESCE($30::boolean,false),$31)
          ON CONFLICT (id) DO UPDATE SET
            sucursal_id=COALESCE(productos.sucursal_id, $3),
            nombre=$4, emoji=$5, imagen_url=COALESCE(NULLIF($6,''), productos.imagen_url), codigo_barras=$7, precio=$8, costo=$9,
@@ -133,7 +167,8 @@ router.post('/push', async (req, res) => {
            imagenes_extra=COALESCE(NULLIF($25,'[]'), productos.imagenes_extra),
            descripcion=$26,
            disponible_domicilio=$27, disponible_envio=$28, entrega_rapida=$29,
-           es_servicio=COALESCE($30::boolean, productos.es_servicio)`,
+           es_servicio=COALESCE($30::boolean, productos.es_servicio),
+           grupo_control=$31`,
         [p.uuid, negocio_id, prodSucursalId, p.nombre, p.emoji||'📦', p.imagen_url||'', p.codigo_barras||'',
          p.precio||0, p.costo||0, p.stock_minimo||5, p.categoria_id||null, p.giro||'tienda',
          !!p.por_peso, p.unidad_peso||'kg', !!p.tiene_prescripcion, parseFloat(p.cobertura_m2)||0,
@@ -142,7 +177,8 @@ router.post('/push', async (req, res) => {
          p.disponible_domicilio !== false, p.disponible_envio !== false, p.entrega_rapida === true,
          // El envío de fotos (segundo push) no trae este campo: si no viene, NO se sobreescribe
          // (antes lo dejaba en "no es servicio" y el servicio desaparecía de la tienda en línea).
-         (p.es_servicio === undefined || p.es_servicio === null) ? null : (p.es_servicio === true || p.es_servicio === 1)]
+         (p.es_servicio === undefined || p.es_servicio === null) ? null : (p.es_servicio === true || p.es_servicio === 1),
+         p.grupo_control || 'ninguno']
       );
       // Ajuste de stock si viene stock — leer + insertar en una sola
       // sentencia (evita la ventana de carrera entre leer el stock actual
@@ -281,6 +317,36 @@ router.post('/push', async (req, res) => {
           [negocio_id, sucursal_id, l.producto_uuid||null, '', l.numero_lote, l.cantidad||0, l.fecha_caducidad||null, activoLote]
         ).catch(() => client.query('ROLLBACK TO SAVEPOINT sp_lote').catch(()=>{}));
       }
+    }
+
+    // Recetas médicas (giro farmacia) — cada una en su propio SAVEPOINT,
+    // mismo patrón que lotes/kits: un dato raro en una no debe tumbar todo
+    // el push. Los medicamentos de la receta se resuelven por producto_uuid.
+    for (const r of (req.body.recetas || [])) {
+      await client.query('SAVEPOINT sp_receta');
+      try {
+        await client.query(
+          `INSERT INTO recetas (id, negocio_id, sucursal_id, folio, paciente_nombre, paciente_edad,
+             paciente_tel, paciente_email, medico_nombre, medico_cedula, indicaciones, estado,
+             fecha_receta, fecha_surtida, cajero, notas, activo, actualizado_en)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17, now())
+           ON CONFLICT (id) DO UPDATE SET
+             estado=$12, fecha_surtida=$14, activo=$17, actualizado_en=now()`,
+          [r.uuid, negocio_id, r.sucursal_id||sucursal_id, r.folio||'', r.paciente_nombre||'', r.paciente_edad||'',
+           r.paciente_tel||'', r.paciente_email||'', r.medico_nombre||'', r.medico_cedula||'', r.indicaciones||'',
+           r.estado||'vigente', r.fecha_receta||null, r.fecha_surtida||null, r.cajero||'', r.notas||'',
+           r.activo !== false]
+        );
+        if (r.items && r.items.length > 0) {
+          await client.query('DELETE FROM receta_items WHERE receta_id=$1', [r.uuid]);
+          for (const item of r.items) {
+            await client.query(
+              `INSERT INTO receta_items (receta_id, producto_id, nombre, cantidad) VALUES ($1,$2,$3,$4)`,
+              [r.uuid, item.producto_uuid||null, item.nombre||'', item.cantidad||1]
+            );
+          }
+        }
+      } catch(e) { await client.query('ROLLBACK TO SAVEPOINT sp_receta'); console.warn('Receta push error (se omite, no tumba el resto):', e.message); }
     }
 
     // Kits — cada uno en su propio SAVEPOINT: si UNO falla (dato raro,
@@ -473,11 +539,13 @@ router.get('/pull', async (req, res) => {
     await ensureMonedaCostoColumns();
     await ensureDescripcionColumn();
     await ensureEsServicioColumn();
-    const [productos, clientes, ventas, movimientos, lotesPull, kitsPull, promocionesPull, divisasPull, variantesPull, extrasPull, proveedoresPull, pedidosPull, empleadosPull] = await Promise.all([
+    await ensureGrupoControlColumn();
+    await ensureRecetasTables();
+    const [productos, clientes, ventas, movimientos, lotesPull, kitsPull, promocionesPull, divisasPull, variantesPull, extrasPull, proveedoresPull, pedidosPull, empleadosPull, recetasPull] = await Promise.all([
       pool.query(
         `SELECT p.id, p.negocio_id, p.sucursal_id, p.nombre, p.descripcion, p.emoji, p.codigo_barras,
                 p.precio, p.costo, p.stock_minimo, p.categoria_id, p.giro, p.por_peso,
-                p.unidad_peso, p.tiene_prescripcion, p.cobertura_m2,
+                p.unidad_peso, p.tiene_prescripcion, p.grupo_control, p.cobertura_m2,
                 p.peso_kg, p.largo_cm, p.ancho_cm, p.alto_cm, p.activo, p.creado_en, p.actualizado_en,
                 p.imagen_url, p.imagenes_extra, p.proveedor_id, p.moneda_costo, p.costo_moneda,
                 COALESCE(p.disponible_domicilio,true) AS disponible_domicilio,
@@ -590,6 +658,17 @@ router.get('/pull', async (req, res) => {
       pool.query(
         `SELECT nombre, rol, foto, activo FROM empleados WHERE negocio_id=$1`,
         [negocio_id]
+      ).catch(() => ({ rows: [] })),
+      pool.query(
+        `SELECT r.*,
+          COALESCE(json_agg(json_build_object(
+            'producto_uuid', ri.producto_id, 'nombre', ri.nombre, 'cantidad', ri.cantidad
+          )) FILTER (WHERE ri.id IS NOT NULL), '[]') AS items
+         FROM recetas r
+         LEFT JOIN receta_items ri ON ri.receta_id = r.id
+         WHERE r.negocio_id=$1 AND (r.sucursal_id=$2 OR r.sucursal_id IS NULL) AND r.actualizado_en > $3
+         GROUP BY r.id ORDER BY r.actualizado_en`,
+        [negocio_id, sucursal_id, since]
       ).catch(() => ({ rows: [] }))
     ]);
 
@@ -608,7 +687,8 @@ router.get('/pull', async (req, res) => {
       extras: extrasPull.rows,
       proveedores: proveedoresPull.rows,
       pedidos: pedidosPull.rows,
-      empleados: empleadosPull.rows
+      empleados: empleadosPull.rows,
+      recetas: recetasPull.rows
     });
   } catch (e) {
     res.status(500).json({ error: e.message });

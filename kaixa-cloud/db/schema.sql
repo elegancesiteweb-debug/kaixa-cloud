@@ -194,13 +194,48 @@ CREATE TABLE IF NOT EXISTS lotes (
   producto_id     UUID REFERENCES productos(id),
   nombre_producto TEXT DEFAULT '',
   numero_lote     TEXT NOT NULL,
-  cantidad        INTEGER DEFAULT 0,
+  cantidad        NUMERIC DEFAULT 0,
   fecha_caducidad DATE,
   activo          BOOLEAN DEFAULT true,
   creado_en       TIMESTAMPTZ DEFAULT now(),
   actualizado_en  TIMESTAMPTZ DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_lotes_sucursal ON lotes(sucursal_id);
+
+-- ── RECETAS MÉDICAS (giro farmacia) ─────────────────────────────
+-- Antes solo vivían en el SQLite local de cada PC — se perdían si se dañaba
+-- el equipo y no había forma de verlas desde otra sucursal ni desde el móvil.
+CREATE TABLE IF NOT EXISTS recetas (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  negocio_id      UUID NOT NULL REFERENCES negocios(id) ON DELETE CASCADE,
+  sucursal_id     UUID REFERENCES sucursales(id),
+  folio           TEXT DEFAULT '',
+  paciente_nombre TEXT DEFAULT '',
+  paciente_edad   TEXT DEFAULT '',
+  paciente_tel    TEXT DEFAULT '',
+  paciente_email  TEXT DEFAULT '',
+  medico_nombre   TEXT DEFAULT '',
+  medico_cedula   TEXT DEFAULT '',
+  indicaciones    TEXT DEFAULT '',
+  estado          TEXT DEFAULT 'vigente',
+  fecha_receta    DATE,
+  fecha_surtida   TIMESTAMPTZ,
+  cajero          TEXT DEFAULT '',
+  notas           TEXT DEFAULT '',
+  activo          BOOLEAN DEFAULT true,
+  creado_en       TIMESTAMPTZ DEFAULT now(),
+  actualizado_en  TIMESTAMPTZ DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_recetas_sucursal ON recetas(sucursal_id);
+CREATE INDEX IF NOT EXISTS idx_recetas_folio ON recetas(negocio_id, folio);
+
+CREATE TABLE IF NOT EXISTS receta_items (
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  receta_id    UUID NOT NULL REFERENCES recetas(id) ON DELETE CASCADE,
+  producto_id  UUID REFERENCES productos(id) ON DELETE SET NULL,
+  nombre       TEXT DEFAULT '',
+  cantidad     NUMERIC DEFAULT 1
+);
 
 -- ── PROVEEDORES ──────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS proveedores (

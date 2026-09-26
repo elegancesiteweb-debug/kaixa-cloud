@@ -64,7 +64,7 @@ router.get('/productos', async (req, res) => {
     let sql = `
       SELECT p.id, p.negocio_id, p.sucursal_id, p.nombre, p.emoji, p.codigo_barras,
              p.precio, p.costo, p.stock_minimo, p.categoria_id, p.giro, p.por_peso,
-             p.unidad_peso, p.tiene_prescripcion, p.activo, p.creado_en, p.actualizado_en,
+             p.unidad_peso, p.tiene_prescripcion, p.grupo_control, p.activo, p.creado_en, p.actualizado_en,
              CASE WHEN p.imagen_url IS NOT NULL AND p.imagen_url != '' THEN true ELSE false END as tiene_imagen,
              p.imagen_url, p.imagenes_extra,
              COALESCE(p.es_servicio,false) AS es_servicio,
@@ -93,11 +93,11 @@ router.post('/productos', async (req, res) => {
     const id = uuid();
     await pool.query(
       `INSERT INTO productos (id, negocio_id, sucursal_id, nombre, emoji, imagen_url, codigo_barras, precio, costo,
-        stock_minimo, categoria_id, giro, por_peso, unidad_peso, tiene_prescripcion)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
+        stock_minimo, categoria_id, giro, por_peso, unidad_peso, tiene_prescripcion, grupo_control)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
       [id, negocio_id, sucursal_id, p.nombre, p.emoji||'📦', p.imagen_url||'', p.codigo_barras||'',
        p.precio||0, p.costo||0, p.stock_minimo||5, p.categoria_id||null, p.giro||'tienda',
-       !!p.por_peso, p.unidad_peso||'kg', !!p.tiene_prescripcion]
+       !!p.por_peso, p.unidad_peso||'kg', !!p.tiene_prescripcion, p.grupo_control||'ninguno']
     );
     // Registrar stock inicial — acepta stock_inicial o stock
     const stockInicial = parseFloat(p.stock_inicial || p.stock || 0);
@@ -164,11 +164,11 @@ router.put('/productos/:id', async (req, res) => {
         imagen_url=COALESCE(NULLIF($3,''), imagen_url),
         codigo_barras=$4, precio=$5,
         costo=$6, stock_minimo=$7, categoria_id=$8, por_peso=$9, unidad_peso=$10,
-        tiene_prescripcion=$11, actualizado_en=now()
+        tiene_prescripcion=$11, grupo_control=$14, actualizado_en=now()
        WHERE id=$12 AND negocio_id=$13`,
       [p.nombre, p.emoji, p.imagen_url||'', p.codigo_barras||'', p.precio, p.costo, p.stock_minimo,
        p.categoria_id||null, !!p.por_peso, p.unidad_peso||'kg', !!p.tiene_prescripcion,
-       req.params.id, negocio_id]
+       req.params.id, negocio_id, p.grupo_control||'ninguno']
     );
     // Si viene stock, registrar movimiento de ajuste — leer el stock actual
     // e insertar el ajuste en UNA sola sentencia (en vez de un SELECT y
