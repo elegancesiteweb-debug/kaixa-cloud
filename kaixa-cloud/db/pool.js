@@ -1,6 +1,14 @@
 // db/pool.js — Conexión a PostgreSQL (DATABASE_URL la inyecta el proveedor
 // que se esté usando — Railway, Neon, Render Postgres, etc.)
-const { Pool } = require('pg');
+const { Pool, types } = require('pg');
+
+// Postgres devuelve las columnas NUMERIC/DECIMAL como TEXTO por defecto (para
+// no perder precisión en montos gigantes) — pero todo este código las trata
+// como números normales (comparar stock contra stock_minimo, sumar totales,
+// etc.). Sin este parser, "10" (texto) resultaba "menor" que "5" (comparación
+// de texto letra por letra), lo que hacía que productos con MUCHO stock se
+// marcaran como bajo/amarillo de forma inconsistente. OID 1700 = numeric.
+types.setTypeParser(1700, (val) => (val === null ? null : parseFloat(val)));
 
 // SSL para cualquier host remoto (todo proveedor de Postgres administrado lo
 // exige — Neon, Railway, Render Postgres...). Antes esto solo activaba SSL
