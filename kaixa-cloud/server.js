@@ -86,11 +86,26 @@ async function aplicarEsquema() {
   // Productos a granel (por_peso) guardan el stock en unidades fraccionarias
   // (ej. 7.5 kg) — con INTEGER, cada sincronización redondeaba el stock real.
   // NUMERIC no pierde nada para los negocios que venden solo por pieza.
+  // La vista stock_actual depende de stock_movimientos.cantidad — Postgres no
+  // deja cambiar el tipo de una columna con una vista dependiente, así que
+  // hay que tirarla y recrearla igual que en schema.sql. Se separa en su
+  // propio try/catch para que, si esto fallara, no bloquee la migración
+  // (independiente) de productos.stock_minimo de abajo.
   try {
+    await pool.query(`DROP VIEW IF EXISTS stock_actual`);
     await pool.query(`ALTER TABLE stock_movimientos ALTER COLUMN cantidad TYPE NUMERIC`);
+    await pool.query(`
+      CREATE OR REPLACE VIEW stock_actual AS
+        SELECT producto_id, sucursal_id, COALESCE(SUM(cantidad),0) AS stock
+        FROM stock_movimientos
+        GROUP BY producto_id, sucursal_id
+    `);
+    console.log('✅ stock_movimientos.cantidad admite decimales (granel)');
+  } catch(e) { console.error('⚠️ Migración stock_movimientos.cantidad decimal:', e.message); }
+  try {
     await pool.query(`ALTER TABLE productos ALTER COLUMN stock_minimo TYPE NUMERIC`);
-    console.log('✅ stock_movimientos.cantidad / productos.stock_minimo admiten decimales (granel)');
-  } catch(e) { console.error('⚠️ Migración stock decimal (granel):', e.message); }
+    console.log('✅ productos.stock_minimo admite decimales (granel)');
+  } catch(e) { console.error('⚠️ Migración productos.stock_minimo decimal:', e.message); }
   try {
     await pool.query(`ALTER TABLE productos ADD COLUMN IF NOT EXISTS imagenes_extra TEXT DEFAULT '[]'`);
     console.log('✅ productos.imagenes_extra listo');
