@@ -511,7 +511,7 @@ router.post('/push', async (req, res) => {
     res.json({ ok: true, recibidos: {
       productos: productos.length, clientes: clientes.length,
       ventas: ventas.length, movimientos: movimientos.length, lotes: lotes.length,
-      proveedores: proveedores.length, pedidos: pedidos.length
+      proveedores: proveedores.length, pedidos: pedidos.length, recetas: (req.body.recetas || []).length
     }});
   } catch (e) {
     try { await client.query('ROLLBACK'); } catch(eRb) {}
