@@ -61,7 +61,7 @@ CREATE TABLE IF NOT EXISTS productos (
   codigo_barras   TEXT DEFAULT '',
   precio          NUMERIC(12,2) DEFAULT 0,
   costo           NUMERIC(12,2) DEFAULT 0,
-  stock_minimo    INTEGER DEFAULT 5,
+  stock_minimo    NUMERIC DEFAULT 5,
   categoria_id    UUID REFERENCES categorias(id),
   giro            TEXT DEFAULT 'tienda',
   por_peso        BOOLEAN DEFAULT false,
@@ -86,7 +86,7 @@ CREATE TABLE IF NOT EXISTS stock_movimientos (
   sucursal_id     UUID REFERENCES sucursales(id),
   producto_id     UUID NOT NULL REFERENCES productos(id) ON DELETE CASCADE,
   caja_id         UUID REFERENCES cajas(id),
-  cantidad        INTEGER NOT NULL,
+  cantidad        NUMERIC NOT NULL,
   motivo          TEXT DEFAULT 'venta',
   venta_id        UUID DEFAULT NULL,
   creado_en       TIMESTAMPTZ DEFAULT now()

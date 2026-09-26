@@ -83,6 +83,14 @@ async function aplicarEsquema() {
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_productos_proveedor ON productos(proveedor_id)`);
     console.log('✅ productos.proveedor_id listo');
   } catch(e) { console.error('⚠️ Migración proveedor_id:', e.message); }
+  // Productos a granel (por_peso) guardan el stock en unidades fraccionarias
+  // (ej. 7.5 kg) — con INTEGER, cada sincronización redondeaba el stock real.
+  // NUMERIC no pierde nada para los negocios que venden solo por pieza.
+  try {
+    await pool.query(`ALTER TABLE stock_movimientos ALTER COLUMN cantidad TYPE NUMERIC`);
+    await pool.query(`ALTER TABLE productos ALTER COLUMN stock_minimo TYPE NUMERIC`);
+    console.log('✅ stock_movimientos.cantidad / productos.stock_minimo admiten decimales (granel)');
+  } catch(e) { console.error('⚠️ Migración stock decimal (granel):', e.message); }
   try {
     await pool.query(`ALTER TABLE productos ADD COLUMN IF NOT EXISTS imagenes_extra TEXT DEFAULT '[]'`);
     console.log('✅ productos.imagenes_extra listo');
@@ -592,7 +600,7 @@ app.post('/api/admin/set-stock', authAdmin, async (req, res) => {
          FROM stock_movimientos WHERE producto_id=$3 AND sucursal_id=$2
          HAVING ($4 - COALESCE(SUM(cantidad),0)) != 0
          RETURNING cantidad`,
-        [negocio_id, sucursal_id, id, parseInt(stock)]
+        [negocio_id, sucursal_id, id, parseFloat(stock)]
       );
       // Igual que arriba: sin tocar actualizado_en, el pull incremental de la
       // PC nunca ve que este producto cambió.

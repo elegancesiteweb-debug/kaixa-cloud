@@ -100,7 +100,7 @@ router.post('/productos', async (req, res) => {
        !!p.por_peso, p.unidad_peso||'kg', !!p.tiene_prescripcion]
     );
     // Registrar stock inicial — acepta stock_inicial o stock
-    const stockInicial = parseInt(p.stock_inicial || p.stock || 0);
+    const stockInicial = parseFloat(p.stock_inicial || p.stock || 0);
     if (stockInicial > 0) {
       await pool.query(
         `INSERT INTO stock_movimientos (id, negocio_id, sucursal_id, producto_id, caja_id, cantidad, motivo)
@@ -176,7 +176,7 @@ router.put('/productos/:id', async (req, res) => {
     // del mismo producto no lean el mismo número base antes de que la otra
     // escriba (condición de carrera real con PC + móvil editando seguido).
     if (p.stock !== undefined) {
-      const stockNuevo = parseInt(p.stock) || 0;
+      const stockNuevo = parseFloat(p.stock) || 0;
       // El INSERT...SELECT de abajo es una sola sentencia atómica, pero eso
       // solo protege DENTRO de esa sentencia — dos ediciones del MISMO
       // producto que lleguen en el mismo instante (PC y móvil casi a la vez)

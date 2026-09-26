@@ -149,7 +149,7 @@ router.post('/push', async (req, res) => {
       // e insertar el ajuste, si otra edición del mismo producto llega casi
       // al mismo tiempo, ej. PC y móvil editando seguido).
       if (p.stock !== undefined && p.stock !== null) {
-        const stockNuevo = parseInt(p.stock) || 0;
+        const stockNuevo = parseFloat(p.stock) || 0;
         // Igual que en api.js PUT /productos/:id: un candado por producto
         // (liberado solo al terminar esta transacción) para que este push y
         // una edición simultánea del móvil para el MISMO producto no lean el
@@ -622,7 +622,7 @@ router.get('/stock/:producto_id', async (req, res) => {
       `SELECT COALESCE(SUM(cantidad),0) AS stock FROM stock_movimientos WHERE producto_id=$1`,
       [req.params.producto_id]
     );
-    res.json({ stock: parseInt(r.rows[0].stock) });
+    res.json({ stock: parseFloat(r.rows[0].stock) });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
