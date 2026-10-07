@@ -180,6 +180,12 @@ router.post('/push', async (req, res) => {
          (p.es_servicio === undefined || p.es_servicio === null) ? null : (p.es_servicio === true || p.es_servicio === 1),
          p.grupo_control || 'ninguno']
       );
+      if (p.ubicacion !== undefined || p.piezas_por_caja !== undefined || p.precio_pieza !== undefined) {
+        await client.query(
+          'UPDATE productos SET ubicacion=COALESCE($2,ubicacion), piezas_por_caja=COALESCE($3,piezas_por_caja), precio_pieza=COALESCE($4,precio_pieza) WHERE id=$1',
+          [p.uuid, p.ubicacion ?? null, p.piezas_por_caja ?? null, p.precio_pieza ?? null]
+        );
+      }
       // Ajuste de stock si viene stock — leer + insertar en una sola
       // sentencia (evita la ventana de carrera entre leer el stock actual
       // e insertar el ajuste, si otra edición del mismo producto llega casi
@@ -546,6 +552,7 @@ router.get('/pull', async (req, res) => {
         `SELECT p.id, p.negocio_id, p.sucursal_id, p.nombre, p.descripcion, p.emoji, p.codigo_barras,
                 p.precio, p.costo, p.stock_minimo, p.categoria_id, p.giro, p.por_peso,
                 p.unidad_peso, p.tiene_prescripcion, p.grupo_control, p.cobertura_m2,
+                p.ubicacion, p.piezas_por_caja, p.precio_pieza,
                 p.peso_kg, p.largo_cm, p.ancho_cm, p.alto_cm, p.activo, p.creado_en, p.actualizado_en,
                 p.imagen_url, p.imagenes_extra, p.proveedor_id, p.moneda_costo, p.costo_moneda,
                 COALESCE(p.disponible_domicilio,true) AS disponible_domicilio,

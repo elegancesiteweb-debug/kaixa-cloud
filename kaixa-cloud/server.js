@@ -121,6 +121,11 @@ async function aplicarEsquema() {
     console.log('✅ productos.grupo_control listo');
   } catch(e) { console.error('⚠️ Migración productos.grupo_control:', e.message); }
   try {
+    await pool.query(`ALTER TABLE productos ADD COLUMN IF NOT EXISTS ubicacion TEXT DEFAULT ''`);
+    await pool.query(`ALTER TABLE productos ADD COLUMN IF NOT EXISTS piezas_por_caja INTEGER DEFAULT 0`);
+    await pool.query(`ALTER TABLE productos ADD COLUMN IF NOT EXISTS precio_pieza NUMERIC DEFAULT 0`);
+  } catch(e) { console.error('⚠️ Migración ubicación/piezas:', e.message); }
+  try {
     await pool.query(`ALTER TABLE productos ADD COLUMN IF NOT EXISTS imagenes_extra TEXT DEFAULT '[]'`);
     console.log('✅ productos.imagenes_extra listo');
   } catch(e) { console.error('⚠️ Migración imagenes_extra:', e.message); }
