@@ -84,7 +84,7 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:var(--ff);backgroun
 .notif-item .hace{font-size:10px;color:var(--text3);margin-top:3px}
 .content{flex:1;overflow-y:auto;overflow-x:hidden;padding-bottom:calc(var(--nav-h) + env(safe-area-inset-bottom) + 16px)}
 .content::-webkit-scrollbar{display:none}
-.bottomnav{height:calc(var(--nav-h) + env(safe-area-inset-bottom));background:transparent;display:flex;align-items:flex-end;justify-content:center;flex-shrink:0;padding:0 14px calc(env(safe-area-inset-bottom) + 12px)}
+.bottomnav{position:relative;z-index:110;height:calc(var(--nav-h) + env(safe-area-inset-bottom));background:transparent;display:flex;align-items:flex-end;justify-content:center;flex-shrink:0;padding:0 14px calc(env(safe-area-inset-bottom) + 12px)}
 .nav-dock{display:flex;align-items:center;justify-content:space-around;width:100%;max-width:420px;background:#fff;border:1px solid var(--border);border-radius:28px;padding:7px;box-shadow:0 16px 36px rgba(139,92,246,.22),0 1px 0 rgba(255,255,255,.6) inset}
 .nav-item{display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--text3);padding:2px;transition:transform .12s}
 .nav-item:active{transform:scale(.86)}
@@ -250,7 +250,7 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:var(--ff);backgroun
 .resumen-delta{font-size:11px;font-weight:700;padding:2px 7px;border-radius:10px;margin-left:6px}
 .resumen-delta.up{background:#d1fae5;color:#065f46}
 .resumen-delta.down{background:#fee2e2;color:#7f1d1d}
-.resumen-chart{position:relative;width:100%;height:120px;touch-action:none}
+.resumen-chart{position:relative;width:100%;height:120px;touch-action:pan-y}
 .resumen-tip{position:absolute;top:-6px;transform:translate(-50%,-100%);background:#1a1035;color:#fff;font-size:10px;font-weight:700;font-family:var(--fm);padding:4px 8px;border-radius:8px;white-space:nowrap;pointer-events:none;opacity:0;transition:opacity .1s}
 .resumen-tip.show{opacity:1}
 .vr-ico{width:40px;height:40px;border-radius:12px;background:var(--s2);display:flex;align-items:center;justify-content:center;flex-shrink:0;color:var(--accent)}
@@ -1203,7 +1203,13 @@ function pintarResumen() {
   dibujarResumenCanvas(buckets);
 }
 
+// Guarda los últimos datos calculados para poder volver a dibujar la
+// gráfica si el primer intento ocurrió con el contenedor en 0×0 (la
+// pantalla aún no había terminado de acomodarse) — antes, si eso pasaba,
+// la gráfica se quedaba en blanco para siempre, sin ningún reintento.
+var _resumenUltimosBuckets = null;
 function dibujarResumenCanvas(buckets) {
+  if (buckets) _resumenUltimosBuckets = buckets;
   var canvas = document.getElementById('resumenCanvas');
   if (!canvas) return;
   var wrap = canvas.parentElement;
@@ -1273,6 +1279,15 @@ function _resumenFin() {
   el.addEventListener('touchstart', _resumenPos, { passive: true });
   el.addEventListener('touchmove', _resumenPos, { passive: true });
   el.addEventListener('touchend', _resumenFin);
+  // Si el primer dibujo ocurrió con el contenedor todavía en 0×0 (pantalla
+  // recién mostrada), esto lo vuelve a dibujar en cuanto toma su tamaño
+  // real, y también cada vez que cambia (p. ej. al girar el teléfono).
+  if (typeof ResizeObserver !== 'undefined' && el.parentElement) {
+    var ro = new ResizeObserver(function() {
+      if (_resumenUltimosBuckets) dibujarResumenCanvas(_resumenUltimosBuckets);
+    });
+    ro.observe(el.parentElement);
+  }
 })();
 
 // ══ POS ══
