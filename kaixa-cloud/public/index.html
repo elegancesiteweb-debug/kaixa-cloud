@@ -1016,16 +1016,16 @@ function cerrarSesion() {
   loadEmpleadosLogin();
 }
 
-var _dashCargando = false;
+// Antes esto tenía un seguro para no disparar cargas superpuestas si el
+// usuario entraba y salía del dashboard muy rápido — pero si UNA sola
+// carga se quedaba esperando al servidor (red lenta, el servidor
+// despertando), ese seguro se quedaba trabado hasta por 20 segundos
+// (el límite de apiFetch) e IGNORABA EN SILENCIO cualquier intento de
+// volver a entrar al dashboard durante ese rato — se sentía exactamente
+// como "se traba solo en el dashboard", porque las demás pantallas no
+// tenían ese seguro. Se quitó: cada visita al dashboard carga de nuevo,
+// sin excepción.
 async function loadDash() {
-  // Si el usuario entra y sale del dashboard varias veces seguidas antes
-  // de que termine de cargar, esto evita que se disparen varias tandas de
-  // peticiones al servidor a la vez, una encima de la otra.
-  if (_dashCargando) return;
-  _dashCargando = true;
-  try { await _loadDashInterno(); } finally { _dashCargando = false; }
-}
-async function _loadDashInterno() {
   var hoy = new Date();
   var hora = hoy.getHours();
   var saludo = hora < 12 ? 'Buenos días' : hora < 19 ? 'Buenas tardes' : 'Buenas noches';
@@ -1125,17 +1125,15 @@ function ventaRow(v) {
 // que se iban acumulando con las de la vez anterior si no habían
 // terminado. Con esta caché, cada foto se pide una sola vez por sesión.
 var _peopleFotoCache = {};
-var _peopleCargando = false;
 async function renderDashPeople() {
   var cont = document.getElementById('dashPeopleRow');
-  if (!cont || _peopleCargando) return;
-  _peopleCargando = true;
+  if (!cont) return;
   try {
     if (!allClis.length) {
       var r = await apiFetch('/api/clientes?imgs=0');
       if (r && r.ok) { var d = await r.json(); if (Array.isArray(d)) allClis = d; }
     }
-  } catch(e) {} finally { _peopleCargando = false; }
+  } catch(e) {}
   if (!allClis.length) { cont.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:4px 16px 8px">Aún no tienes clientes registrados</div>'; return; }
   var top = allClis.slice().sort(function(a, b) { return (b.puntos || 0) - (a.puntos || 0); }).slice(0, 8);
   var masHtml = allClis.length > top.length
