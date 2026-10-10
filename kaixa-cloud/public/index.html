@@ -250,8 +250,11 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:var(--ff);backgroun
 .resumen-delta{font-size:11px;font-weight:700;padding:2px 7px;border-radius:10px;margin-left:6px}
 .resumen-delta.up{background:#d1fae5;color:#065f46}
 .resumen-delta.down{background:#fee2e2;color:#7f1d1d}
-.resumen-chart{position:relative;width:100%;height:120px;touch-action:pan-y}
-.resumen-tip{position:absolute;top:-6px;transform:translate(-50%,-100%);background:#1a1035;color:#fff;font-size:10px;font-weight:700;font-family:var(--fm);padding:4px 8px;border-radius:8px;white-space:nowrap;pointer-events:none;opacity:0;transition:opacity .1s}
+.resumen-chart{position:relative;width:100%;height:110px;display:flex;align-items:flex-end;gap:3px}
+.resumen-bar-wrap{flex:1;height:100%;display:flex;align-items:flex-end;cursor:pointer;min-width:2px}
+.resumen-bar{width:100%;min-height:3px;border-radius:4px 4px 0 0;background:var(--grad);transition:height .25s ease;opacity:.85}
+.resumen-bar-wrap:active .resumen-bar{opacity:1}
+.resumen-tip{position:absolute;top:-6px;transform:translate(-50%,-100%);background:#1a1035;color:#fff;font-size:10px;font-weight:700;font-family:var(--fm);padding:4px 8px;border-radius:8px;white-space:nowrap;pointer-events:none;opacity:0;transition:opacity .15s;left:50%}
 .resumen-tip.show{opacity:1}
 .vr-ico{width:40px;height:40px;border-radius:12px;background:var(--s2);display:flex;align-items:center;justify-content:center;flex-shrink:0;color:var(--accent)}
 .vr-ico svg{width:18px;height:18px}
@@ -390,10 +393,7 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:var(--ff);backgroun
           <div><span class="resumen-total" id="resumenTotal">$0</span><span class="resumen-delta up" id="resumenDelta" style="display:none"></span></div>
           <div class="resumen-chips" id="resumenChips"></div>
         </div>
-        <div class="resumen-chart">
-          <canvas id="resumenCanvas"></canvas>
-          <div class="resumen-tip" id="resumenTip"></div>
-        </div>
+        <div class="resumen-chart" id="resumenChart"></div>
       </div>
       <div class="section-header"><h2>Últimas ventas</h2><span class="see-all" onclick="navTo('ventas')">Ver todo</span></div>
       <div id="dashVentasList"></div>
@@ -1016,7 +1016,16 @@ function cerrarSesion() {
   loadEmpleadosLogin();
 }
 
+var _dashCargando = false;
 async function loadDash() {
+  // Si el usuario entra y sale del dashboard varias veces seguidas antes
+  // de que termine de cargar, esto evita que se disparen varias tandas de
+  // peticiones al servidor a la vez, una encima de la otra.
+  if (_dashCargando) return;
+  _dashCargando = true;
+  try { await _loadDashInterno(); } finally { _dashCargando = false; }
+}
+async function _loadDashInterno() {
   var hoy = new Date();
   var hora = hoy.getHours();
   var saludo = hora < 12 ? 'Buenos días' : hora < 19 ? 'Buenas tardes' : 'Buenas noches';
@@ -1110,15 +1119,23 @@ function ventaRow(v) {
 // ── "Clientes frecuentes": tira de avatares en Inicio (estilo "People" del
 // diseño de referencia). Reutiliza allClis si ya se cargó en la pestaña
 // Clientes; si no, hace su propia consulta ligera. ──
+// Antes esto pedía la foto de cada cliente frecuente CADA VEZ que se
+// entraba al dashboard, sin guardar nada — si varios clientes tenían
+// foto, cada regreso a Inicio disparaba otra tanda de peticiones nuevas,
+// que se iban acumulando con las de la vez anterior si no habían
+// terminado. Con esta caché, cada foto se pide una sola vez por sesión.
+var _peopleFotoCache = {};
+var _peopleCargando = false;
 async function renderDashPeople() {
   var cont = document.getElementById('dashPeopleRow');
-  if (!cont) return;
+  if (!cont || _peopleCargando) return;
+  _peopleCargando = true;
   try {
     if (!allClis.length) {
       var r = await apiFetch('/api/clientes');
       if (r && r.ok) { var d = await r.json(); if (Array.isArray(d)) allClis = d; }
     }
-  } catch(e) {}
+  } catch(e) {} finally { _peopleCargando = false; }
   if (!allClis.length) { cont.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:4px 16px 8px">Aún no tienes clientes registrados</div>'; return; }
   var top = allClis.slice().sort(function(a, b) { return (b.puntos || 0) - (a.puntos || 0); }).slice(0, 8);
   var masHtml = allClis.length > top.length
@@ -1126,13 +1143,17 @@ async function renderDashPeople() {
     : '';
   cont.innerHTML = top.map(function(c) {
     var ini = c.nombre.split(' ').map(function(p) { return p[0] || ''; }).join('').substring(0, 2).toUpperCase();
+    var foto = _peopleFotoCache[c.id];
+    var avatarHtml = foto ? '<img src="' + foto + '">' : ini;
     return '<div class="people-it" onclick="abrirEditCli(\'' + c.id + '\')">' +
-      '<div class="people-av" id="davatar-' + c.id + '">' + ini + '</div>' +
+      '<div class="people-av" id="davatar-' + c.id + '">' + avatarHtml + '</div>' +
       '<div class="people-nm">' + (c.nombre.split(' ')[0] || '') + '</div></div>';
   }).join('') + masHtml;
-  top.filter(function(c) { return c.tiene_foto; }).forEach(function(c) {
+  top.filter(function(c) { return c.tiene_foto && !_peopleFotoCache[c.id]; }).forEach(function(c) {
     apiFetch('/api/clientes/' + c.id + '/foto').then(function(r) { return r && r.ok ? r.json() : null; }).then(function(d) {
-      var el = d && d.foto && document.getElementById('davatar-' + c.id);
+      if (!d || !d.foto) return;
+      _peopleFotoCache[c.id] = d.foto;
+      var el = document.getElementById('davatar-' + c.id);
       if (el) el.innerHTML = '<img src="' + d.foto + '">';
     }).catch(function() {});
   });
@@ -1200,95 +1221,41 @@ function pintarResumen() {
       dEl.textContent = (delta >= 0 ? '+' : '') + delta.toFixed(1) + '%';
     } else dEl.style.display = 'none';
   }
-  dibujarResumenCanvas(buckets);
+  dibujarResumenBarras(buckets);
 }
 
-// Guarda los últimos datos calculados para poder volver a dibujar la
-// gráfica si el primer intento ocurrió con el contenedor en 0×0 (la
-// pantalla aún no había terminado de acomodarse) — antes, si eso pasaba,
-// la gráfica se quedaba en blanco para siempre, sin ningún reintento.
-var _resumenUltimosBuckets = null;
-function dibujarResumenCanvas(buckets) {
-  if (buckets) _resumenUltimosBuckets = buckets;
-  var canvas = document.getElementById('resumenCanvas');
-  if (!canvas) return;
-  var wrap = canvas.parentElement;
-  var w = wrap.clientWidth, h = wrap.clientHeight;
-  if (!w || !h) return;
-  var dpr = window.devicePixelRatio || 1;
-  canvas.width = w * dpr; canvas.height = h * dpr;
-  canvas.style.width = w + 'px'; canvas.style.height = h + 'px';
-  var ctx = canvas.getContext('2d');
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  ctx.clearRect(0, 0, w, h);
-  if (!buckets.length) return;
+// Antes esto era una gráfica de canvas con observador de tamaño y eventos
+// de touch/mouse propios — varios reportes de que la app se trababa al
+// volver al dashboard apuntaban justo a esa pieza. Se reemplazó por barras
+// simples en divs: nada de canvas, nada que depender del tamaño exacto del
+// contenedor, nada de listeners de touch propios. Mucho más difícil que
+// esto trabe nada.
+var _resumenBucketsActuales = [];
+function dibujarResumenBarras(buckets) {
+  var cont = document.getElementById('resumenChart');
+  if (!cont) return;
+  _resumenBucketsActuales = buckets;
+  if (!buckets.length) { cont.innerHTML = ''; return; }
   var max = Math.max.apply(null, buckets.map(function(b) { return b.monto; })) || 1;
-  var padTop = 10, padBot = 6;
-  var usableH = h - padTop - padBot;
-  var stepX = buckets.length > 1 ? w / (buckets.length - 1) : w;
-  var pts = buckets.map(function(b, i) {
-    return { x: buckets.length > 1 ? i * stepX : w / 2, y: padTop + usableH - (b.monto / max) * usableH };
-  });
-  var fillGrad = ctx.createLinearGradient(0, 0, 0, h);
-  fillGrad.addColorStop(0, 'rgba(139,92,246,.45)');
-  fillGrad.addColorStop(1, 'rgba(139,92,246,0)');
-  ctx.beginPath();
-  ctx.moveTo(pts[0].x, h);
-  pts.forEach(function(p) { ctx.lineTo(p.x, p.y); });
-  ctx.lineTo(pts[pts.length - 1].x, h);
-  ctx.closePath();
-  ctx.fillStyle = fillGrad;
-  ctx.fill();
-  ctx.beginPath();
-  var lineGrad = ctx.createLinearGradient(0, 0, w, 0);
-  lineGrad.addColorStop(0, '#8b5cf6'); lineGrad.addColorStop(1, '#d946ef');
-  pts.forEach(function(p, i) { if (i === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y); });
-  ctx.strokeStyle = lineGrad;
-  ctx.lineWidth = 2.5;
-  ctx.lineJoin = 'round'; ctx.lineCap = 'round';
-  ctx.stroke();
-  canvas._pts = pts; canvas._buckets = buckets;
+  cont.innerHTML = buckets.map(function(b, i) {
+    var pct = Math.max(3, Math.round((b.monto / max) * 100));
+    return '<div class="resumen-bar-wrap" onclick="_resumenMostrarTip(this,' + i + ')"><div class="resumen-bar" style="height:' + pct + '%"></div></div>';
+  }).join('') + '<div class="resumen-tip" id="resumenTip"></div>';
 }
 
-function _resumenPos(ev) {
-  var canvas = document.getElementById('resumenCanvas');
-  if (!canvas || !canvas._pts) return;
-  var rect = canvas.getBoundingClientRect();
-  var clientX = ev.touches ? ev.touches[0].clientX : ev.clientX;
-  var x = clientX - rect.left;
-  var pts = canvas._pts, buckets = canvas._buckets;
-  var idx = 0, best = Infinity;
-  pts.forEach(function(p, i) { var d = Math.abs(p.x - x); if (d < best) { best = d; idx = i; } });
+function _resumenMostrarTip(el, idx) {
+  var b = _resumenBucketsActuales[idx];
   var tip = document.getElementById('resumenTip');
-  if (!tip) return;
-  var b = buckets[idx];
+  if (!b || !tip) return;
   var lbl = b.ini.toLocaleDateString('es-MX', { day: 'numeric', month: 'short' });
   tip.textContent = fmt(b.monto) + ' · ' + lbl;
-  tip.style.left = Math.max(28, Math.min(pts[idx].x, rect.width - 28)) + 'px';
+  var cont = document.getElementById('resumenChart');
+  var left = el.offsetLeft + el.offsetWidth / 2;
+  tip.style.left = Math.max(28, Math.min(left, cont.clientWidth - 28)) + 'px';
   tip.classList.add('show');
+  clearTimeout(tip._t);
+  tip._t = setTimeout(function() { tip.classList.remove('show'); }, 2000);
 }
-function _resumenFin() {
-  var tip = document.getElementById('resumenTip');
-  if (tip) tip.classList.remove('show');
-}
-(function() {
-  var el = document.getElementById('resumenCanvas');
-  if (!el) return;
-  el.addEventListener('mousemove', _resumenPos);
-  el.addEventListener('mouseleave', _resumenFin);
-  el.addEventListener('touchstart', _resumenPos, { passive: true });
-  el.addEventListener('touchmove', _resumenPos, { passive: true });
-  el.addEventListener('touchend', _resumenFin);
-  // Si el primer dibujo ocurrió con el contenedor todavía en 0×0 (pantalla
-  // recién mostrada), esto lo vuelve a dibujar en cuanto toma su tamaño
-  // real, y también cada vez que cambia (p. ej. al girar el teléfono).
-  if (typeof ResizeObserver !== 'undefined' && el.parentElement) {
-    var ro = new ResizeObserver(function() {
-      if (_resumenUltimosBuckets) dibujarResumenCanvas(_resumenUltimosBuckets);
-    });
-    ro.observe(el.parentElement);
-  }
-})();
 
 // ══ POS ══
 async function loadPos() {
