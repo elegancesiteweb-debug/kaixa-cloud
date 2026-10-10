@@ -1081,7 +1081,7 @@ async function _loadDashInterno() {
     }
   } catch(e) {}
   try {
-    var rp = await apiFetch('/api/productos');
+    var rp = await apiFetch('/api/productos?imgs=0');
     if (rp && rp.ok) {
       var prods2 = await rp.json();
       if (Array.isArray(prods2)) {
@@ -1132,7 +1132,7 @@ async function renderDashPeople() {
   _peopleCargando = true;
   try {
     if (!allClis.length) {
-      var r = await apiFetch('/api/clientes');
+      var r = await apiFetch('/api/clientes?imgs=0');
       if (r && r.ok) { var d = await r.json(); if (Array.isArray(d)) allClis = d; }
     }
   } catch(e) {} finally { _peopleCargando = false; }
@@ -5363,7 +5363,12 @@ async function subirFotoCli(input, id) {
   reader.readAsDataURL(file);
 }
 
-// Auto-refresh inventario, POS y clientes cada 30 segundos
+// Auto-refresh inventario, POS y clientes. Antes era cada 30s — con un
+// catálogo o cartera de clientes con fotos reales, cada vuelta vuelve a
+// bajar esas imágenes completas, y si coincidía con que el usuario ya
+// estaba cambiando de pantalla (p. ej. de vuelta al dashboard), esa
+// descarga pesada competía por la conexión justo en ese momento. Se alargó
+// a 2 minutos — sigue refrescando solo, solo que con menos frecuencia.
 setInterval(function() {
   if (typeof currentScreen === 'undefined') return;
   // No vaciar allProds para conservar imgCache
@@ -5371,7 +5376,7 @@ setInterval(function() {
   else if (currentScreen === 'pos') loadPos();
   else if (currentScreen === 'clientes') loadCli();
   else if (currentScreen === 'empleados') loadEmpleados();
-}, 30000);
+}, 120000);
 
 // ── Campana de notificaciones — corre sin importar la pantalla actual ──
 setInterval(cargarNotificacionesMovil, 30000);

@@ -60,13 +60,20 @@ async function ensureApartadosRecordatorioTable() {
 router.get('/productos', async (req, res) => {
   try {
     const { negocio_id, sucursal_id } = req.caja;
-    const { giro, q } = req.query;
+    const { giro, q, imgs } = req.query;
+    // ?imgs=0 — pide la lista SIN imagen_url/imagenes_extra. Esos campos
+    // pueden pesar varios MB en total con un catálogo real con fotos, y
+    // antes se mandaban siempre aunque la pantalla que pidiera la lista
+    // no fuera a mostrar ninguna foto (p. ej. el dashboard solo cuenta
+    // productos con stock bajo). El resto de pantallas (Inventario, Cobrar)
+    // siguen pidiendo la lista completa, como siempre.
+    const camposImg = imgs === '0' ? '' : 'p.imagen_url, p.imagenes_extra,';
     let sql = `
       SELECT p.id, p.negocio_id, p.sucursal_id, p.nombre, p.emoji, p.codigo_barras,
              p.precio, p.costo, p.stock_minimo, p.categoria_id, p.giro, p.por_peso,
              p.unidad_peso, p.tiene_prescripcion, p.grupo_control, p.activo, p.creado_en, p.actualizado_en,
              CASE WHEN p.imagen_url IS NOT NULL AND p.imagen_url != '' THEN true ELSE false END as tiene_imagen,
-             p.imagen_url, p.imagenes_extra,
+             ${camposImg}
              COALESCE(p.es_servicio,false) AS es_servicio,
              CASE WHEN COALESCE(p.es_servicio,false) THEN 0 ELSE COALESCE(s.stock,0) END AS stock,
              c.nombre AS categoria_nombre, c.emoji AS categoria_emoji
@@ -228,8 +235,14 @@ router.get('/clientes', async (req, res) => {
   try {
     await ensureClientesFiadoColumns();
     const { negocio_id } = req.caja;
-    const { q } = req.query;
-    let sql = `SELECT id, negocio_id, nombre, telefono, email, rfc, giro, puntos, saldo, foto, activo,
+    const { q, imgs } = req.query;
+    // ?imgs=0 — pide la lista sin la foto completa de cada cliente (puede
+    // pesar varios MB con muchos clientes con foto). Siempre se manda
+    // tiene_foto para que, si hace falta, se pueda pedir la foto de uno
+    // en particular con GET /clientes/:id/foto.
+    const campoFoto = imgs === '0' ? '' : 'foto,';
+    let sql = `SELECT id, negocio_id, nombre, telefono, email, rfc, giro, puntos, saldo, ${campoFoto} activo,
+               (foto IS NOT NULL AND foto <> '') AS tiene_foto,
                fecha_proximo_pago, frecuencia_pago, es_mayorista, creado_en, actualizado_en
                FROM clientes WHERE negocio_id=$1 AND activo=true`;
     const params = [negocio_id];
@@ -273,8 +286,21 @@ router.put('/clientes/:id', async (req, res) => {
   try {
     await ensureClientesFiadoColumns();
     const c = req.body;
-    const updateFields = [c.nombre, c.telefono||'', c.email||'', c.rfc||'', c.puntos||0, c.saldo||0];
-    let updateSql = `UPDATE clientes SET nombre=$1, telefono=$2, email=$3, rfc=$4, puntos=$5, saldo=$6`;
+    // Antes esto ponía puntos/saldo en 0 cada vez que se guardaba el
+    // cliente, aunque la pantalla de edición (nombre/teléfono/email) nunca
+    // mandara esos campos — cualquier edición le borraba los puntos y el
+    // saldo a favor al cliente. Ahora, igual que foto/fecha_proximo_pago,
+    // solo se tocan si realmente vienen en la petición.
+    const updateFields = [c.nombre, c.telefono||'', c.email||'', c.rfc||''];
+    let updateSql = `UPDATE clientes SET nombre=$1, telefono=$2, email=$3, rfc=$4`;
+    if (c.puntos !== undefined) {
+      updateFields.push(c.puntos || 0);
+      updateSql += `, puntos=$${updateFields.length}`;
+    }
+    if (c.saldo !== undefined) {
+      updateFields.push(c.saldo || 0);
+      updateSql += `, saldo=$${updateFields.length}`;
+    }
     if (c.foto !== undefined) {
       updateFields.push(c.foto);
       updateSql += `, foto=$${updateFields.length}`;
