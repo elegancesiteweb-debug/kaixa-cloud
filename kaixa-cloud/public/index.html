@@ -1060,9 +1060,20 @@ async function loadDash() {
   var saludo = hora < 12 ? 'Buenos días' : hora < 19 ? 'Buenas tardes' : 'Buenas noches';
   document.getElementById('dashFecha').textContent = saludo;
   document.getElementById('dashNegocio').textContent = (usuario && usuario.nombre) ? usuario.nombre : 'Mi Negocio';
+  // Las 4 peticiones del dashboard se piden TODAS A LA VEZ, no una detrás
+  // de otra — antes se esperaba a que ventas terminara para recién
+  // empezar empleados, a empleados para empezar productos, etc. Si cada
+  // una tardaba 1-2s, esperarlas en fila sumaba varios segundos de espera
+  // visible (la barra de carga de arriba se sentía mucho más lenta que
+  // en otras pantallas, que solo hacen UNA petición). Pedidas en
+  // paralelo, el tiempo total es el de la más lenta, no la suma de todas.
+  var pVentas = apiFetch('/api/ventas');
+  var pEmpleados = apiFetch('/api/empleados');
+  var pProductos = apiFetch('/api/productos?imgs=0');
+  var pClientes = allClis.length ? null : apiFetch('/api/clientes?imgs=0');
   try {
     var hoyStr = hoy.toLocaleDateString('en-CA');
-    var r = await apiFetch('/api/ventas');
+    var r = await pVentas;
     if (miGen !== _dashGen) return; // ya hay una carga más nueva — no seguir con esta
     var todas = r && r.ok ? await r.json() : [];
     if (!Array.isArray(todas)) todas = [];
@@ -1103,7 +1114,7 @@ async function loadDash() {
   } catch(e) { if (miGen === _dashGen) notif('Error cargando datos', 'err'); }
   if (miGen !== _dashGen) return;
   try {
-    var re = await apiFetch('/api/empleados');
+    var re = await pEmpleados;
     if (miGen !== _dashGen) return;
     if (re && re.ok) {
       var emps = await re.json();
@@ -1115,7 +1126,7 @@ async function loadDash() {
   } catch(e) {}
   if (miGen !== _dashGen) return;
   try {
-    var rp = await apiFetch('/api/productos?imgs=0');
+    var rp = await pProductos;
     if (miGen !== _dashGen) return;
     if (rp && rp.ok) {
       var prods2 = await rp.json();
@@ -1125,7 +1136,7 @@ async function loadDash() {
       }
     }
   } catch(e) {}
-  if (miGen === _dashGen) renderDashPeople(miGen);
+  if (miGen === _dashGen) renderDashPeople(miGen, pClientes);
 }
 
 // Ícono de línea según la forma de pago, para la burbuja de cada venta.
@@ -1161,12 +1172,14 @@ function ventaRow(v) {
 // que se iban acumulando con las de la vez anterior si no habían
 // terminado. Con esta caché, cada foto se pide una sola vez por sesión.
 var _peopleFotoCache = {};
-async function renderDashPeople(miGen) {
+async function renderDashPeople(miGen, pClientes) {
   var cont = document.getElementById('dashPeopleRow');
   if (!cont) return;
   try {
     if (!allClis.length) {
-      var r = await apiFetch('/api/clientes?imgs=0');
+      // pClientes ya se pidió desde loadDash() junto con las otras 3
+      // peticiones, en paralelo — aquí solo se espera su resultado.
+      var r = await (pClientes || apiFetch('/api/clientes?imgs=0'));
       if (miGen !== undefined && miGen !== _dashGen) return; // una carga mas nueva ya tomo esta pantalla
       if (r && r.ok) { var d = await r.json(); if (Array.isArray(d)) allClis = d; }
     }
