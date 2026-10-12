@@ -1,5 +1,5 @@
 // Service Worker — Kaixa Pro PWA
-const CACHE = 'kaixa-v2';
+const CACHE = 'kaixa-v3';
 const ASSETS = ['/', '/index.html', '/kaixa_icon.png', '/kaixa_mascot.png'];
 
 self.addEventListener('install', function(e) {

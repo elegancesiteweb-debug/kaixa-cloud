@@ -576,6 +576,7 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:var(--ff);backgroun
               <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M12 0C5.373 0 0 5.373 0 12c0 2.156.578 4.239 1.68 6.08L0 24l6.026-1.664A11.94 11.94 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.938c-1.902 0-3.767-.51-5.4-1.475l-.387-.229-4.03 1.114 1.075-3.925-.252-.402A9.925 9.925 0 012.062 12c0-5.484 4.454-9.938 9.938-9.938 5.483 0 9.938 4.454 9.938 9.938 0 5.483-4.455 9.938-9.938 9.938zm5.472-7.556c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.29.173-1.414-.074-.124-.272-.198-.57-.347z"/></svg>
             </a>
           </div>
+          <div style="font-size:10px;color:var(--text3);margin-top:14px" id="footerVersion">Versión 2026-10-12.1</div>
         </div>
       </div>
     </div>
@@ -666,9 +667,30 @@ function fmt(n) { return '$' + Number(n || 0).toLocaleString('es-MX', { minimumF
 function fmtS(n) { return '$' + Number(n || 0).toFixed(0); }
 
 // ── Service worker + notificaciones push (stock bajo / lotes por caducar) ──
+// Antes esto solo registraba el service worker y ya — si el usuario dejaba
+// la app abierta en segundo plano (lo normal al usar un PWA instalado) en
+// vez de cerrarla del todo, el JavaScript que ya tenía cargado en memoria
+// se quedaba corriendo tal cual, sin importar cuántas veces se actualizara
+// el servidor. Ahora: (1) en cuanto una versión nueva del service worker
+// toma control, la página se recarga sola una vez; (2) cada vez que el
+// usuario vuelve a traer la app al frente (después de tenerla en segundo
+// plano), se revisa si hay una versión nueva en el servidor.
+var _kaixaVersion = '2026-10-12.1';
+var _swRecargando = false;
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', function() {
-    navigator.serviceWorker.register('/sw.js').catch(function(e) { console.warn('SW no registrado:', e.message); });
+    navigator.serviceWorker.register('/sw.js').then(function(reg) {
+      if (!reg) return;
+      reg.update().catch(function() {});
+      document.addEventListener('visibilitychange', function() {
+        if (document.visibilityState === 'visible') reg.update().catch(function() {});
+      });
+    }).catch(function(e) { console.warn('SW no registrado:', e.message); });
+    navigator.serviceWorker.addEventListener('controllerchange', function() {
+      if (_swRecargando) return;
+      _swRecargando = true;
+      location.reload();
+    });
   });
 }
 
