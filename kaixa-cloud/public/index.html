@@ -1158,6 +1158,25 @@ async function loadDash() {
     }
   } catch(e) {}
   if (miGen === _dashGen) renderDashPeople(miGen, pClientes);
+  if (miGen === _dashGen) _forzarRepintado();
+}
+
+// Algunos navegadores (sobre todo Safari en iPhone) a veces no vuelven a
+// pintar bien un contenedor con scroll cuando varias de sus secciones
+// cambian de contenido casi al mismo tiempo — se quedan partes en blanco
+// hasta que algo más (como hacer scroll) obliga al navegador a
+// recalcular. Esto fuerza ese recálculo justo después de actualizar el
+// dashboard, con el truco de siempre: leer una medida del elemento entre
+// dos cambios de estilo, lo que obliga al navegador a aplicar los
+// cambios pendientes en vez de dejarlos acumulados.
+function _forzarRepintado() {
+  var el = document.getElementById('mainContent');
+  if (!el) return;
+  requestAnimationFrame(function() {
+    el.style.transform = 'translateZ(0)';
+    void el.offsetHeight;
+    el.style.transform = '';
+  });
 }
 
 // Ícono de línea según la forma de pago, para la burbuja de cada venta.
@@ -1227,6 +1246,7 @@ async function renderDashPeople(miGen, pClientes) {
       if (el) el.innerHTML = '<img src="' + d.foto + '">';
     }).catch(function() {});
   });
+  _forzarRepintado();
 }
 
 // ── "Resumen": tarjeta de ingresos por rango con gráfica (estilo "Financial
