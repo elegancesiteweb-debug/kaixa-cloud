@@ -1191,6 +1191,37 @@ async function loadDash() {
   } catch(e) {}
   if (miGen === _dashGen) renderDashPeople(miGen, pClientes);
   if (miGen === _dashGen) _forzarRepintado();
+  if (miGen === _dashGen) _diagnosticarDashboard();
+}
+
+// El usuario confirmó: no hay errores de JavaScript, el contenido no se
+// arregla solo esperando, y sí se arregla saliendo y volviendo a entrar —
+// eso apunta a que el HTML sí se está generando bien, pero el contenedor
+// donde vive se está quedando con una altura casi en cero en ese momento,
+// recortando visualmente casi todo aunque esté ahí. Esto mide los tamaños
+// reales medio segundo después de cargar y, SOLO si la tarjeta morada
+// (que normalmente mide 250px+ de alto) se ve sospechosamente chica, lo
+// reporta con números reales a la misma caja de errores — para confirmar
+// o descartar esto con datos del teléfono en vez de seguir adivinando.
+function _diagnosticarDashboard() {
+  setTimeout(function() {
+    try {
+      var hero = document.querySelector('.dash-hero');
+      if (!hero) return;
+      var alturaHero = hero.getBoundingClientRect().height;
+      if (alturaHero >= 100) return; // tamaño normal, nada que reportar
+      var content = document.getElementById('mainContent');
+      var sub = document.getElementById('sub-dash');
+      var chart = document.getElementById('resumenChart');
+      var people = document.getElementById('dashPeopleRow');
+      var r = function(el) { if (!el) return 'no-existe'; var b = el.getBoundingClientRect(); return Math.round(b.width) + 'x' + Math.round(b.height); };
+      _mostrarErrorVisible('DIAGNOSTICO tamaños — hero:' + r(hero) + ' mainContent:' + r(content) +
+        ' sub-dash:' + r(sub) + ' resumenChart:' + r(chart) + ' dashPeopleRow:' + r(people) +
+        ' scrollTop:' + (content ? content.scrollTop : '?') +
+        ' displays:' + (content ? getComputedStyle(content).display : '?') + '/' + (sub ? getComputedStyle(sub).display : '?') +
+        ' windowSize:' + window.innerWidth + 'x' + window.innerHeight);
+    } catch(e) {}
+  }, 500);
 }
 
 // Algunos navegadores (sobre todo Safari en iPhone) a veces no vuelven a
