@@ -1017,15 +1017,22 @@ function cerrarSesion() {
 }
 
 // Antes esto tenía un seguro para no disparar cargas superpuestas si el
-// usuario entraba y salía del dashboard muy rápido — pero si UNA sola
-// carga se quedaba esperando al servidor (red lenta, el servidor
-// despertando), ese seguro se quedaba trabado hasta por 20 segundos
-// (el límite de apiFetch) e IGNORABA EN SILENCIO cualquier intento de
-// volver a entrar al dashboard durante ese rato — se sentía exactamente
-// como "se traba solo en el dashboard", porque las demás pantallas no
-// tenían ese seguro. Se quitó: cada visita al dashboard carga de nuevo,
-// sin excepción.
+// usuario entraba y salía del dashboard muy rápido, pero ESE seguro se
+// quedaba trabado en silencio si una sola carga tardaba mucho (ver nota
+// vieja más abajo en el historial). Se quitó, pero quitarlo sin más abría
+// OTRO problema: si de verdad hay dos cargas al mismo tiempo (el usuario
+// entra, sale y vuelve a entrar rápido), cada una escribe en los mismos
+// elementos del dashboard sin saber de la otra — la que responde primero
+// puede terminar de escribir DESPUÉS que la otra, dejando una mezcla
+// (p. ej. el monto de una carga vieja con la gráfica de la más nueva, o
+// la gráfica sin el total si una sobreescribe a la otra a medias). La
+// solución correcta es un número de "generación": cada entrada al
+// dashboard arranca de inmediato (nunca se ignora), pero si ya empezó
+// una más nueva, la vieja deja de escribir en la pantalla en cuanto se
+// da cuenta — así nunca se mezclan los resultados de dos cargas.
+var _dashGen = 0;
 async function loadDash() {
+  var miGen = ++_dashGen;
   var hoy = new Date();
   var hora = hoy.getHours();
   var saludo = hora < 12 ? 'Buenos días' : hora < 19 ? 'Buenas tardes' : 'Buenas noches';
@@ -1034,6 +1041,7 @@ async function loadDash() {
   try {
     var hoyStr = hoy.toLocaleDateString('en-CA');
     var r = await apiFetch('/api/ventas');
+    if (miGen !== _dashGen) return; // ya hay una carga más nueva — no seguir con esta
     var todas = r && r.ok ? await r.json() : [];
     if (!Array.isArray(todas)) todas = [];
     todas = todas.filter(function(v) { return (v.estado || '') !== 'cancelada'; });
@@ -1070,26 +1078,32 @@ async function loadDash() {
           '</div></div>';
       }).join('');
     renderResumenChart(todas);
-  } catch(e) { notif('Error cargando datos', 'err'); }
+  } catch(e) { if (miGen === _dashGen) notif('Error cargando datos', 'err'); }
+  if (miGen !== _dashGen) return;
   try {
     var re = await apiFetch('/api/empleados');
+    if (miGen !== _dashGen) return;
     if (re && re.ok) {
       var emps = await re.json();
+      if (miGen !== _dashGen) return;
       if (Array.isArray(emps)) {
         document.getElementById('dashEmps').textContent = emps.filter(function(e) { return e.ultima_entrada && !e.ultima_salida; }).length;
       }
     }
   } catch(e) {}
+  if (miGen !== _dashGen) return;
   try {
     var rp = await apiFetch('/api/productos?imgs=0');
+    if (miGen !== _dashGen) return;
     if (rp && rp.ok) {
       var prods2 = await rp.json();
+      if (miGen !== _dashGen) return;
       if (Array.isArray(prods2)) {
         document.getElementById('dashStock').textContent = prods2.filter(function(p) { return !p.es_servicio && p.stock <= (p.stock_minimo || 5); }).length;
       }
     }
   } catch(e) {}
-  renderDashPeople();
+  if (miGen === _dashGen) renderDashPeople(miGen);
 }
 
 // Ícono de línea según la forma de pago, para la burbuja de cada venta.
@@ -1125,15 +1139,17 @@ function ventaRow(v) {
 // que se iban acumulando con las de la vez anterior si no habían
 // terminado. Con esta caché, cada foto se pide una sola vez por sesión.
 var _peopleFotoCache = {};
-async function renderDashPeople() {
+async function renderDashPeople(miGen) {
   var cont = document.getElementById('dashPeopleRow');
   if (!cont) return;
   try {
     if (!allClis.length) {
       var r = await apiFetch('/api/clientes?imgs=0');
+      if (miGen !== undefined && miGen !== _dashGen) return; // una carga mas nueva ya tomo esta pantalla
       if (r && r.ok) { var d = await r.json(); if (Array.isArray(d)) allClis = d; }
     }
   } catch(e) {}
+  if (miGen !== undefined && miGen !== _dashGen) return;
   if (!allClis.length) { cont.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:4px 16px 8px">Aún no tienes clientes registrados</div>'; return; }
   var top = allClis.slice().sort(function(a, b) { return (b.puntos || 0) - (a.puntos || 0); }).slice(0, 8);
   var masHtml = allClis.length > top.length
