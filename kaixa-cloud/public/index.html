@@ -609,6 +609,38 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:var(--ff);backgroun
   <div class="notif-panel" id="notifPanel"></div>
 </div>
 <script>
+// ── Captura de errores visible ───────────────────────────────────────────
+// Varias rondas de arreglos no resolvieron un problema que el usuario sigue
+// viendo en su propio teléfono, y que no se pudo reproducir en las pruebas.
+// En vez de seguir adivinando, esto muestra en pantalla cualquier error de
+// JavaScript que pase de verdad en el dispositivo (la consola del navegador
+// no es algo a lo que un usuario normal tenga acceso fácil) — con un botón
+// para copiarlo y poder mandarlo tal cual.
+var _erroresVisibles = [];
+function _mostrarErrorVisible(msg) {
+  _erroresVisibles.push(new Date().toLocaleTimeString() + ' — ' + msg);
+  var el = document.getElementById('cajaErrores');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'cajaErrores';
+    el.style.cssText = 'position:fixed;top:0;left:0;right:0;background:#7f1d1d;color:#fff;font-size:11px;font-family:monospace;z-index:99999;max-height:45vh;overflow-y:auto;box-shadow:0 4px 16px rgba(0,0,0,.4)';
+    el.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:#991b1b;position:sticky;top:0">' +
+      '<b>Errores detectados</b>' +
+      '<span><button onclick="(function(){navigator.clipboard&&navigator.clipboard.writeText(_erroresVisibles.join(String.fromCharCode(10,10))).then(function(){alert(\'Copiado\')})})()" style="margin-right:8px;font-size:11px;padding:3px 8px;border-radius:6px;border:none">Copiar</button>' +
+      '<button onclick="document.getElementById(\'cajaErrores\').remove()" style="font-size:11px;padding:3px 8px;border-radius:6px;border:none">Cerrar</button></span></div>' +
+      '<div id="listaErrores" style="padding:8px 10px;white-space:pre-wrap;word-break:break-all"></div>';
+    document.body.appendChild(el);
+  }
+  document.getElementById('listaErrores').textContent = _erroresVisibles.join('\n\n');
+}
+window.addEventListener('error', function(ev) {
+  _mostrarErrorVisible('Error: ' + (ev.message || 'desconocido') + ' — ' + (ev.filename || '').split('/').pop() + ':' + ev.lineno + ' (pantalla: ' + (typeof currentScreen !== 'undefined' ? currentScreen : '?') + ')');
+});
+window.addEventListener('unhandledrejection', function(ev) {
+  var r = ev.reason;
+  _mostrarErrorVisible('Promesa rechazada: ' + (r && r.message ? r.message : String(r)) + ' (pantalla: ' + (typeof currentScreen !== 'undefined' ? currentScreen : '?') + ')');
+});
+
 var API = localStorage.getItem('kaixa_api') || '';
 var TOKEN = localStorage.getItem('kaixa_token') || '';
 var usuario = JSON.parse(localStorage.getItem('kaixa_usuario') || 'null');
@@ -1132,7 +1164,7 @@ async function loadDash() {
           '</div></div>';
       }).join('');
     renderResumenChart(todas);
-  } catch(e) { if (miGen === _dashGen) notif('Error cargando datos', 'err'); }
+  } catch(e) { if (miGen === _dashGen) { notif('Error cargando datos', 'err'); _mostrarErrorVisible('loadDash: ' + e.message); } }
   if (miGen !== _dashGen) return;
   try {
     var re = await pEmpleados;
@@ -1226,26 +1258,35 @@ async function renderDashPeople(miGen, pClientes) {
   } catch(e) {}
   if (miGen !== undefined && miGen !== _dashGen) return;
   if (!allClis.length) { cont.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:4px 16px 8px">Aún no tienes clientes registrados</div>'; return; }
-  var top = allClis.slice().sort(function(a, b) { return (b.puntos || 0) - (a.puntos || 0); }).slice(0, 8);
-  var masHtml = allClis.length > top.length
-    ? '<div class="people-it" onclick="navTo(\'clientes\')"><div class="people-av more">+' + (allClis.length - top.length) + '</div><div class="people-nm">Más</div></div>'
-    : '';
-  cont.innerHTML = top.map(function(c) {
-    var ini = c.nombre.split(' ').map(function(p) { return p[0] || ''; }).join('').substring(0, 2).toUpperCase();
-    var foto = _peopleFotoCache[c.id];
-    var avatarHtml = foto ? '<img src="' + foto + '">' : ini;
-    return '<div class="people-it" onclick="abrirEditCli(\'' + c.id + '\')">' +
-      '<div class="people-av" id="davatar-' + c.id + '">' + avatarHtml + '</div>' +
-      '<div class="people-nm">' + (c.nombre.split(' ')[0] || '') + '</div></div>';
-  }).join('') + masHtml;
-  top.filter(function(c) { return c.tiene_foto && !_peopleFotoCache[c.id]; }).forEach(function(c) {
-    apiFetch('/api/clientes/' + c.id + '/foto').then(function(r) { return r && r.ok ? r.json() : null; }).then(function(d) {
-      if (!d || !d.foto) return;
-      _peopleFotoCache[c.id] = d.foto;
-      var el = document.getElementById('davatar-' + c.id);
-      if (el) el.innerHTML = '<img src="' + d.foto + '">';
-    }).catch(function() {});
-  });
+  try {
+    var top = allClis.slice().sort(function(a, b) { return (b.puntos || 0) - (a.puntos || 0); }).slice(0, 8);
+    var masHtml = allClis.length > top.length
+      ? '<div class="people-it" onclick="navTo(\'clientes\')"><div class="people-av more">+' + (allClis.length - top.length) + '</div><div class="people-nm">Más</div></div>'
+      : '';
+    // (c.nombre||'') por si algún cliente real no tiene nombre guardado —
+    // antes c.nombre.split(...) directo podía reventar con un solo
+    // registro así, y dejaba TODA la fila sin actualizar (se quedaba con
+    // lo que hubiera de la vez anterior, pareciendo una carga trabada).
+    cont.innerHTML = top.map(function(c) {
+      var nombre = c.nombre || 'Sin nombre';
+      var ini = nombre.split(' ').map(function(p) { return p[0] || ''; }).join('').substring(0, 2).toUpperCase() || '?';
+      var foto = _peopleFotoCache[c.id];
+      var avatarHtml = foto ? '<img src="' + foto + '">' : ini;
+      return '<div class="people-it" onclick="abrirEditCli(\'' + c.id + '\')">' +
+        '<div class="people-av" id="davatar-' + c.id + '">' + avatarHtml + '</div>' +
+        '<div class="people-nm">' + (nombre.split(' ')[0] || 'Sin nombre') + '</div></div>';
+    }).join('') + masHtml;
+    top.filter(function(c) { return c.tiene_foto && !_peopleFotoCache[c.id]; }).forEach(function(c) {
+      apiFetch('/api/clientes/' + c.id + '/foto').then(function(r) { return r && r.ok ? r.json() : null; }).then(function(d) {
+        if (!d || !d.foto) return;
+        _peopleFotoCache[c.id] = d.foto;
+        var el = document.getElementById('davatar-' + c.id);
+        if (el) el.innerHTML = '<img src="' + d.foto + '">';
+      }).catch(function() {});
+    });
+  } catch(e) {
+    _mostrarErrorVisible('renderDashPeople: ' + e.message);
+  }
   _forzarRepintado();
 }
 
