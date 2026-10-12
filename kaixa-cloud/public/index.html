@@ -240,22 +240,6 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:var(--ff);backgroun
 .people-av img{width:100%;height:100%;object-fit:cover}
 .people-av.more{background:var(--s2);color:var(--accent);font-size:18px;box-shadow:none;border:1px solid var(--border)}
 .people-nm{font-size:10px;color:var(--text2);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:56px}
-.resumen-card{background:#fff;border-radius:22px;margin:0 16px 10px;padding:16px;overflow:hidden;box-shadow:0 4px 16px rgba(139,92,246,.1)}
-.resumen-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
-.resumen-chips{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none}
-.resumen-chips::-webkit-scrollbar{display:none}
-.resumen-chip{padding:6px 12px;border-radius:20px;font-size:11px;font-weight:700;color:var(--text3);background:var(--s1);cursor:pointer;flex-shrink:0;white-space:nowrap}
-.resumen-chip.on{background:var(--grad);color:#fff}
-.resumen-total{font-size:22px;font-weight:800;color:var(--text);font-family:var(--fm)}
-.resumen-delta{font-size:11px;font-weight:700;padding:2px 7px;border-radius:10px;margin-left:6px}
-.resumen-delta.up{background:#d1fae5;color:#065f46}
-.resumen-delta.down{background:#fee2e2;color:#7f1d1d}
-.resumen-chart{position:relative;width:100%;height:110px;display:flex;align-items:flex-end;gap:3px}
-.resumen-bar-wrap{flex:1;height:100%;display:flex;align-items:flex-end;cursor:pointer;min-width:2px}
-.resumen-bar{width:100%;min-height:3px;border-radius:4px 4px 0 0;background:var(--grad);transition:height .25s ease;opacity:.85}
-.resumen-bar-wrap:active .resumen-bar{opacity:1}
-.resumen-tip{position:absolute;top:-6px;transform:translate(-50%,-100%);background:#1a1035;color:#fff;font-size:10px;font-weight:700;font-family:var(--fm);padding:4px 8px;border-radius:8px;white-space:nowrap;pointer-events:none;opacity:0;transition:opacity .15s;left:50%}
-.resumen-tip.show{opacity:1}
 .vr-ico{width:40px;height:40px;border-radius:12px;background:var(--s2);display:flex;align-items:center;justify-content:center;flex-shrink:0;color:var(--accent)}
 .vr-ico svg{width:18px;height:18px}
 .venta-row{padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px}
@@ -387,15 +371,7 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:var(--ff);backgroun
       </div>
       <div class="section-header" style="margin-top:18px"><h2>Clientes frecuentes</h2><span class="see-all" onclick="navTo('clientes')">Ver todo</span></div>
       <div class="people-row" id="dashPeopleRow"></div>
-      <div class="section-header" style="margin-top:4px"><h2>Resumen</h2></div>
-      <div class="resumen-card">
-        <div class="resumen-top">
-          <div><span class="resumen-total" id="resumenTotal">$0</span><span class="resumen-delta up" id="resumenDelta" style="display:none"></span></div>
-          <div class="resumen-chips" id="resumenChips"></div>
-        </div>
-        <div class="resumen-chart" id="resumenChart"></div>
-      </div>
-      <div class="section-header"><h2>Últimas ventas</h2><span class="see-all" onclick="navTo('ventas')">Ver todo</span></div>
+      <div class="section-header" style="margin-top:4px"><h2>Últimas ventas</h2><span class="see-all" onclick="navTo('ventas')">Ver todo</span></div>
       <div id="dashVentasList"></div>
       <div style="padding:16px">
         <div class="section-header" style="padding:0;margin-bottom:12px"><h2><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1em;height:1em;vertical-align:-0.15em;flex-shrink:0"><circle cx="12" cy="8" r="7"/><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"/></svg> Top productos</h2></div>
@@ -1106,6 +1082,19 @@ function cerrarSesion() {
 // una más nueva, la vieja deja de escribir en la pantalla en cuanto se
 // da cuenta — así nunca se mezclan los resultados de dos cargas.
 var _dashGen = 0;
+// Si el usuario ya se fue de Inicio (por ejemplo, entró a Inventario) antes
+// de que terminen las peticiones de loadDash(), el contador de generación
+// NO detecta eso — solo detecta choques entre dos cargas de Inicio, no una
+// salida a OTRA pantalla. Sin este chequeo, esa carga vieja sigue corriendo
+// de fondo y termina escribiendo en elementos que ya están ocultos
+// (sub-dash con display:none), lo que un diagnóstico real llegó a capturar
+// como "sub-dash:0x0 displays:block/none" — contenido correcto, pero
+// escrito en una pantalla que nadie está viendo en ese momento.
+function _dashVisible() {
+  var sub = document.getElementById('sub-dash');
+  return !!(sub && sub.classList.contains('active'));
+}
+
 async function loadDash() {
   var miGen = ++_dashGen;
   var hoy = new Date();
@@ -1127,7 +1116,7 @@ async function loadDash() {
   try {
     var hoyStr = hoy.toLocaleDateString('en-CA');
     var r = await pVentas;
-    if (miGen !== _dashGen) return; // ya hay una carga más nueva — no seguir con esta
+    if (miGen !== _dashGen || !_dashVisible()) return; // ya hay una carga más nueva, o el usuario ya se fue de Inicio
     var todas = r && r.ok ? await r.json() : [];
     if (!Array.isArray(todas)) todas = [];
     todas = todas.filter(function(v) { return (v.estado || '') !== 'cancelada'; });
@@ -1163,15 +1152,14 @@ async function loadDash() {
           '<div class="card-info"><div class="card-title">' + p[0] + '</div><div class="card-sub">' + p[1] + ' vendidas</div></div>' +
           '</div></div>';
       }).join('');
-    renderResumenChart(todas);
   } catch(e) { if (miGen === _dashGen) { notif('Error cargando datos', 'err'); _mostrarErrorVisible('loadDash: ' + e.message); } }
   if (miGen !== _dashGen) return;
   try {
     var re = await pEmpleados;
-    if (miGen !== _dashGen) return;
+    if (miGen !== _dashGen || !_dashVisible()) return;
     if (re && re.ok) {
       var emps = await re.json();
-      if (miGen !== _dashGen) return;
+      if (miGen !== _dashGen || !_dashVisible()) return;
       if (Array.isArray(emps)) {
         document.getElementById('dashEmps').textContent = emps.filter(function(e) { return e.ultima_entrada && !e.ultima_salida; }).length;
       }
@@ -1180,18 +1168,18 @@ async function loadDash() {
   if (miGen !== _dashGen) return;
   try {
     var rp = await pProductos;
-    if (miGen !== _dashGen) return;
+    if (miGen !== _dashGen || !_dashVisible()) return;
     if (rp && rp.ok) {
       var prods2 = await rp.json();
-      if (miGen !== _dashGen) return;
+      if (miGen !== _dashGen || !_dashVisible()) return;
       if (Array.isArray(prods2)) {
         document.getElementById('dashStock').textContent = prods2.filter(function(p) { return !p.es_servicio && p.stock <= (p.stock_minimo || 5); }).length;
       }
     }
   } catch(e) {}
-  if (miGen === _dashGen) renderDashPeople(miGen, pClientes);
-  if (miGen === _dashGen) _forzarRepintado();
-  if (miGen === _dashGen) _diagnosticarDashboard();
+  if (miGen === _dashGen && _dashVisible()) renderDashPeople(miGen, pClientes);
+  if (miGen === _dashGen && _dashVisible()) _forzarRepintado();
+  if (miGen === _dashGen && _dashVisible()) _diagnosticarDashboard();
 }
 
 // El usuario confirmó: no hay errores de JavaScript, el contenido no se
@@ -1206,17 +1194,17 @@ async function loadDash() {
 function _diagnosticarDashboard() {
   setTimeout(function() {
     try {
+      if (!_dashVisible()) return; // el usuario ya se fue de Inicio en estos 500ms — no es un colapso real
       var hero = document.querySelector('.dash-hero');
       if (!hero) return;
       var alturaHero = hero.getBoundingClientRect().height;
       if (alturaHero >= 100) return; // tamaño normal, nada que reportar
       var content = document.getElementById('mainContent');
       var sub = document.getElementById('sub-dash');
-      var chart = document.getElementById('resumenChart');
       var people = document.getElementById('dashPeopleRow');
       var r = function(el) { if (!el) return 'no-existe'; var b = el.getBoundingClientRect(); return Math.round(b.width) + 'x' + Math.round(b.height); };
       _mostrarErrorVisible('DIAGNOSTICO tamaños — hero:' + r(hero) + ' mainContent:' + r(content) +
-        ' sub-dash:' + r(sub) + ' resumenChart:' + r(chart) + ' dashPeopleRow:' + r(people) +
+        ' sub-dash:' + r(sub) + ' dashPeopleRow:' + r(people) +
         ' scrollTop:' + (content ? content.scrollTop : '?') +
         ' displays:' + (content ? getComputedStyle(content).display : '?') + '/' + (sub ? getComputedStyle(sub).display : '?') +
         ' windowSize:' + window.innerWidth + 'x' + window.innerHeight);
@@ -1283,11 +1271,11 @@ async function renderDashPeople(miGen, pClientes) {
       // pClientes ya se pidió desde loadDash() junto con las otras 3
       // peticiones, en paralelo — aquí solo se espera su resultado.
       var r = await (pClientes || apiFetch('/api/clientes?imgs=0'));
-      if (miGen !== undefined && miGen !== _dashGen) return; // una carga mas nueva ya tomo esta pantalla
+      if (miGen !== undefined && (miGen !== _dashGen || !_dashVisible())) return; // una carga mas nueva ya tomo esta pantalla, o el usuario ya se fue de Inicio
       if (r && r.ok) { var d = await r.json(); if (Array.isArray(d)) allClis = d; }
     }
   } catch(e) {}
-  if (miGen !== undefined && miGen !== _dashGen) return;
+  if (miGen !== undefined && (miGen !== _dashGen || !_dashVisible())) return;
   if (!allClis.length) { cont.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:4px 16px 8px">Aún no tienes clientes registrados</div>'; return; }
   try {
     var top = allClis.slice().sort(function(a, b) { return (b.puntos || 0) - (a.puntos || 0); }).slice(0, 8);
@@ -1319,104 +1307,6 @@ async function renderDashPeople(miGen, pClientes) {
     _mostrarErrorVisible('renderDashPeople: ' + e.message);
   }
   _forzarRepintado();
-}
-
-// ── "Resumen": tarjeta de ingresos por rango con gráfica (estilo "Financial
-// Overview" del diseño de referencia). Todo se calcula en el navegador a
-// partir de las ventas ya descargadas — sin pedir nada nuevo al servidor. ──
-var RESUMEN_RANGOS = [{ d: 7, l: '7D' }, { d: 30, l: '1M' }, { d: 90, l: '3M' }, { d: 365, l: '1A' }];
-var _resumenRango = 7;
-var _resumenVentas = [];
-
-function resumenSetRango(dias) {
-  _resumenRango = dias;
-  pintarResumen();
-}
-
-function renderResumenChart(todasVentas) {
-  _resumenVentas = todasVentas;
-  var chips = document.getElementById('resumenChips');
-  if (chips) {
-    chips.innerHTML = RESUMEN_RANGOS.map(function(r) {
-      return '<div class="resumen-chip' + (r.d === _resumenRango ? ' on' : '') + '" onclick="resumenSetRango(' + r.d + ')">' + r.l + '</div>';
-    }).join('');
-  }
-  pintarResumen();
-}
-
-function pintarResumen() {
-  var chips = document.getElementById('resumenChips');
-  if (chips) {
-    Array.prototype.forEach.call(chips.children, function(el, i) {
-      el.classList.toggle('on', RESUMEN_RANGOS[i].d === _resumenRango);
-    });
-  }
-  var dias = _resumenRango;
-  var hoy = new Date();
-  var desde = new Date(new Date(hoy.toDateString()).getTime() - (dias - 1) * 86400000);
-  var enRango = _resumenVentas.filter(function(v) {
-    var f = new Date(v.creado_en);
-    return f >= desde && f <= hoy;
-  });
-  var nBuckets = Math.min(dias, 30);
-  var tamDia = dias / nBuckets;
-  var buckets = [];
-  for (var i = 0; i < nBuckets; i++) {
-    var ini = new Date(desde.getTime() + i * tamDia * 86400000);
-    var fin = new Date(desde.getTime() + (i + 1) * tamDia * 86400000);
-    var monto = enRango.filter(function(v) { var f = new Date(v.creado_en); return f >= ini && f < fin; })
-      .reduce(function(s, v) { return s + Number(v.total || 0); }, 0);
-    buckets.push({ ini: ini, fin: fin, monto: monto });
-  }
-  var total = enRango.reduce(function(s, v) { return s + Number(v.total || 0); }, 0);
-  var totEl = document.getElementById('resumenTotal');
-  if (totEl) totEl.textContent = fmt(total);
-  var mitad = Math.floor(buckets.length / 2) || 1;
-  var m1 = buckets.slice(0, mitad).reduce(function(s, b) { return s + b.monto; }, 0);
-  var m2 = buckets.slice(mitad).reduce(function(s, b) { return s + b.monto; }, 0);
-  var delta = m1 > 0 ? ((m2 - m1) / m1 * 100) : (m2 > 0 ? 100 : 0);
-  var dEl = document.getElementById('resumenDelta');
-  if (dEl) {
-    if (enRango.length) {
-      dEl.style.display = 'inline-block';
-      dEl.className = 'resumen-delta ' + (delta >= 0 ? 'up' : 'down');
-      dEl.textContent = (delta >= 0 ? '+' : '') + delta.toFixed(1) + '%';
-    } else dEl.style.display = 'none';
-  }
-  dibujarResumenBarras(buckets);
-}
-
-// Antes esto era una gráfica de canvas con observador de tamaño y eventos
-// de touch/mouse propios — varios reportes de que la app se trababa al
-// volver al dashboard apuntaban justo a esa pieza. Se reemplazó por barras
-// simples en divs: nada de canvas, nada que depender del tamaño exacto del
-// contenedor, nada de listeners de touch propios. Mucho más difícil que
-// esto trabe nada.
-var _resumenBucketsActuales = [];
-function dibujarResumenBarras(buckets) {
-  var cont = document.getElementById('resumenChart');
-  if (!cont) return;
-  _resumenBucketsActuales = buckets;
-  if (!buckets.length) { cont.innerHTML = ''; return; }
-  var max = Math.max.apply(null, buckets.map(function(b) { return b.monto; })) || 1;
-  cont.innerHTML = buckets.map(function(b, i) {
-    var pct = Math.max(3, Math.round((b.monto / max) * 100));
-    return '<div class="resumen-bar-wrap" onclick="_resumenMostrarTip(this,' + i + ')"><div class="resumen-bar" style="height:' + pct + '%"></div></div>';
-  }).join('') + '<div class="resumen-tip" id="resumenTip"></div>';
-}
-
-function _resumenMostrarTip(el, idx) {
-  var b = _resumenBucketsActuales[idx];
-  var tip = document.getElementById('resumenTip');
-  if (!b || !tip) return;
-  var lbl = b.ini.toLocaleDateString('es-MX', { day: 'numeric', month: 'short' });
-  tip.textContent = fmt(b.monto) + ' · ' + lbl;
-  var cont = document.getElementById('resumenChart');
-  var left = el.offsetLeft + el.offsetWidth / 2;
-  tip.style.left = Math.max(28, Math.min(left, cont.clientWidth - 28)) + 'px';
-  tip.classList.add('show');
-  clearTimeout(tip._t);
-  tip._t = setTimeout(function() { tip.classList.remove('show'); }, 2000);
 }
 
 // ══ POS ══
