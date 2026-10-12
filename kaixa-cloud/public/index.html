@@ -630,22 +630,35 @@ function headers() { return { 'Content-Type': 'application/json', 'x-caja-token'
 // quedaba "trabada" sin ningún aviso porque fetch() no tiene límite de
 // tiempo propio. Con el límite de 20s, si no hay respuesta se corta solo y
 // se avisa, en vez de dejar la app esperando para siempre en silencio.
+// opts.signal (opcional): para poder cancelar la petición desde afuera —
+// p. ej. si el usuario sale de Inventario antes de que responda, no tiene
+// caso esperar ni procesar una respuesta pesada (con fotos) que ya nadie
+// va a ver, y que además ocuparía el hilo principal justo cuando se
+// necesita libre para dibujar la pantalla a la que se cambió.
 async function apiFetch(path, opts) {
   var ctrl = new AbortController();
   var tope = setTimeout(function() { ctrl.abort(); }, 20000);
+  var externo = opts && opts.signal;
+  var onExterno = function() { ctrl.abort(); };
+  if (externo) {
+    if (externo.aborted) { clearTimeout(tope); return null; }
+    externo.addEventListener('abort', onExterno);
+  }
   try {
     var merged = Object.assign({}, opts || {});
+    delete merged.signal;
     merged.headers = Object.assign({}, headers(), (opts && opts.headers) || {});
     merged.signal = ctrl.signal;
     var r = await fetch(API + path, merged);
     return r;
   } catch(e) {
-    if (typeof notif === 'function') {
+    if (!(externo && externo.aborted) && typeof notif === 'function') {
       notif(e && e.name === 'AbortError' ? 'El servidor tardó en responder — intenta de nuevo' : 'Sin conexión — intenta de nuevo', 'err');
     }
     return null;
   } finally {
     clearTimeout(tope);
+    if (externo) externo.removeEventListener('abort', onExterno);
   }
 }
 
@@ -799,6 +812,14 @@ var currentScreen = 'dash';
 var prevScreen = 'dash';
 
 function navTo(screen) {
+  // Si se sale de Inventario o Cobrar sin que su petición de productos (con
+  // fotos, puede pesar varios MB) haya terminado, se cancela aquí mismo —
+  // antes de empezar a dibujar la pantalla nueva. Sin esto, el navegador
+  // seguía procesando esa respuesta pesada de fondo aunque ya nadie la
+  // fuera a ver, y eso competía por el procesador justo cuando la pantalla
+  // a la que se cambió (p. ej. el dashboard) lo necesitaba libre.
+  if (screen !== 'inv' && typeof _invAbortCtrl !== 'undefined' && _invAbortCtrl) { _invAbortCtrl.abort(); _invAbortCtrl = null; }
+  if (screen !== 'pos' && typeof _posAbortCtrl !== 'undefined' && _posAbortCtrl) { _posAbortCtrl.abort(); _posAbortCtrl = null; }
   prevScreen = currentScreen;
   currentScreen = screen;
   document.querySelectorAll('.subscreen').forEach(function(s) { s.classList.remove('active'); });
@@ -1307,12 +1328,17 @@ function _resumenMostrarTip(el, idx) {
 }
 
 // ══ POS ══
+var _posAbortCtrl = null;
 async function loadPos() {
   if (allProds.length) { renderPosGrid(allProds); renderPosCats(allProds); return; }
+  if (_posAbortCtrl) _posAbortCtrl.abort();
+  var miCtrl = _posAbortCtrl = new AbortController();
   try {
-    var r = await apiFetch('/api/productos');
+    var r = await apiFetch('/api/productos', { signal: miCtrl.signal });
+    if (miCtrl.signal.aborted) return;
     if (r && r.ok) {
       allProds = await r.json();
+      if (miCtrl.signal.aborted) return;
       if (!Array.isArray(allProds)) allProds = [];
       renderPosCats(allProds);
       renderPosGrid(allProds);
@@ -1805,11 +1831,23 @@ function mostrarTicketMobile(d, venta) {
 }
 
 // ══ INVENTARIO ══
+// La lista de Inventario trae la foto de cada producto (puede pesar
+// varios MB con un catálogo real) — si el usuario sale de esta pantalla
+// antes de que termine de responder, _invAbortCtrl.abort() (ver navTo)
+// cancela la petición en vez de dejarla terminar en silencio. Sin esto,
+// aunque el usuario ya no viera Inventario, el navegador igual se ponía a
+// procesar esa respuesta pesada justo cuando la pantalla nueva (p. ej. el
+// dashboard) necesitaba el procesador libre para dibujarse.
+var _invAbortCtrl = null;
 async function loadInv() {
+  if (_invAbortCtrl) _invAbortCtrl.abort();
+  var miCtrl = _invAbortCtrl = new AbortController();
   try {
-    var r = await apiFetch('/api/productos');
+    var r = await apiFetch('/api/productos', { signal: miCtrl.signal });
+    if (miCtrl.signal.aborted) return;
     if (r && r.ok) {
       var prods = await r.json();
+      if (miCtrl.signal.aborted) return;
       allProds = Array.isArray(prods) ? prods : [];
       renderInvList(allProds);
     }
