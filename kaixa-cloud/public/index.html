@@ -552,7 +552,8 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:var(--ff);backgroun
               <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M12 0C5.373 0 0 5.373 0 12c0 2.156.578 4.239 1.68 6.08L0 24l6.026-1.664A11.94 11.94 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.938c-1.902 0-3.767-.51-5.4-1.475l-.387-.229-4.03 1.114 1.075-3.925-.252-.402A9.925 9.925 0 012.062 12c0-5.484 4.454-9.938 9.938-9.938 5.483 0 9.938 4.454 9.938 9.938 0 5.483-4.455 9.938-9.938 9.938zm5.472-7.556c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.29.173-1.414-.074-.124-.272-.198-.57-.347z"/></svg>
             </a>
           </div>
-          <div style="font-size:10px;color:var(--text3);margin-top:14px" id="footerVersion">Versión 2026-10-12.1</div>
+          <div style="font-size:10px;color:var(--text3);margin-top:14px" id="footerVersion">Versión …</div>
+          <div style="font-size:10px;color:var(--text3);margin-top:4px;text-decoration:underline;cursor:pointer" onclick="verMigasAnteriores()">Diagnóstico técnico</div>
         </div>
       </div>
     </div>
@@ -585,6 +586,28 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:var(--ff);backgroun
   <div class="notif-panel" id="notifPanel"></div>
 </div>
 <script>
+// ── Migas de pan (breadcrumbs) ───────────────────────────────────────────
+// Si el freeze es un bloqueo real del hilo principal (no solo un error
+// de JS), ningún banner ni consola alcanza a pintarse a tiempo — el hilo
+// está ocupado y no deja que nada se muestre. Esto registra en localStorage
+// (escritura síncrona, queda en disco de inmediato) cada acción importante
+// con su hora. Si la app se congela y hay que cerrarla a la fuerza, la
+// PRÓXIMA vez que abre, esto recupera exactamente la lista de acciones de
+// la sesión anterior — la última de la lista es, casi siempre, la que se
+// quedó a medias cuando se trabó.
+var _migasAnteriores = [];
+try { _migasAnteriores = JSON.parse(localStorage.getItem('kaixa_migas') || '[]'); } catch(e) {}
+var _migasSesion = [];
+function _miga(msg) {
+  _migasSesion.push(new Date().toLocaleTimeString() + '.' + (Date.now() % 1000) + ' — ' + msg);
+  if (_migasSesion.length > 50) _migasSesion.shift();
+  try { localStorage.setItem('kaixa_migas', JSON.stringify(_migasSesion)); } catch(e) {}
+}
+function verMigasAnteriores() {
+  if (!_migasAnteriores.length) { alert('No hay registro de la sesión anterior.'); return; }
+  _mostrarErrorVisible('── Lo último que hizo la app ANTES de cerrarse la vez pasada ──\n' + _migasAnteriores.join('\n'));
+}
+
 // ── Captura de errores visible ───────────────────────────────────────────
 // Varias rondas de arreglos no resolvieron un problema que el usuario sigue
 // viendo en su propio teléfono, y que no se pudo reproducir en las pruebas.
@@ -652,14 +675,17 @@ async function apiFetch(path, opts) {
     if (externo.aborted) { clearTimeout(tope); return null; }
     externo.addEventListener('abort', onExterno);
   }
+  _miga('fetch→ ' + path);
   try {
     var merged = Object.assign({}, opts || {});
     delete merged.signal;
     merged.headers = Object.assign({}, headers(), (opts && opts.headers) || {});
     merged.signal = ctrl.signal;
     var r = await fetch(API + path, merged);
+    _miga('fetch← ' + path + ' (' + (r && r.status) + ')');
     return r;
   } catch(e) {
+    _miga('fetch✗ ' + path + ' — ' + e.message);
     if (!(externo && externo.aborted) && typeof notif === 'function') {
       notif(e && e.name === 'AbortError' ? 'El servidor tardó en responder — intenta de nuevo' : 'Sin conexión — intenta de nuevo', 'err');
     }
@@ -697,6 +723,11 @@ function fmtS(n) { return '$' + Number(n || 0).toFixed(0); }
 // usuario vuelve a traer la app al frente (después de tenerla en segundo
 // plano), se revisa si hay una versión nueva en el servidor.
 var _kaixaVersion = '2026-10-15.1';
+// El texto de abajo de "Más" estaba escrito fijo en el HTML y nunca se
+// actualizaba con esta variable — cualquier revisión de versión mostraba
+// siempre el mismo texto viejo, sin importar qué tan reciente fuera el
+// código realmente corriendo. Esto lo conecta de verdad.
+(function() { var el = document.getElementById('footerVersion'); if (el) el.textContent = 'Versión ' + _kaixaVersion; })();
 var _swRecargando = false;
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', function() {
@@ -820,6 +851,7 @@ var currentScreen = 'dash';
 var prevScreen = 'dash';
 
 function navTo(screen) {
+  _miga('navTo→ ' + prevScreen + ' a ' + screen);
   // Si se sale de Inventario o Cobrar sin que su petición de productos (con
   // fotos, puede pesar varios MB) haya terminado, se cancela aquí mismo —
   // antes de empezar a dibujar la pantalla nueva. Sin esto, el navegador
@@ -851,7 +883,9 @@ function navTo(screen) {
     // quedó trabada en pantallas lentas o con mala conexión.
     if (resultado && typeof resultado.then === 'function') {
       _cargando(true);
-      resultado.finally(function() { _cargando(false); });
+      resultado.finally(function() { _cargando(false); _miga('navTo listo ' + screen); });
+    } else {
+      _miga('navTo listo ' + screen + ' (sin promesa)');
     }
   }
 }
@@ -1097,6 +1131,7 @@ function _dashVisible() {
 
 async function loadDash() {
   var miGen = ++_dashGen;
+  _miga('loadDash→ gen ' + miGen);
   var hoy = new Date();
   var hora = hoy.getHours();
   var saludo = hora < 12 ? 'Buenos días' : hora < 19 ? 'Buenas tardes' : 'Buenas noches';
@@ -1152,7 +1187,8 @@ async function loadDash() {
           '<div class="card-info"><div class="card-title">' + p[0] + '</div><div class="card-sub">' + p[1] + ' vendidas</div></div>' +
           '</div></div>';
       }).join('');
-  } catch(e) { if (miGen === _dashGen) { notif('Error cargando datos', 'err'); _mostrarErrorVisible('loadDash: ' + e.message); } }
+    _miga('loadDash ventas pintadas gen ' + miGen);
+  } catch(e) { if (miGen === _dashGen) { notif('Error cargando datos', 'err'); _mostrarErrorVisible('loadDash: ' + e.message); } _miga('loadDash✗ ventas — ' + e.message); }
   if (miGen !== _dashGen) return;
   try {
     var re = await pEmpleados;
@@ -1180,6 +1216,7 @@ async function loadDash() {
   if (miGen === _dashGen && _dashVisible()) renderDashPeople(miGen, pClientes);
   if (miGen === _dashGen && _dashVisible()) _forzarRepintado();
   if (miGen === _dashGen && _dashVisible()) _diagnosticarDashboard();
+  _miga('loadDash listo gen ' + miGen);
 }
 
 // El usuario confirmó: no hay errores de JavaScript, el contenido no se
@@ -1264,6 +1301,7 @@ function ventaRow(v) {
 // terminado. Con esta caché, cada foto se pide una sola vez por sesión.
 var _peopleFotoCache = {};
 async function renderDashPeople(miGen, pClientes) {
+  _miga('renderDashPeople→ gen ' + miGen);
   var cont = document.getElementById('dashPeopleRow');
   if (!cont) return;
   try {
@@ -1305,8 +1343,10 @@ async function renderDashPeople(miGen, pClientes) {
     });
   } catch(e) {
     _mostrarErrorVisible('renderDashPeople: ' + e.message);
+    _miga('renderDashPeople✗ — ' + e.message);
   }
   _forzarRepintado();
+  _miga('renderDashPeople listo gen ' + miGen);
 }
 
 // ══ POS ══
@@ -1890,8 +1930,9 @@ function filtrarInv() {
 }
 
 function renderInvList(prods) {
+  _miga('renderInvList→ ' + prods.length + ' productos');
   var cont = document.getElementById('invList');
-  if (!prods.length) { cont.innerHTML = '<div class="empty"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1em;height:1em;vertical-align:-0.15em;flex-shrink:0"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg></div><p>Sin productos</p></div>'; return; }
+  if (!prods.length) { _miga('renderInvList listo (vacío)'); cont.innerHTML = '<div class="empty"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1em;height:1em;vertical-align:-0.15em;flex-shrink:0"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg></div><p>Sin productos</p></div>'; return; }
   cont.innerHTML = prods.map(function(p) {
     var stockCls = p.es_servicio ? '' : p.stock <= 0 ? 'stock-out' : p.stock <= (p.stock_minimo || 5) ? 'stock-low' : '';
     var stockTxt = p.es_servicio ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1em;height:1em;vertical-align:-0.15em;flex-shrink:0"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg> Servicio (sin stock)' : p.stock <= 0 ? '<svg viewBox="0 0 8 8" style="width:0.55em;height:0.55em;vertical-align:0.05em;flex-shrink:0"><circle cx="4" cy="4" r="4" fill="#ef4444"/></svg> Agotado' : p.stock <= (p.stock_minimo || 5) ? '<svg viewBox="0 0 8 8" style="width:0.55em;height:0.55em;vertical-align:0.05em;flex-shrink:0"><circle cx="4" cy="4" r="4" fill="#f59e0b"/></svg> ' + p.stock + ' uds' : '<svg viewBox="0 0 8 8" style="width:0.55em;height:0.55em;vertical-align:0.05em;flex-shrink:0"><circle cx="4" cy="4" r="4" fill="#10b981"/></svg> ' + p.stock + ' uds';
@@ -1907,6 +1948,7 @@ function renderInvList(prods) {
       '<div><div class="ii-price">' + fmt(p.precio) + '</div><div class="ii-cost">Costo: ' + fmt(p.costo) + '</div></div>' +
       '</div>';
   }).join('');
+  _miga('renderInvList listo');
 }
 
 function abrirNuevoProd() { abrirModalProd(null); }
