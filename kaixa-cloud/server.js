@@ -20,7 +20,18 @@ app.use(cors());
 // adelante (ver routes/delivery/adapters/*). No cambia nada para el resto de
 // rutas, que siguen usando req.body ya parseado como siempre.
 app.use(express.json({ limit: '50mb', verify: (req, res, buf) => { req.rawBody = buf; } }));
-app.use(express.static(path.join(__dirname, 'public')));
+// index.html y sw.js nunca deben quedar cacheados por el navegador/proxy —
+// si un teléfono guarda una copia vieja de cualquiera de los dos, el
+// mecanismo de "service worker network-first" nunca llega a enterarse de
+// que hay una versión nueva, y el usuario puede quedarse viendo código
+// viejo indefinidamente aunque el deploy ya se haya actualizado.
+app.use(express.static(path.join(__dirname, 'public'), {
+  setHeaders: (res, filePath) => {
+    if (filePath.endsWith('index.html') || filePath.endsWith('sw.js')) {
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+    }
+  }
+}));
 async function aplicarEsquema() {
   try { await pool.query('CREATE EXTENSION IF NOT EXISTS "pgcrypto"'); } catch(e) {}
   try {

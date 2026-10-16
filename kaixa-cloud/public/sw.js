@@ -1,5 +1,5 @@
 // Service Worker — Kaixa Pro PWA
-const CACHE = 'kaixa-v3';
+const CACHE = 'kaixa-v4';
 const ASSETS = ['/', '/index.html', '/kaixa_icon.png', '/kaixa_mascot.png'];
 
 self.addEventListener('install', function(e) {
@@ -16,8 +16,17 @@ self.addEventListener('activate', function(e) {
 
 self.addEventListener('fetch', function(e) {
   if (e.request.url.includes('/api/')) return; // No cachear APIs
+  // El documento principal (index.html, navegaciones) se pide siempre con
+  // cache:'no-store' — sin esto, un fetch "normal" puede resolverse desde
+  // la caché HTTP del propio navegador sin tocar la red, aunque este
+  // código diga "network-first": el navegador decide eso antes de que el
+  // service worker vea nada. Resultado real: el teléfono podía quedarse
+  // viendo una versión vieja del código indefinidamente aunque hubiera
+  // internet y ya se hubiera subido una versión nueva al servidor.
+  var esDocumento = e.request.mode === 'navigate' || e.request.destination === 'document' || e.request.url.endsWith('/index.html') || e.request.url.endsWith('/sw.js');
+  var peticion = esDocumento ? new Request(e.request.url, { cache: 'no-store' }) : e.request;
   e.respondWith(
-    fetch(e.request).catch(function() { return caches.match(e.request); })
+    fetch(peticion).catch(function() { return caches.match(e.request); })
   );
 });
 
