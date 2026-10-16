@@ -1316,7 +1316,7 @@ async function loadPos() {
   if (_posAbortCtrl) _posAbortCtrl.abort();
   var miCtrl = _posAbortCtrl = new AbortController();
   try {
-    var r = await apiFetch('/api/productos', { signal: miCtrl.signal });
+    var r = await apiFetch('/api/productos?imgs=0', { signal: miCtrl.signal });
     if (miCtrl.signal.aborted) return;
     if (r && r.ok) {
       allProds = await r.json();
@@ -1324,6 +1324,7 @@ async function loadPos() {
       if (!Array.isArray(allProds)) allProds = [];
       renderPosCats(allProds);
       renderPosGrid(allProds);
+      lazyLoadInvImagenes(allProds);
     }
   } catch(e) {}
 }
@@ -1821,24 +1822,56 @@ function mostrarTicketMobile(d, venta) {
 // procesar esa respuesta pesada justo cuando la pantalla nueva (p. ej. el
 // dashboard) necesitaba el procesador libre para dibujarse.
 var _invAbortCtrl = null;
+// La lista ya NO pide las imágenes completas de golpe (?imgs=0) — con un
+// catálogo real, bajar y pintar de un jalón el texto base64 de la foto de
+// CADA producto en un solo innerHTML es trabajo pesado para el teléfono
+// (red + decodificar + layout de todas las imágenes a la vez), y eso
+// coincide justo con "se traba toda la app" al entrar/salir de Inventario.
+// Ahora la lista se pinta de inmediato solo con texto (rápido, sin fotos),
+// y lazyLoadInvImagenes() va trayendo cada foto por separado después, sin
+// bloquear nada.
 async function loadInv() {
   if (_invAbortCtrl) _invAbortCtrl.abort();
   var miCtrl = _invAbortCtrl = new AbortController();
   try {
-    var r = await apiFetch('/api/productos', { signal: miCtrl.signal });
+    var r = await apiFetch('/api/productos?imgs=0', { signal: miCtrl.signal });
     if (miCtrl.signal.aborted) return;
     if (r && r.ok) {
       var prods = await r.json();
       if (miCtrl.signal.aborted) return;
       allProds = Array.isArray(prods) ? prods : [];
       renderInvList(allProds);
+      lazyLoadInvImagenes(allProds);
     }
   } catch(e) {}
 }
 
+function _pintarImagenProd(id, url) {
+  var el = document.getElementById('ii-' + id);
+  if (el) {
+    var img = document.createElement('img');
+    img.src = url;
+    img.style.cssText = 'width:100%;height:100%;object-fit:cover;border-radius:8px;';
+    el.innerHTML = '';
+    el.appendChild(img);
+  }
+  var el2 = document.getElementById('pe-' + id);
+  if (el2) {
+    var img2 = document.createElement('img');
+    img2.src = url;
+    img2.style.cssText = 'width:36px;height:36px;object-fit:cover;border-radius:8px;';
+    el2.innerHTML = '';
+    el2.appendChild(img2);
+  }
+}
+// Ya con la lista pintada (rápido, sin fotos), esto va trayendo cada foto
+// POR SEPARADO — una petición chica a la vez, no un solo paquete pesado
+// con todas juntas. Si una foto ya se trajo antes en esta sesión
+// (imgCache), ni siquiera se vuelve a pedir: se pinta directo de memoria.
 function lazyLoadInvImagenes(prods) {
   prods.forEach(async function(p) {
     if (!p.tiene_imagen) return;
+    if (imgCache[p.id]) { p.imagen_url = imgCache[p.id]; _pintarImagenProd(p.id, imgCache[p.id]); return; }
     try {
       var r = await apiFetch('/api/productos/' + p.id + '/imagen');
       if (!r || !r.ok) return;
@@ -1846,22 +1879,7 @@ function lazyLoadInvImagenes(prods) {
       if (!d || !d.imagen_url) return;
       p.imagen_url = d.imagen_url;
       imgCache[p.id] = d.imagen_url; // guardar en caché
-      var el = document.getElementById('ii-' + p.id);
-      if (el) {
-        var img = document.createElement('img');
-        img.src = d.imagen_url;
-        img.style.cssText = 'width:100%;height:100%;object-fit:cover;border-radius:8px;';
-        el.innerHTML = '';
-        el.appendChild(img);
-      }
-      var el2 = document.getElementById('pe-' + p.id);
-      if (el2) {
-        var img2 = document.createElement('img');
-        img2.src = d.imagen_url;
-        img2.style.cssText = 'width:36px;height:36px;object-fit:cover;border-radius:8px;';
-        el2.innerHTML = '';
-        el2.appendChild(img2);
-      }
+      _pintarImagenProd(p.id, d.imagen_url);
     } catch(e) {}
   });
 }
