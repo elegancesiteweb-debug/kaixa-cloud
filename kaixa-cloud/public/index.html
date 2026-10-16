@@ -1414,19 +1414,38 @@ async function lazyLoadImagenes(prods) {
   }
 }
 
+function _posItemHtml(p) {
+  var inCart = cart.some(function(c) { return String(c.id) === String(p.id); });
+  // FIX: UUID con comillas para evitar SyntaxError
+  return '<div class="prod-card' + (inCart ? ' in-cart' : '') + '" onclick="addToCart(\'' + p.id + '\')">' +
+    '<div class="prod-emoji" id="pe-'+p.id+'">' + ((p.imagen_url || imgCache[p.id]) ? '<img src="'+(p.imagen_url || imgCache[p.id])+'">' : (p.emoji || '📦')) + '<span class="prod-add">+</span></div>' +
+    '<div class="prod-name">' + p.nombre + '</div>' +
+    '<div class="prod-price">' + fmt(p.precio) + '</div>' +
+    '<div class="prod-stock">' + (p.es_servicio ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1em;height:1em;vertical-align:-0.15em;flex-shrink:0"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg> Servicio' : 'Stock: ' + (p.stock || 0)) + '</div>' +
+    '</div>';
+}
+// Mismo motivo que renderInvList: con mil productos, pintar todo el grid de
+// un jalón bloquea el hilo principal un rato largo y seguido. Se pinta el
+// primer grupo (de sobra para llenar la pantalla) de inmediato, y el resto
+// en tandas chicas sin bloquear nada.
+var _posRenderGen = 0;
 function renderPosGrid(prods) {
+  var miGen = ++_posRenderGen;
   var cont = document.getElementById('posGrid');
   if (!prods.length) { cont.innerHTML = '<div class="empty" style="grid-column:1/-1"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1em;height:1em;vertical-align:-0.15em;flex-shrink:0"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg></div><p>Sin productos</p></div>'; return; }
-  cont.innerHTML = prods.map(function(p) {
-    var inCart = cart.some(function(c) { return String(c.id) === String(p.id); });
-    // FIX: UUID con comillas para evitar SyntaxError
-    return '<div class="prod-card' + (inCart ? ' in-cart' : '') + '" onclick="addToCart(\'' + p.id + '\')">' +
-      '<div class="prod-emoji" id="pe-'+p.id+'">' + ((p.imagen_url || imgCache[p.id]) ? '<img src="'+(p.imagen_url || imgCache[p.id])+'">' : (p.emoji || '📦')) + '<span class="prod-add">+</span></div>' +
-      '<div class="prod-name">' + p.nombre + '</div>' +
-      '<div class="prod-price">' + fmt(p.precio) + '</div>' +
-      '<div class="prod-stock">' + (p.es_servicio ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1em;height:1em;vertical-align:-0.15em;flex-shrink:0"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg> Servicio' : 'Stock: ' + (p.stock || 0)) + '</div>' +
-      '</div>';
-  }).join('');
+  var PRIMER_LOTE = 60, LOTE = 120;
+  cont.innerHTML = prods.slice(0, PRIMER_LOTE).map(_posItemHtml).join('');
+  if (prods.length <= PRIMER_LOTE) return;
+  var idx = PRIMER_LOTE;
+  function siguienteLote() {
+    if (miGen !== _posRenderGen) return;
+    var lote = prods.slice(idx, idx + LOTE);
+    if (!lote.length) return;
+    cont.insertAdjacentHTML('beforeend', lote.map(_posItemHtml).join(''));
+    idx += LOTE;
+    setTimeout(siguienteLote, 0);
+  }
+  setTimeout(siguienteLote, 0);
 }
 
 function addToCart(id) {
@@ -1929,26 +1948,49 @@ function filtrarInv() {
   renderInvList(allProds.filter(function(p) { return p.nombre.toLowerCase().includes(q) || (p.categoria || '').toLowerCase().includes(q); }));
 }
 
+function _invItemHtml(p) {
+  var stockCls = p.es_servicio ? '' : p.stock <= 0 ? 'stock-out' : p.stock <= (p.stock_minimo || 5) ? 'stock-low' : '';
+  var stockTxt = p.es_servicio ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1em;height:1em;vertical-align:-0.15em;flex-shrink:0"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg> Servicio (sin stock)' : p.stock <= 0 ? '<svg viewBox="0 0 8 8" style="width:0.55em;height:0.55em;vertical-align:0.05em;flex-shrink:0"><circle cx="4" cy="4" r="4" fill="#ef4444"/></svg> Agotado' : p.stock <= (p.stock_minimo || 5) ? '<svg viewBox="0 0 8 8" style="width:0.55em;height:0.55em;vertical-align:0.05em;flex-shrink:0"><circle cx="4" cy="4" r="4" fill="#f59e0b"/></svg> ' + p.stock + ' uds' : '<svg viewBox="0 0 8 8" style="width:0.55em;height:0.55em;vertical-align:0.05em;flex-shrink:0"><circle cx="4" cy="4" r="4" fill="#10b981"/></svg> ' + p.stock + ' uds';
+  var imgSrc = p.imagen_url || imgCache[p.id];
+  var icoHtml = imgSrc ? '<img src="' + imgSrc + '" style="width:100%;height:100%;object-fit:cover;border-radius:8px;">' : (p.emoji || '📦');
+  return '<div class="inv-item ' + stockCls + '" onclick="abrirEditProd(\'' + p.id + '\')">' +
+    '<div class="ii-ico" id="ii-' + p.id + '">' + icoHtml + '</div>' +
+    '<div style="flex:1;min-width:0">' +
+      '<div class="ii-name">' + p.nombre + '</div>' +
+      '<div class="ii-cat">' + (p.categoria || '—') + '</div>' +
+      '<div class="ii-stock">' + stockTxt + '</div>' +
+    '</div>' +
+    '<div><div class="ii-price">' + fmt(p.precio) + '</div><div class="ii-cost">Costo: ' + fmt(p.costo) + '</div></div>' +
+    '</div>';
+}
+// Con un catálogo chico esto nunca importó, pero un negocio real puede tener
+// mil productos o más — construir y pintar los mil de un jalón en un solo
+// innerHTML es trabajo sincrónico que puede tardar cientos de milisegundos
+// seguidos sin que el navegador pueda atender nada más (ni un toque, ni un
+// repintado) mientras tanto, y en un teléfono real (mucho más lento que una
+// computadora) eso se siente como que la app se congela. Ahora solo el
+// primer grupo (lo que entra en pantalla, de sobra) se pinta de inmediato;
+// el resto se va agregando en tandas chicas, cediendo el hilo principal
+// entre cada una — nunca hay un bloqueo largo de un solo jalón.
+var _invRenderGen = 0;
 function renderInvList(prods) {
+  var miGen = ++_invRenderGen;
   _miga('renderInvList→ ' + prods.length + ' productos');
   var cont = document.getElementById('invList');
   if (!prods.length) { _miga('renderInvList listo (vacío)'); cont.innerHTML = '<div class="empty"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1em;height:1em;vertical-align:-0.15em;flex-shrink:0"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg></div><p>Sin productos</p></div>'; return; }
-  cont.innerHTML = prods.map(function(p) {
-    var stockCls = p.es_servicio ? '' : p.stock <= 0 ? 'stock-out' : p.stock <= (p.stock_minimo || 5) ? 'stock-low' : '';
-    var stockTxt = p.es_servicio ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1em;height:1em;vertical-align:-0.15em;flex-shrink:0"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg> Servicio (sin stock)' : p.stock <= 0 ? '<svg viewBox="0 0 8 8" style="width:0.55em;height:0.55em;vertical-align:0.05em;flex-shrink:0"><circle cx="4" cy="4" r="4" fill="#ef4444"/></svg> Agotado' : p.stock <= (p.stock_minimo || 5) ? '<svg viewBox="0 0 8 8" style="width:0.55em;height:0.55em;vertical-align:0.05em;flex-shrink:0"><circle cx="4" cy="4" r="4" fill="#f59e0b"/></svg> ' + p.stock + ' uds' : '<svg viewBox="0 0 8 8" style="width:0.55em;height:0.55em;vertical-align:0.05em;flex-shrink:0"><circle cx="4" cy="4" r="4" fill="#10b981"/></svg> ' + p.stock + ' uds';
-    var imgSrc = p.imagen_url || imgCache[p.id];
-    var icoHtml = imgSrc ? '<img src="' + imgSrc + '" style="width:100%;height:100%;object-fit:cover;border-radius:8px;">' : (p.emoji || '📦');
-    return '<div class="inv-item ' + stockCls + '" onclick="abrirEditProd(\'' + p.id + '\')">' +
-      '<div class="ii-ico" id="ii-' + p.id + '">' + icoHtml + '</div>' +
-      '<div style="flex:1;min-width:0">' +
-        '<div class="ii-name">' + p.nombre + '</div>' +
-        '<div class="ii-cat">' + (p.categoria || '—') + '</div>' +
-        '<div class="ii-stock">' + stockTxt + '</div>' +
-      '</div>' +
-      '<div><div class="ii-price">' + fmt(p.precio) + '</div><div class="ii-cost">Costo: ' + fmt(p.costo) + '</div></div>' +
-      '</div>';
-  }).join('');
-  _miga('renderInvList listo');
+  var PRIMER_LOTE = 60, LOTE = 120;
+  cont.innerHTML = prods.slice(0, PRIMER_LOTE).map(_invItemHtml).join('');
+  if (prods.length <= PRIMER_LOTE) { _miga('renderInvList listo (' + prods.length + ')'); return; }
+  var idx = PRIMER_LOTE;
+  function siguienteLote() {
+    if (miGen !== _invRenderGen) return; // otra búsqueda/filtro/recarga ya reemplazó esta lista
+    var lote = prods.slice(idx, idx + LOTE);
+    if (!lote.length) { _miga('renderInvList listo (' + prods.length + ')'); return; }
+    cont.insertAdjacentHTML('beforeend', lote.map(_invItemHtml).join(''));
+    idx += LOTE;
+    setTimeout(siguienteLote, 0);
+  }
+  setTimeout(siguienteLote, 0);
 }
 
 function abrirNuevoProd() { abrirModalProd(null); }
