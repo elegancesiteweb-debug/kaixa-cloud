@@ -1253,7 +1253,7 @@ router.get('/negocio/sucursales-entrega', async (req, res) => {
   try {
     await ensureTiendaTables();
     const r = await pool.query(
-      `SELECT id, nombre, direccion, horario,
+      `SELECT id, nombre, direccion, horario, imagen_url, maps_url,
               domicilio_habilitado, envio_habilitado, envio_costo,
               entrega_rapida_habilitado, entrega_rapida_costo, entrega_rapida_tiempo_min
        FROM sucursales WHERE negocio_id=$1 AND activo=true ORDER BY nombre`,
@@ -1269,24 +1269,28 @@ router.get('/negocio/sucursales-entrega', async (req, res) => {
 // — incluyendo false/0 — porque el modelo acordado es simple: en cuanto el
 // dueño guarda la config de una sucursal, esos valores quedan fijos para
 // ella (ya no heredan de la del negocio aunque ésta cambie después).
+// imagen_url es la excepción: el dueño no vuelve a elegir una foto cada vez
+// que guarda, así que solo se pisa si mandan una nueva (mismo criterio que
+// PUT /api/negocio/tienda con tienda_imagen_url).
 router.put('/negocio/sucursales-entrega/:id', async (req, res) => {
   try {
     await ensureTiendaTables();
     const dueño = await pool.query('SELECT id FROM sucursales WHERE id=$1 AND negocio_id=$2', [req.params.id, req.caja.negocio_id]);
     if (!dueño.rows.length) return res.status(404).json({ error: 'Sucursal no encontrada' });
     const {
-      direccion = '', horario = '',
+      direccion = '', horario = '', maps_url = '', imagen_url = null,
       domicilio_habilitado = false, envio_habilitado = false, envio_costo = 0,
       entrega_rapida_habilitado = false, entrega_rapida_costo = 0, entrega_rapida_tiempo_min = 30
     } = req.body;
     await pool.query(
       `UPDATE sucursales SET
          direccion=$1, horario=$2, domicilio_habilitado=$3, envio_habilitado=$4, envio_costo=$5,
-         entrega_rapida_habilitado=$6, entrega_rapida_costo=$7, entrega_rapida_tiempo_min=$8
+         entrega_rapida_habilitado=$6, entrega_rapida_costo=$7, entrega_rapida_tiempo_min=$8,
+         maps_url=$10, imagen_url=COALESCE($11, imagen_url)
        WHERE id=$9`,
       [direccion, horario, !!domicilio_habilitado, !!envio_habilitado, parseFloat(envio_costo) || 0,
        !!entrega_rapida_habilitado, parseFloat(entrega_rapida_costo) || 0, parseInt(entrega_rapida_tiempo_min) || 30,
-       req.params.id]
+       req.params.id, maps_url, imagen_url]
     );
     res.json({ ok: true });
   } catch(e) { res.status(500).json({ error: e.message }); }

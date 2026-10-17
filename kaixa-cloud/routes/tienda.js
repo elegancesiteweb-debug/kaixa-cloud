@@ -322,6 +322,11 @@ async function ensureTiendaTables() {
   await pool.query(`ALTER TABLE sucursales ADD COLUMN IF NOT EXISTS entrega_rapida_habilitado BOOLEAN`);
   await pool.query(`ALTER TABLE sucursales ADD COLUMN IF NOT EXISTS entrega_rapida_costo NUMERIC(10,2)`);
   await pool.query(`ALTER TABLE sucursales ADD COLUMN IF NOT EXISTS entrega_rapida_tiempo_min INTEGER`);
+  // Foto de la sucursal (igual que tienda_imagen_url del negocio, pero por
+  // sucursal) y liga directa a Google Maps — ambas opcionales, se muestran
+  // al cliente junto a la dirección/horario cuando elige esa sucursal.
+  await pool.query(`ALTER TABLE sucursales ADD COLUMN IF NOT EXISTS imagen_url TEXT DEFAULT ''`);
+  await pool.query(`ALTER TABLE sucursales ADD COLUMN IF NOT EXISTS maps_url TEXT DEFAULT ''`);
 
   const sinSlug = await pool.query("SELECT id, nombre FROM negocios WHERE slug IS NULL OR slug=''");
   for (const n of sinSlug.rows) { await asignarSlug(n.id, n.nombre); }
@@ -615,7 +620,7 @@ router.get('/tienda/:slug/info', async (req, res) => {
     // mostrar la opción efectiva de esa sucursal, igual que hace el backend
     // al crear el pedido (ver POST /tienda/:slug/pedidos).
     const sucs = await pool.query(
-      `SELECT id, nombre, direccion, horario,
+      `SELECT id, nombre, direccion, horario, imagen_url, maps_url,
               domicilio_habilitado, envio_habilitado, envio_costo,
               entrega_rapida_habilitado, entrega_rapida_costo, entrega_rapida_tiempo_min
        FROM sucursales WHERE negocio_id=$1 AND activo=true ORDER BY nombre`,

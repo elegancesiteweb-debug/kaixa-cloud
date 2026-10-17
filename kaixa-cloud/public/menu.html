@@ -63,6 +63,7 @@
       <label>Sucursal</label>
       <select id="sucSel" onchange="elegirSucursal()"></select>
     </div>
+    <img id="sucFoto" style="display:none;width:100%;max-height:140px;object-fit:cover;border-radius:12px;margin-top:10px">
     <div id="sucInfo" style="display:none"></div>
   </div>
   <div class="catbar" id="catBar"></div>
@@ -133,10 +134,15 @@ async function init(){
 // guardados, se muestran debajo del selector.
 function mostrarInfoSucursal(){
   var s = sucursales.find(function(x){ return String(x.id) === String(sucursalId); });
+  var foto = document.getElementById('sucFoto');
+  if (s && s.imagen_url) { foto.src = s.imagen_url; foto.style.display = 'block'; }
+  else { foto.style.display = 'none'; }
   var box = document.getElementById('sucInfo');
   if (!s || (!s.direccion && !s.horario)) { box.style.display = 'none'; return; }
   var bits = [];
-  if (s.direccion) bits.push('<span>📍 '+esc(s.direccion)+'</span>');
+  if (s.direccion) bits.push(s.maps_url
+    ? '<span>📍 <a href="'+esc(s.maps_url)+'" target="_blank" rel="noopener" style="color:inherit">'+esc(s.direccion)+'</a></span>'
+    : '<span>📍 '+esc(s.direccion)+'</span>');
   if (s.horario) bits.push('<span>🕒 '+esc(s.horario)+'</span>');
   box.className = 'infobar';
   box.innerHTML = bits.join('');

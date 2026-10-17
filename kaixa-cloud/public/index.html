@@ -4707,6 +4707,7 @@ async function guardarTiendaConfigMovil() {
 // aquí, esa sucursal queda fija con esos valores de ahí en adelante.
 var _sucursalesEntregaCache = [];
 var _negocioEntregaGeneral = {};
+var _sucEntImgBase64 = null;
 
 async function abrirSucursalesEntregaConfig() {
   var html = '<div class="modal-overlay" id="modalSucEntrega">' +
@@ -4743,6 +4744,7 @@ async function abrirSucursalesEntregaConfig() {
 function editarSucursalEntrega(id) {
   var s = _sucursalesEntregaCache.find(function(x) { return String(x.id) === String(id); });
   if (!s) return;
+  _sucEntImgBase64 = null;
   var g = _negocioEntregaGeneral;
   function efectivo(campo) { return (s[campo] !== null && s[campo] !== undefined) ? s[campo] : g[campo]; }
   var html = '<div class="modal-overlay" id="modalSucEntregaForm">' +
@@ -4751,7 +4753,10 @@ function editarSucursalEntrega(id) {
         '<h3 style="margin:0">' + s.nombre + '</h3>' +
         '<span class="modal-close" onclick="document.getElementById(\'modalSucEntregaForm\').remove()">✕</span>' +
       '</div>' +
+      '<div id="sucEntImgPreview" onclick="document.getElementById(\'sucEntImgInput\').click()" style="width:100%;aspect-ratio:16/7;border-radius:10px;border:1.5px dashed var(--border);background:var(--s2);display:flex;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;color:var(--text3);font-size:12px;margin-bottom:14px">' + (s.imagen_url ? '<img src="'+s.imagen_url+'" style="width:100%;height:100%;object-fit:cover">' : 'Toca para elegir una foto') + '</div>' +
+      '<input type="file" id="sucEntImgInput" accept="image/*" style="display:none" onchange="onSucEntImgFile(this)">' +
       '<div class="form-field"><label>Dirección</label><input id="sucEntDirInput" placeholder="Calle, número, colonia" value="' + (s.direccion || '') + '"></div>' +
+      '<div class="form-field"><label>Link de Google Maps</label><input id="sucEntMapsInput" placeholder="https://maps.app.goo.gl/..." value="' + (s.maps_url || '') + '"></div>' +
       '<div class="form-field"><label>Horario</label><input id="sucEntHorInput" placeholder="Lun-Sáb 9am-8pm" value="' + (s.horario || '') + '"></div>' +
       '<div class="card" style="margin-bottom:14px"><label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="sucEntDomicilio" style="width:18px;height:18px"' + (efectivo('domicilio_habilitado') ? ' checked' : '') + '><span style="font-size:13px;font-weight:700">Ofrece servicio a domicilio</span></label></div>' +
       '<div class="card" style="margin-bottom:14px">' +
@@ -4770,9 +4775,20 @@ function editarSucursalEntrega(id) {
   document.getElementById('modalContainer').innerHTML = html;
 }
 
+async function onSucEntImgFile(input) {
+  if (!input.files || !input.files[0]) return;
+  try {
+    _sucEntImgBase64 = await comprimirImagen(input.files[0], 900, 500, 0.75);
+    document.getElementById('sucEntImgPreview').innerHTML = '<img src="'+_sucEntImgBase64+'" style="width:100%;height:100%;object-fit:cover">';
+  } catch(err) {
+    notif('No se pudo procesar la foto: ' + err.message, 'err');
+  }
+}
+
 async function guardarSucursalEntrega(id) {
   var body = {
     direccion: document.getElementById('sucEntDirInput').value.trim(),
+    maps_url: document.getElementById('sucEntMapsInput').value.trim(),
     horario: document.getElementById('sucEntHorInput').value.trim(),
     domicilio_habilitado: document.getElementById('sucEntDomicilio').checked,
     envio_habilitado: document.getElementById('sucEntEnvio').checked,
@@ -4781,6 +4797,7 @@ async function guardarSucursalEntrega(id) {
     entrega_rapida_costo: parseFloat(document.getElementById('sucEntRapidaCosto').value) || 0,
     entrega_rapida_tiempo_min: parseInt(document.getElementById('sucEntRapidaMin').value) || 30
   };
+  if (_sucEntImgBase64) body.imagen_url = _sucEntImgBase64;
   var r = await apiFetch('/api/negocio/sucursales-entrega/' + id, { method: 'PUT', body: JSON.stringify(body) });
   if (r && r.ok) {
     document.getElementById('modalContainer').innerHTML = '';
