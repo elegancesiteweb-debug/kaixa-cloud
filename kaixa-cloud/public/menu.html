@@ -18,6 +18,12 @@
   .hero h1{margin:0;font-size:19px;font-weight:900;text-shadow:0 2px 8px rgba(0,0,0,.25)}
   .hero p{margin:4px 0 0;font-size:11.5px;opacity:.9}
   .tag{display:inline-block;margin-top:6px;font-size:10px;font-weight:800;background:rgba(255,255,255,.22);padding:3px 9px;border-radius:20px;letter-spacing:.03em}
+  .card{background:var(--s1);border-radius:18px;padding:14px;margin:12px 14px 0;max-width:calc(var(--maxw) - 28px);margin-left:auto;margin-right:auto;box-shadow:0 4px 16px rgba(139,92,246,.08)}
+  .field{margin-bottom:0}
+  select{width:100%;padding:11px 12px;border-radius:10px;border:1.5px solid var(--border);font-size:14px;background:#fff;color:var(--text);font-family:inherit}
+  label{font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:6px}
+  .infobar{margin-top:8px;font-size:11.5px;color:var(--text2);flex-wrap:wrap;gap:8px 16px}
+  .infobar span{display:flex;align-items:center;gap:5px}
   .catbar{display:flex;gap:8px;overflow-x:auto;padding:12px 14px;max-width:var(--maxw);margin:0 auto}
   .catbar::-webkit-scrollbar{display:none}
   .catchip{flex-shrink:0;padding:7px 14px;border-radius:20px;background:var(--s1);border:1.5px solid var(--border);font-size:12px;font-weight:700;color:var(--text2);cursor:pointer;white-space:nowrap}
@@ -52,6 +58,13 @@
       </div>
     </div>
   </div>
+  <div class="card" id="sucCard" style="display:none">
+    <div class="field" id="sucSelWrap">
+      <label>Sucursal</label>
+      <select id="sucSel" onchange="elegirSucursal()"></select>
+    </div>
+    <div id="sucInfo" style="display:none"></div>
+  </div>
   <div class="catbar" id="catBar"></div>
   <div class="wrap">
     <div id="cont" class="loading">Cargando menú...</div>
@@ -65,6 +78,8 @@ var productos = [];
 var catActiva = '';
 var mostrarPrecios = true;
 var categoriasOcultas = [];
+var sucursales = [];
+var sucursalId = null;
 
 function esc(s){ return (s||'').toString().replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
 
@@ -92,22 +107,59 @@ async function init(){
     mostrarPrecios = neg.menu_mostrar_precios !== false;
     categoriasOcultas = Array.isArray(neg.menu_categorias_ocultas) ? neg.menu_categorias_ocultas : [];
 
-    var sucursales = info.sucursales || [];
+    sucursales = info.sucursales || [];
     if(!sucursales.length){ document.getElementById('cont').innerHTML = '<div class="empty">Este negocio no tiene sucursales activas</div>'; return; }
-    var sucursalId = sucursales[0].id;
 
-    var rProd = await fetch(API+'/api/tienda/'+slug+'/productos?sucursal_id='+sucursalId);
-    var todos = rProd.ok ? await rProd.json() : [];
-    productos = Array.isArray(todos) ? todos.filter(function(p){ return categoriasOcultas.indexOf(p.categoria_nombre) === -1; }) : [];
-    if(!productos.length){
-      document.getElementById('cont').innerHTML = '<div class="empty">Todavía no hay platillos publicados</div>';
-      return;
+    if(sucursales.length === 1){
+      sucursalId = sucursales[0].id;
+      document.getElementById('sucCard').style.display = 'block';
+      document.getElementById('sucSelWrap').style.display = 'none';
+      mostrarInfoSucursal();
+    } else {
+      document.getElementById('sucCard').style.display = 'block';
+      var sel = document.getElementById('sucSel');
+      sel.innerHTML = '<option value="">Elige una sucursal…</option>' +
+        sucursales.map(function(s){ return '<option value="'+s.id+'">'+esc(s.nombre)+'</option>'; }).join('');
+      document.getElementById('cont').innerHTML = '<div class="empty">👆 Elige tu sucursal para ver el menú</div>';
+      return; // se carga el catálogo hasta que elijan, vía elegirSucursal()
     }
-    renderCategorias();
-    renderProductos();
+    await cargarCatalogo();
   }catch(e){
     document.getElementById('cont').innerHTML = '<div class="empty">No se pudo cargar el menú</div>';
   }
+}
+
+// Igual que en tienda.html: si la sucursal tiene su propia dirección/horario
+// guardados, se muestran debajo del selector.
+function mostrarInfoSucursal(){
+  var s = sucursales.find(function(x){ return String(x.id) === String(sucursalId); });
+  var box = document.getElementById('sucInfo');
+  if (!s || (!s.direccion && !s.horario)) { box.style.display = 'none'; return; }
+  var bits = [];
+  if (s.direccion) bits.push('<span>📍 '+esc(s.direccion)+'</span>');
+  if (s.horario) bits.push('<span>🕒 '+esc(s.horario)+'</span>');
+  box.className = 'infobar';
+  box.innerHTML = bits.join('');
+  box.style.display = 'flex';
+}
+
+async function elegirSucursal(){
+  sucursalId = document.getElementById('sucSel').value;
+  mostrarInfoSucursal();
+  if (sucursalId) await cargarCatalogo();
+}
+
+async function cargarCatalogo(){
+  document.getElementById('cont').innerHTML = '<div class="loading">Cargando menú...</div>';
+  var rProd = await fetch(API+'/api/tienda/'+slug+'/productos?sucursal_id='+sucursalId);
+  var todos = rProd.ok ? await rProd.json() : [];
+  productos = Array.isArray(todos) ? todos.filter(function(p){ return categoriasOcultas.indexOf(p.categoria_nombre) === -1; }) : [];
+  if(!productos.length){
+    document.getElementById('cont').innerHTML = '<div class="empty">Todavía no hay platillos publicados</div>';
+    return;
+  }
+  renderCategorias();
+  renderProductos();
 }
 
 function renderCategorias(){

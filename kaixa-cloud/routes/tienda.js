@@ -307,6 +307,22 @@ async function ensureTiendaTables() {
     CREATE INDEX IF NOT EXISTS idx_tienda_horarios_bloqueados_negocio_fecha ON tienda_horarios_bloqueados(negocio_id, fecha);
   `);
 
+  // Sucursales con más de una ubicación pueden necesitar su propia dirección/
+  // horario visible al cliente, y su propia configuración de domicilio/envío/
+  // entrega rápida en vez de heredar siempre la del negocio completo. Estas
+  // columnas de entrega quedan SIN valor por defecto (NULL) a propósito: NULL
+  // significa "todavía no se personalizó esta sucursal, usar la del negocio".
+  // En cuanto el dueño guarda algo desde la pantalla de configuración por
+  // sucursal, esa sucursal pasa a tener un valor propio y deja de seguir al
+  // del negocio, aunque éste cambie después.
+  await pool.query(`ALTER TABLE sucursales ADD COLUMN IF NOT EXISTS horario TEXT DEFAULT ''`);
+  await pool.query(`ALTER TABLE sucursales ADD COLUMN IF NOT EXISTS domicilio_habilitado BOOLEAN`);
+  await pool.query(`ALTER TABLE sucursales ADD COLUMN IF NOT EXISTS envio_habilitado BOOLEAN`);
+  await pool.query(`ALTER TABLE sucursales ADD COLUMN IF NOT EXISTS envio_costo NUMERIC(10,2)`);
+  await pool.query(`ALTER TABLE sucursales ADD COLUMN IF NOT EXISTS entrega_rapida_habilitado BOOLEAN`);
+  await pool.query(`ALTER TABLE sucursales ADD COLUMN IF NOT EXISTS entrega_rapida_costo NUMERIC(10,2)`);
+  await pool.query(`ALTER TABLE sucursales ADD COLUMN IF NOT EXISTS entrega_rapida_tiempo_min INTEGER`);
+
   const sinSlug = await pool.query("SELECT id, nombre FROM negocios WHERE slug IS NULL OR slug=''");
   for (const n of sinSlug.rows) { await asignarSlug(n.id, n.nombre); }
   _tiendaTablesOk = true;
@@ -594,8 +610,15 @@ router.get('/tienda/:slug/info', async (req, res) => {
     if (!neg.rows.length) return res.status(404).json({ error: 'Tienda no encontrada' });
     const negocio = neg.rows[0];
     try { negocio.menu_categorias_ocultas = JSON.parse(negocio.menu_categorias_ocultas || '[]'); } catch(e) { negocio.menu_categorias_ocultas = []; }
+    // domicilio_habilitado/envio_*/entrega_rapida_* vienen CRUDOS (pueden ser
+    // NULL) — el cliente los usa como "sucursal.campo ?? negocio.campo" para
+    // mostrar la opción efectiva de esa sucursal, igual que hace el backend
+    // al crear el pedido (ver POST /tienda/:slug/pedidos).
     const sucs = await pool.query(
-      'SELECT id, nombre FROM sucursales WHERE negocio_id=$1 AND activo=true ORDER BY nombre',
+      `SELECT id, nombre, direccion, horario,
+              domicilio_habilitado, envio_habilitado, envio_costo,
+              entrega_rapida_habilitado, entrega_rapida_costo, entrega_rapida_tiempo_min
+       FROM sucursales WHERE negocio_id=$1 AND activo=true ORDER BY nombre`,
       [neg.rows[0].id]
     );
     res.json({ negocio, sucursales: sucs.rows });
@@ -772,20 +795,30 @@ router.post('/tienda/:slug/pedidos', async (req, res) => {
     );
     if (!neg.rows.length) return res.status(404).json({ error: 'Tienda no encontrada' });
     const negocioId = neg.rows[0].id;
-    if (tipo_entrega === 'envio' && !neg.rows[0].envio_habilitado) {
-      return res.status(400).json({ error: 'Este negocio no ofrece envío por paquetería' });
-    }
-    if (tipo_entrega === 'rapida' && !neg.rows[0].entrega_rapida_habilitado) {
-      return res.status(400).json({ error: 'Este negocio no ofrece entrega rápida' });
-    }
-    const costoEnvio = tipo_entrega === 'envio' ? parseFloat(neg.rows[0].envio_costo) || 0
-      : tipo_entrega === 'rapida' ? parseFloat(neg.rows[0].entrega_rapida_costo) || 0 : 0;
 
     const suc = await pool.query(
-      'SELECT id FROM sucursales WHERE id=$1 AND negocio_id=$2 AND activo=true',
+      `SELECT id, envio_habilitado, envio_costo, entrega_rapida_habilitado, entrega_rapida_costo
+       FROM sucursales WHERE id=$1 AND negocio_id=$2 AND activo=true`,
       [sucursal_id, negocioId]
     );
     if (!suc.rows.length) return res.status(404).json({ error: 'Sucursal no válida' });
+    // Una sucursal con sus propias columnas en NULL todavía no se personalizó
+    // — se usa la configuración general del negocio. En cuanto el dueño
+    // guarda algo para esa sucursal, estos valores dejan de ser NULL y el
+    // pedido respeta lo que se configuró específicamente para ella.
+    const s = suc.rows[0];
+    const envioHabilitado = s.envio_habilitado !== null ? s.envio_habilitado : neg.rows[0].envio_habilitado;
+    const envioCosto = s.envio_costo !== null ? s.envio_costo : neg.rows[0].envio_costo;
+    const rapidaHabilitado = s.entrega_rapida_habilitado !== null ? s.entrega_rapida_habilitado : neg.rows[0].entrega_rapida_habilitado;
+    const rapidaCosto = s.entrega_rapida_costo !== null ? s.entrega_rapida_costo : neg.rows[0].entrega_rapida_costo;
+    if (tipo_entrega === 'envio' && !envioHabilitado) {
+      return res.status(400).json({ error: 'Esta sucursal no ofrece envío por paquetería' });
+    }
+    if (tipo_entrega === 'rapida' && !rapidaHabilitado) {
+      return res.status(400).json({ error: 'Esta sucursal no ofrece entrega rápida' });
+    }
+    const costoEnvio = tipo_entrega === 'envio' ? parseFloat(envioCosto) || 0
+      : tipo_entrega === 'rapida' ? parseFloat(rapidaCosto) || 0 : 0;
 
     // Revalidar el horario elegido justo antes de guardar (no confiar en que
     // siga disponible desde que el cliente lo vio en el checkout — alguien

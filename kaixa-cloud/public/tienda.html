@@ -148,10 +148,11 @@
 
 <div class="wrap">
   <div class="card" id="sucCard" style="display:none">
-    <div class="field" style="margin-bottom:0">
+    <div class="field" id="sucSelWrap" style="margin-bottom:0">
       <label>Sucursal donde vas a recoger</label>
       <select id="sucSel" onchange="elegirSucursal()"></select>
     </div>
+    <div id="sucInfo" style="display:none;margin-top:8px;font-size:11.5px;color:var(--text2);flex-wrap:wrap;gap:8px 16px"></div>
   </div>
 </div>
 
@@ -397,6 +398,9 @@ async function init(){
     }
     if (sucursales.length === 1) {
       sucursalId = sucursales[0].id;
+      document.getElementById('sucCard').style.display = 'block';
+      document.getElementById('sucSelWrap').style.display = 'none'; // una sola sucursal: no hace falta elegir, solo mostrar su info
+      mostrarInfoSucursal();
       await cargarProductos();
     } else {
       var box = document.getElementById('sucCard');
@@ -411,10 +415,29 @@ async function init(){
   }
 }
 
+// Devuelve el objeto completo de la sucursal actualmente elegida (o null si
+// aún no se elige ninguna) — se usa tanto para mostrar su dirección/horario
+// como para saber qué opciones de entrega ofrece ESA sucursal en particular.
+function sucursalActual(){
+  return sucursales.find(function(s){ return String(s.id) === String(sucursalId); }) || null;
+}
+
+function mostrarInfoSucursal(){
+  var s = sucursalActual();
+  var box = document.getElementById('sucInfo');
+  if (!s || (!s.direccion && !s.horario)) { box.style.display = 'none'; return; }
+  var bits = [];
+  if (s.direccion) bits.push('<span>📍 ' + s.direccion + '</span>');
+  if (s.horario) bits.push('<span>🕒 ' + s.horario + '</span>');
+  box.innerHTML = bits.join('');
+  box.style.display = 'flex';
+}
+
 async function elegirSucursal(){
   sucursalId = document.getElementById('sucSel').value;
   cart = {};
   actualizarCartBar();
+  mostrarInfoSucursal();
   if (sucursalId) await cargarProductos();
 }
 
@@ -836,16 +859,34 @@ function renderCarrito(){
   document.getElementById('carritoTotal').textContent = '$' + totalCarrito().toFixed(2);
 }
 
+// Si la sucursal elegida tiene su propia config de entrega (no NULL), se usa
+// esa — si no, se cae a la general del negocio. Mismo criterio que aplica
+// el servidor al crear el pedido (routes/tienda.js), para que los botones
+// que ve el cliente aquí coincidan con lo que el pedido va a aceptar.
+function entregaEfectiva(){
+  var s = sucursalActual();
+  function val(campo){ return (s && s[campo] !== null && s[campo] !== undefined) ? s[campo] : (negocio && negocio[campo]); }
+  return {
+    domicilio_habilitado: val('domicilio_habilitado'),
+    envio_habilitado: val('envio_habilitado'),
+    envio_costo: val('envio_costo'),
+    entrega_rapida_habilitado: val('entrega_rapida_habilitado'),
+    entrega_rapida_costo: val('entrega_rapida_costo'),
+    entrega_rapida_tiempo_min: val('entrega_rapida_tiempo_min')
+  };
+}
+
 function irACheckout(){
   if (!cantidadCarrito()) { notif('Agrega al menos un producto'); return; }
   cerrar('ovCarrito');
   document.getElementById('ckTotal').textContent = '$' + totalCarrito().toFixed(2);
   var entregaBox = document.getElementById('ckEntregaBox');
-  var haySelect = negocio && (negocio.domicilio_habilitado || negocio.envio_habilitado || negocio.entrega_rapida_habilitado);
+  var efectiva = entregaEfectiva();
+  var haySelect = efectiva.domicilio_habilitado || efectiva.envio_habilitado || efectiva.entrega_rapida_habilitado;
   entregaBox.style.display = haySelect ? 'block' : 'none';
-  document.getElementById('btnDomicilio').style.display = (negocio && negocio.domicilio_habilitado) ? 'inline-block' : 'none';
-  document.getElementById('btnEnvio').style.display = (negocio && negocio.envio_habilitado) ? 'inline-block' : 'none';
-  document.getElementById('btnRapida').style.display = (negocio && negocio.entrega_rapida_habilitado) ? 'inline-block' : 'none';
+  document.getElementById('btnDomicilio').style.display = efectiva.domicilio_habilitado ? 'inline-block' : 'none';
+  document.getElementById('btnEnvio').style.display = efectiva.envio_habilitado ? 'inline-block' : 'none';
+  document.getElementById('btnRapida').style.display = efectiva.entrega_rapida_habilitado ? 'inline-block' : 'none';
   document.getElementById('ckEntregaProgramadaBox').style.display = (negocio && negocio.entregas_habilitado) ? 'block' : 'none';
   setTipoEntrega('recoger');
   prefillCheckoutCuenta();
@@ -880,10 +921,11 @@ function setTipoEntrega(tipo){
   document.getElementById('btnRapida').classList.toggle('active', tipo === 'rapida');
   document.getElementById('ckDomicilioBox').style.display = (tipo === 'domicilio' || tipo === 'envio' || tipo === 'rapida') ? 'block' : 'none';
   document.getElementById('ckRapidaInfo').style.display = tipo === 'rapida' ? 'block' : 'none';
-  if (tipo === 'rapida') document.getElementById('ckRapidaMin').textContent = (negocio && negocio.entrega_rapida_tiempo_min) || 30;
+  var efectiva = entregaEfectiva();
+  if (tipo === 'rapida') document.getElementById('ckRapidaMin').textContent = efectiva.entrega_rapida_tiempo_min || 30;
 
-  var envioCosto = (negocio && parseFloat(negocio.envio_costo)) || 0;
-  var rapidaCosto = (negocio && parseFloat(negocio.entrega_rapida_costo)) || 0;
+  var envioCosto = parseFloat(efectiva.envio_costo) || 0;
+  var rapidaCosto = parseFloat(efectiva.entrega_rapida_costo) || 0;
   var costoExtra = tipo === 'envio' ? envioCosto : tipo === 'rapida' ? rapidaCosto : 0;
   var totalMostrar = totalCarrito() + costoExtra;
   document.getElementById('ckTotal').textContent = '$' + totalMostrar.toFixed(2) + (costoExtra ? ' (incluye $'+costoExtra.toFixed(2)+' de entrega)' : '');

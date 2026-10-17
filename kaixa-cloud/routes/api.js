@@ -1243,6 +1243,55 @@ router.put('/negocio/tienda', async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── GET /api/negocio/sucursales-entrega — config de entrega por sucursal ──
+// Devuelve las columnas de entrega de cada sucursal TAL CUAL están guardadas
+// (pueden venir NULL) — NULL significa "esta sucursal todavía no tiene su
+// propia configuración, usa la general del negocio" (que ya se obtiene por
+// separado con GET /api/negocio/tienda). El cliente arma el valor efectivo
+// con sucursal.campo ?? general.campo para precargar el formulario.
+router.get('/negocio/sucursales-entrega', async (req, res) => {
+  try {
+    await ensureTiendaTables();
+    const r = await pool.query(
+      `SELECT id, nombre, direccion, horario,
+              domicilio_habilitado, envio_habilitado, envio_costo,
+              entrega_rapida_habilitado, entrega_rapida_costo, entrega_rapida_tiempo_min
+       FROM sucursales WHERE negocio_id=$1 AND activo=true ORDER BY nombre`,
+      [req.caja.negocio_id]
+    );
+    res.json(r.rows);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── PUT /api/negocio/sucursales-entrega/:id — guardar la config de UNA sucursal ──
+// A diferencia de PUT /api/negocio/tienda (que usa COALESCE para no pisar
+// campos que no mandan), aquí cada campo SIEMPRE se escribe tal cual llega
+// — incluyendo false/0 — porque el modelo acordado es simple: en cuanto el
+// dueño guarda la config de una sucursal, esos valores quedan fijos para
+// ella (ya no heredan de la del negocio aunque ésta cambie después).
+router.put('/negocio/sucursales-entrega/:id', async (req, res) => {
+  try {
+    await ensureTiendaTables();
+    const dueño = await pool.query('SELECT id FROM sucursales WHERE id=$1 AND negocio_id=$2', [req.params.id, req.caja.negocio_id]);
+    if (!dueño.rows.length) return res.status(404).json({ error: 'Sucursal no encontrada' });
+    const {
+      direccion = '', horario = '',
+      domicilio_habilitado = false, envio_habilitado = false, envio_costo = 0,
+      entrega_rapida_habilitado = false, entrega_rapida_costo = 0, entrega_rapida_tiempo_min = 30
+    } = req.body;
+    await pool.query(
+      `UPDATE sucursales SET
+         direccion=$1, horario=$2, domicilio_habilitado=$3, envio_habilitado=$4, envio_costo=$5,
+         entrega_rapida_habilitado=$6, entrega_rapida_costo=$7, entrega_rapida_tiempo_min=$8
+       WHERE id=$9`,
+      [direccion, horario, !!domicilio_habilitado, !!envio_habilitado, parseFloat(envio_costo) || 0,
+       !!entrega_rapida_habilitado, parseFloat(entrega_rapida_costo) || 0, parseInt(entrega_rapida_tiempo_min) || 30,
+       req.params.id]
+    );
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 // ── GET /api/negocio/menu-config — personalización del menú digital QR ──
 router.get('/negocio/menu-config', async (req, res) => {
   try {

@@ -4410,7 +4410,15 @@ async function abrirTiendaConfig() {
         '<label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="tiendaEnvioMovil" onchange="document.getElementById(\'tiendaEnvioCostoWrapMovil\').style.display=this.checked?\'block\':\'none\'" style="width:18px;height:18px"><span style="font-size:13px;font-weight:700"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1em;height:1em;vertical-align:-0.15em;flex-shrink:0"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg> Ofrezco envío por paquetería</span></label>' +
         '<div id="tiendaEnvioCostoWrapMovil" style="display:none;margin-top:8px"><label style="font-size:12px;color:var(--text3)">Costo de envío (tarifa plana)</label><input id="tiendaEnvioCostoMovil" type="number" step="0.01" placeholder="0.00"></div>' +
       '</div>' +
+      '<div class="card" style="margin-bottom:14px">' +
+        '<label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="tiendaRapidaMovil" onchange="document.getElementById(\'tiendaRapidaCamposWrapMovil\').style.display=this.checked?\'flex\':\'none\'" style="width:18px;height:18px"><span style="font-size:13px;font-weight:700"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1em;height:1em;vertical-align:-0.15em;flex-shrink:0"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> Ofrezco entrega rápida (lo antes posible)</span></label>' +
+        '<div id="tiendaRapidaCamposWrapMovil" style="display:none;margin-top:8px;gap:8px;flex-wrap:wrap">' +
+          '<div style="flex:1;min-width:120px"><label style="font-size:12px;color:var(--text3)">Costo</label><input id="tiendaRapidaCostoMovil" type="number" step="0.01" placeholder="0.00"></div>' +
+          '<div style="flex:1;min-width:120px"><label style="font-size:12px;color:var(--text3)">Minutos estimados</label><input id="tiendaRapidaMinMovil" type="number" placeholder="30"></div>' +
+        '</div>' +
+      '</div>' +
       '<div class="card" style="margin-bottom:14px"><label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="tiendaCotFotosMovil" style="width:18px;height:18px"><span style="font-size:13px;font-weight:700"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1em;height:1em;vertical-align:-0.15em;flex-shrink:0"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg> Mostrar fotos de producto en las cotizaciones</span></label></div>' +
+      '<div class="card" style="margin-bottom:14px;cursor:pointer" onclick="abrirSucursalesEntregaConfig()"><div style="display:flex;align-items:center;justify-content:space-between"><span style="font-size:13px;font-weight:700"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1em;height:1em;vertical-align:-0.15em;flex-shrink:0"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg> Personalizar por sucursal</span><span style="color:var(--text3)">›</span></div><p style="font-size:11px;color:var(--text3);margin:6px 0 0">Dirección, horario y entrega distintos para cada sucursal (solo aplica si tienes más de una)</p></div>' +
       '<button class="btn-full primary" onclick="guardarTiendaConfigMovil()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1em;height:1em;vertical-align:-0.15em;flex-shrink:0"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg> Guardar</button>' +
     '</div></div>';
   document.getElementById('modalContainer').innerHTML = html;
@@ -4431,6 +4439,10 @@ async function abrirTiendaConfig() {
       document.getElementById('tiendaEnvioMovil').checked = !!d.envio_habilitado;
       document.getElementById('tiendaEnvioCostoMovil').value = d.envio_costo || '';
       document.getElementById('tiendaEnvioCostoWrapMovil').style.display = d.envio_habilitado ? 'block' : 'none';
+      document.getElementById('tiendaRapidaMovil').checked = !!d.entrega_rapida_habilitado;
+      document.getElementById('tiendaRapidaCostoMovil').value = d.entrega_rapida_costo || '';
+      document.getElementById('tiendaRapidaMinMovil').value = d.entrega_rapida_tiempo_min || '';
+      document.getElementById('tiendaRapidaCamposWrapMovil').style.display = d.entrega_rapida_habilitado ? 'flex' : 'none';
       if (d.tienda_imagen_url) {
         document.getElementById('tiendaImgPreviewMovil').innerHTML = '<img src="'+d.tienda_imagen_url+'" style="width:100%;height:100%;object-fit:cover">';
       }
@@ -4671,7 +4683,10 @@ async function guardarTiendaConfigMovil() {
     domicilio_habilitado: document.getElementById('tiendaDomicilioMovil').checked,
     cotizacion_mostrar_fotos: document.getElementById('tiendaCotFotosMovil').checked,
     envio_habilitado: document.getElementById('tiendaEnvioMovil').checked,
-    envio_costo: parseFloat(document.getElementById('tiendaEnvioCostoMovil').value) || 0
+    envio_costo: parseFloat(document.getElementById('tiendaEnvioCostoMovil').value) || 0,
+    entrega_rapida_habilitado: document.getElementById('tiendaRapidaMovil').checked,
+    entrega_rapida_costo: parseFloat(document.getElementById('tiendaRapidaCostoMovil').value) || 0,
+    entrega_rapida_tiempo_min: parseInt(document.getElementById('tiendaRapidaMinMovil').value) || 30
   };
   if (_tiendaImgBase64Movil) body.tienda_imagen_url = _tiendaImgBase64Movil;
   if (_tiendaLogoBase64Movil) body.tienda_logo_url = _tiendaLogoBase64Movil;
@@ -4679,6 +4694,97 @@ async function guardarTiendaConfigMovil() {
   if (r && r.ok) {
     document.getElementById('modalContainer').innerHTML = '';
     notif('Tienda actualizada', 'ok');
+  } else {
+    notif('Error al guardar', 'err');
+  }
+}
+
+// ── Entrega por sucursal ────────────────────────────────────────────────
+// Negocios con más de una sucursal pueden querer domicilio/envío/entrega
+// rápida distintos en cada una (p. ej. solo una ofrece envío). Mientras una
+// sucursal no tenga su propia configuración guardada (columnas en NULL en
+// la base), usa la general del negocio — en cuanto el dueño guarda algo
+// aquí, esa sucursal queda fija con esos valores de ahí en adelante.
+var _sucursalesEntregaCache = [];
+var _negocioEntregaGeneral = {};
+
+async function abrirSucursalesEntregaConfig() {
+  var html = '<div class="modal-overlay" id="modalSucEntrega">' +
+    '<div class="modal-sheet">' +
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">' +
+        '<h3 style="margin:0"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1em;height:1em;vertical-align:-0.15em;flex-shrink:0"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg> Personalizar por sucursal</h3>' +
+        '<span class="modal-close" onclick="document.getElementById(\'modalSucEntrega\').remove()">✕</span>' +
+      '</div>' +
+      '<p style="font-size:12px;color:var(--text3);margin-bottom:14px">Elige una sucursal para configurar su dirección, horario y entrega. Si no la tocas, usa la configuración general de tu tienda.</p>' +
+      '<div id="sucEntregaLista"><p style="font-size:12px;color:var(--text3)">Cargando…</p></div>' +
+    '</div></div>';
+  document.getElementById('modalContainer').innerHTML = html;
+  try {
+    var [rSucs, rGeneral] = await Promise.all([
+      apiFetch('/api/negocio/sucursales-entrega'),
+      apiFetch('/api/negocio/tienda')
+    ]);
+    _sucursalesEntregaCache = (rSucs && rSucs.ok) ? await rSucs.json() : [];
+    _negocioEntregaGeneral = (rGeneral && rGeneral.ok) ? await rGeneral.json() : {};
+    var cont = document.getElementById('sucEntregaLista');
+    if (!_sucursalesEntregaCache.length) { cont.innerHTML = '<p style="font-size:12px;color:var(--text3)">No tienes sucursales activas.</p>'; return; }
+    cont.innerHTML = _sucursalesEntregaCache.map(function(s) {
+      var personalizada = s.domicilio_habilitado !== null || s.envio_habilitado !== null || s.entrega_rapida_habilitado !== null || !!s.direccion || !!s.horario;
+      return '<div class="card" style="cursor:pointer;margin-bottom:8px" onclick="editarSucursalEntrega(\'' + s.id + '\')">' +
+        '<div class="card-row"><div class="card-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1em;height:1em;vertical-align:-0.15em;flex-shrink:0"><path d="M3 9l1-6h16l1 6"/><path d="M3 9a2.5 2.5 0 0 0 5 0 2.5 2.5 0 0 0 5 0 2.5 2.5 0 0 0 5 0 2.5 2.5 0 0 0 5 0"/><path d="M4 9v10a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V9"/><path d="M9 21v-6h6v6"/></svg></div>' +
+        '<div class="card-info"><div class="card-title">' + s.nombre + '</div><div class="card-sub">' + (personalizada ? 'Personalizada' : 'Usa la configuración general') + '</div></div>' +
+        '<div style="color:var(--text3)">›</div></div></div>';
+    }).join('');
+  } catch(e) {
+    document.getElementById('sucEntregaLista').innerHTML = '<p style="font-size:12px;color:var(--text3)">No se pudo cargar.</p>';
+  }
+}
+
+function editarSucursalEntrega(id) {
+  var s = _sucursalesEntregaCache.find(function(x) { return String(x.id) === String(id); });
+  if (!s) return;
+  var g = _negocioEntregaGeneral;
+  function efectivo(campo) { return (s[campo] !== null && s[campo] !== undefined) ? s[campo] : g[campo]; }
+  var html = '<div class="modal-overlay" id="modalSucEntregaForm">' +
+    '<div class="modal-sheet">' +
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">' +
+        '<h3 style="margin:0">' + s.nombre + '</h3>' +
+        '<span class="modal-close" onclick="document.getElementById(\'modalSucEntregaForm\').remove()">✕</span>' +
+      '</div>' +
+      '<div class="form-field"><label>Dirección</label><input id="sucEntDirInput" placeholder="Calle, número, colonia" value="' + (s.direccion || '') + '"></div>' +
+      '<div class="form-field"><label>Horario</label><input id="sucEntHorInput" placeholder="Lun-Sáb 9am-8pm" value="' + (s.horario || '') + '"></div>' +
+      '<div class="card" style="margin-bottom:14px"><label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="sucEntDomicilio" style="width:18px;height:18px"' + (efectivo('domicilio_habilitado') ? ' checked' : '') + '><span style="font-size:13px;font-weight:700">Ofrece servicio a domicilio</span></label></div>' +
+      '<div class="card" style="margin-bottom:14px">' +
+        '<label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="sucEntEnvio" onchange="document.getElementById(\'sucEntEnvioCostoWrap\').style.display=this.checked?\'block\':\'none\'" style="width:18px;height:18px"' + (efectivo('envio_habilitado') ? ' checked' : '') + '><span style="font-size:13px;font-weight:700">Ofrece envío por paquetería</span></label>' +
+        '<div id="sucEntEnvioCostoWrap" style="margin-top:8px;display:' + (efectivo('envio_habilitado') ? 'block' : 'none') + '"><label style="font-size:12px;color:var(--text3)">Costo de envío</label><input id="sucEntEnvioCosto" type="number" step="0.01" value="' + (efectivo('envio_costo') || '') + '"></div>' +
+      '</div>' +
+      '<div class="card" style="margin-bottom:14px">' +
+        '<label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="sucEntRapida" onchange="document.getElementById(\'sucEntRapidaCamposWrap\').style.display=this.checked?\'flex\':\'none\'" style="width:18px;height:18px"' + (efectivo('entrega_rapida_habilitado') ? ' checked' : '') + '><span style="font-size:13px;font-weight:700">Ofrece entrega rápida</span></label>' +
+        '<div id="sucEntRapidaCamposWrap" style="margin-top:8px;gap:8px;flex-wrap:wrap;display:' + (efectivo('entrega_rapida_habilitado') ? 'flex' : 'none') + '">' +
+          '<div style="flex:1;min-width:120px"><label style="font-size:12px;color:var(--text3)">Costo</label><input id="sucEntRapidaCosto" type="number" step="0.01" value="' + (efectivo('entrega_rapida_costo') || '') + '"></div>' +
+          '<div style="flex:1;min-width:120px"><label style="font-size:12px;color:var(--text3)">Minutos estimados</label><input id="sucEntRapidaMin" type="number" value="' + (efectivo('entrega_rapida_tiempo_min') || 30) + '"></div>' +
+        '</div>' +
+      '</div>' +
+      '<button class="btn-full primary" onclick="guardarSucursalEntrega(\'' + s.id + '\')">Guardar</button>' +
+    '</div></div>';
+  document.getElementById('modalContainer').innerHTML = html;
+}
+
+async function guardarSucursalEntrega(id) {
+  var body = {
+    direccion: document.getElementById('sucEntDirInput').value.trim(),
+    horario: document.getElementById('sucEntHorInput').value.trim(),
+    domicilio_habilitado: document.getElementById('sucEntDomicilio').checked,
+    envio_habilitado: document.getElementById('sucEntEnvio').checked,
+    envio_costo: parseFloat(document.getElementById('sucEntEnvioCosto').value) || 0,
+    entrega_rapida_habilitado: document.getElementById('sucEntRapida').checked,
+    entrega_rapida_costo: parseFloat(document.getElementById('sucEntRapidaCosto').value) || 0,
+    entrega_rapida_tiempo_min: parseInt(document.getElementById('sucEntRapidaMin').value) || 30
+  };
+  var r = await apiFetch('/api/negocio/sucursales-entrega/' + id, { method: 'PUT', body: JSON.stringify(body) });
+  if (r && r.ok) {
+    document.getElementById('modalContainer').innerHTML = '';
+    notif('Sucursal actualizada', 'ok');
   } else {
     notif('Error al guardar', 'err');
   }
