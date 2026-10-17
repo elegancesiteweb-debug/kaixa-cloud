@@ -1440,7 +1440,7 @@ function renderPosGrid(prods) {
   var miGen = ++_posRenderGen;
   var cont = document.getElementById('posGrid');
   if (!prods.length) { cont.innerHTML = '<div class="empty" style="grid-column:1/-1"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1em;height:1em;vertical-align:-0.15em;flex-shrink:0"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg></div><p>Sin productos</p></div>'; return; }
-  var PRIMER_LOTE = 60, LOTE = 120;
+  var PRIMER_LOTE = 24, LOTE = 80;
   cont.innerHTML = prods.slice(0, PRIMER_LOTE).map(_posItemHtml).join('');
   if (prods.length <= PRIMER_LOTE) return;
   var idx = PRIMER_LOTE;
@@ -1450,9 +1450,9 @@ function renderPosGrid(prods) {
     if (!lote.length) return;
     cont.insertAdjacentHTML('beforeend', lote.map(_posItemHtml).join(''));
     idx += LOTE;
-    setTimeout(siguienteLote, 0);
+    _cederHilo(siguienteLote);
   }
-  setTimeout(siguienteLote, 0);
+  _cederHilo(siguienteLote);
 }
 
 function addToCart(id) {
@@ -1955,9 +1955,23 @@ function filtrarInv() {
   renderInvList(allProds.filter(function(p) { return p.nombre.toLowerCase().includes(q) || (p.categoria || '').toLowerCase().includes(q); }));
 }
 
+// Para pintar la siguiente tanda de una lista larga, dejar que el propio
+// navegador decida CUÁNDO hay un hueco libre (requestIdleCallback) es más
+// amable con un teléfono ocupado que simplemente "lo antes posible"
+// (setTimeout 0) — pero con un tope, para no esperar eternamente si el
+// navegador nunca se reporta libre.
+function _cederHilo(fn) {
+  if (typeof requestIdleCallback === 'function') requestIdleCallback(fn, { timeout: 200 });
+  else setTimeout(fn, 0);
+}
+// El punto de color (verde/amarillo/rojo) se repite una vez por producto —
+// con mil productos eso eran mil <svg> aparte, cada uno con su propio
+// contexto de render. Un <span> con CSS hace lo mismo visualmente y es
+// mucho más barato de crear y pintar en cantidad.
+var _DOT = '<span style="display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:3px;vertical-align:1px;background:';
 function _invItemHtml(p) {
   var stockCls = p.es_servicio ? '' : p.stock <= 0 ? 'stock-out' : p.stock <= (p.stock_minimo || 5) ? 'stock-low' : '';
-  var stockTxt = p.es_servicio ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1em;height:1em;vertical-align:-0.15em;flex-shrink:0"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg> Servicio (sin stock)' : p.stock <= 0 ? '<svg viewBox="0 0 8 8" style="width:0.55em;height:0.55em;vertical-align:0.05em;flex-shrink:0"><circle cx="4" cy="4" r="4" fill="#ef4444"/></svg> Agotado' : p.stock <= (p.stock_minimo || 5) ? '<svg viewBox="0 0 8 8" style="width:0.55em;height:0.55em;vertical-align:0.05em;flex-shrink:0"><circle cx="4" cy="4" r="4" fill="#f59e0b"/></svg> ' + p.stock + ' uds' : '<svg viewBox="0 0 8 8" style="width:0.55em;height:0.55em;vertical-align:0.05em;flex-shrink:0"><circle cx="4" cy="4" r="4" fill="#10b981"/></svg> ' + p.stock + ' uds';
+  var stockTxt = p.es_servicio ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1em;height:1em;vertical-align:-0.15em;flex-shrink:0"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg> Servicio (sin stock)' : p.stock <= 0 ? _DOT + '#ef4444"></span>Agotado' : p.stock <= (p.stock_minimo || 5) ? _DOT + '#f59e0b"></span>' + p.stock + ' uds' : _DOT + '#10b981"></span>' + p.stock + ' uds';
   var imgSrc = p.imagen_url || imgCache[p.id];
   var icoHtml = imgSrc ? '<img src="' + imgSrc + '" style="width:100%;height:100%;object-fit:cover;border-radius:8px;">' : (p.emoji || '📦');
   return '<div class="inv-item ' + stockCls + '" onclick="abrirEditProd(\'' + p.id + '\')">' +
@@ -1985,7 +1999,7 @@ function renderInvList(prods) {
   _miga('renderInvList→ ' + prods.length + ' productos');
   var cont = document.getElementById('invList');
   if (!prods.length) { _miga('renderInvList listo (vacío)'); cont.innerHTML = '<div class="empty"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1em;height:1em;vertical-align:-0.15em;flex-shrink:0"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg></div><p>Sin productos</p></div>'; return; }
-  var PRIMER_LOTE = 60, LOTE = 120;
+  var PRIMER_LOTE = 24, LOTE = 80;
   cont.innerHTML = prods.slice(0, PRIMER_LOTE).map(_invItemHtml).join('');
   if (prods.length <= PRIMER_LOTE) { _miga('renderInvList listo (' + prods.length + ')'); return; }
   var idx = PRIMER_LOTE;
@@ -1995,9 +2009,9 @@ function renderInvList(prods) {
     if (!lote.length) { _miga('renderInvList listo (' + prods.length + ')'); return; }
     cont.insertAdjacentHTML('beforeend', lote.map(_invItemHtml).join(''));
     idx += LOTE;
-    setTimeout(siguienteLote, 0);
+    _cederHilo(siguienteLote);
   }
-  setTimeout(siguienteLote, 0);
+  _cederHilo(siguienteLote);
 }
 
 function abrirNuevoProd() { abrirModalProd(null); }
