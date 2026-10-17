@@ -607,6 +607,13 @@ function verMigasAnteriores() {
   if (!_migasAnteriores.length) { alert('No hay registro de la sesión anterior.'); return; }
   _mostrarErrorVisible('── Lo último que hizo la app ANTES de cerrarse la vez pasada ──\n' + _migasAnteriores.join('\n'));
 }
+// Pedirle al usuario que navegue hasta "Más" para ver esto no sirve de nada
+// si la app se traba tan seguido que ni siquiera llega a tocar el botón —
+// así que en cuanto arranca, si quedó un registro de la sesión anterior,
+// se muestra solo, sin que haya que buscarlo ni tocar nada.
+if (_migasAnteriores.length) {
+  setTimeout(function() { verMigasAnteriores(); }, 1000);
+}
 
 // ── Captura de errores visible ───────────────────────────────────────────
 // Varias rondas de arreglos no resolvieron un problema que el usuario sigue
